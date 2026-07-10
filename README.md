@@ -2,7 +2,7 @@
 
 **monaka design.** の連作3Dスタディ。*"Designing the Middle of Your Story."* の「真ん中」を、毎日ひとつ違うかたちで研究する。
 
-- 🖼 ギャラリー: https://ryota4100221-cmyk.github.io/middle-studies/
+- 🖼 ギャラリー: https://middle-studies-monaka.netlify.app/ （副系: https://ryota4100221-cmyk.github.io/middle-studies/ ）
 - 制作: Blender 5.1 ヘッドレス（GUIなし・全工程Pythonコード）
 - 色は3つだけ: 白 / 黒 `#0a0a0a` / ライム `#A5E02E`
 
@@ -21,7 +21,7 @@ LOG.md          完了ログ
 
 ## 運用
 
-毎日 2:00 JST、ローカルMacのlaunchdがClaude Code（スキル `blender-middle-study`）を起動して1作品を生成・pushする。制作パイプラインの正典はスキル側にある。
+毎日 2:00 JST、ローカルMacのlaunchdがClaude Code（スキル `blender-middle-study`）を起動して1作品を生成・push、Netlifyへ本番デプロイする。制作パイプラインの正典はスキル側にある。
 
 ---
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
