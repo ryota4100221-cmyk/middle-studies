@@ -80,6 +80,17 @@ bpy.ops.object.transform_apply(scale=True)   # ← ここでメッシュがworld
 - 固定オブジェクトが**倍の高さに浮いた**（z→2z）→ #7-b。`o.location=loc` を**消す**。
 - **確実な見分け方**: 造形直後に `probe` スクリプトで `o.matrix_world.translation.z` と `bound_box` のworld z範囲を print し、`location=loc` の有無で挙動を2秒で確定させてから本レンダーに進む（004ではこれで即断できた）。挙動は起動オプション（`--factory-startup`）やBlenderバージョンで割れるので、**毎回probeで確認**するのが最速かつ確実。
 
+## 9. 回転リグは「原点」に置く。CENTER_Zに置いて matrix_parent_inverse で相殺しない（005で確認）
+005（KAWA）で、リグを `empty_add(location=(0,0,CENTER_Z))` に置き、子の `matrix_parent_inverse = rig.matrix_world.inverted()` で相殺しようとしたら、
+**メッシュをz≈0で生成したパーツ（皮）と、primitiveのlocationでCENTER_Zに生成したパーツ（餡）が別々の高さに割れた**（皮が床、餡が中空）。
+matrix_parent_inverse はリグのオフセットを打ち消すので、生成時の絶対zがそのまま残り、パーツごとに基準がズレる。
+
+**正解（004/005で確立した方式）**:
+- リグ（回転用Empty）は必ず**原点 `(0,0,0)`** に置く。
+- 全パーツを**ワールドの CENTER_Z に配置**する（メッシュをz≈0で作ったら `o.location=(0,0,CENTER_Z)`、primitiveなら `location=(0,0,CENTER_Z)` で作る）。
+- 親子付けは `o.parent = rig` だけ（matrix_parent_inverse は触らない＝既定のidentity）。
+- x=y=0 の中心軸上にあるので、リグを世界Z軸まわりに回せばオブジェクトは自分の垂直軸で回転する。
+
 ## 8. その他の実戦知識
 - `--factory-startup` を付けるとユーザー設定に汚染されず再現性が上がる
 - レンダー時間目安（M1 8core GPU・適応サンプリング）: 1600×2000/96smp ≈ 80秒、720×900/16smp ≈ 4秒/フレーム
