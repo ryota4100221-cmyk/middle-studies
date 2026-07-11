@@ -63,6 +63,23 @@ bpy.ops.object.transform_apply(scale=True)   # ← ここで o.location.z が 0 
 **回避**: `transform_apply` の直後に `o.location = (0.0, 0.0, z)` を明示再設定する。あるいは scale を transform_apply せず `o.dimensions` / 親スケールで持つ。
 **教訓**: 「固定オブジェクトだけ位置がおかしい」時はまず transform_apply を疑う。デバッグは `o.matrix_world.translation` を print して数値で当たりを取ると速い（テストレンダーを何周も回すより桁違いに速い）。
 
+### 7-b. 逆の罠：`--factory-startup` では location=loc 再設定が二重オフセットになる（004で確認）
+2026-07-11の004（ANDON）で判明。**`--factory-startup` 付き**で `transform_apply(scale=True)` を呼ぶと、
+Blenderは**メッシュ頂点をワールド位置に焼き込み、`location` を 0 に落とす**（=見た目の位置は変わらない）。
+この状態は**すでに正しい位置**なので、直後に `o.location = loc` を足すと **loc ぶん二重に上がる**（004では籠が2倍の高さに浮いた）。
+
+```python
+bpy.ops.mesh.primitive_cube_add(size=1, location=(x,y,z))
+o.scale = (sx, sy, sz)
+bpy.ops.object.transform_apply(scale=True)   # ← ここでメッシュがworld焼き込み・location→0（位置は既に正しい）
+# o.location = (x,y,z)   # ✗ --factory-startup下ではこれで z が 2z になる
+```
+
+**#7と#7-bの使い分け**:
+- 固定オブジェクトが**床に落ちた**（z→0）→ #7。`o.location=loc` を足して復旧。
+- 固定オブジェクトが**倍の高さに浮いた**（z→2z）→ #7-b。`o.location=loc` を**消す**。
+- **確実な見分け方**: 造形直後に `probe` スクリプトで `o.matrix_world.translation.z` と `bound_box` のworld z範囲を print し、`location=loc` の有無で挙動を2秒で確定させてから本レンダーに進む（004ではこれで即断できた）。挙動は起動オプション（`--factory-startup`）やBlenderバージョンで割れるので、**毎回probeで確認**するのが最速かつ確実。
+
 ## 8. その他の実戦知識
 - `--factory-startup` を付けるとユーザー設定に汚染されず再現性が上がる
 - レンダー時間目安（M1 8core GPU・適応サンプリング）: 1600×2000/96smp ≈ 80秒、720×900/16smp ≈ 4秒/フレーム
