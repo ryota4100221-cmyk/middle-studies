@@ -52,7 +52,18 @@ scene.cycles.device = 'GPU'
 ## 6. スムーズシェーディング
 `bpy.ops.object.shade_auto_smooth(angle=0.6)` が5.xの正解（旧auto_smoothプロパティは廃止）。ops なのでオブジェクトがactive+selectedの状態で呼ぶこと。
 
-## 7. その他の実戦知識
+## 7. `transform_apply(scale=True)` が location を 0 に落とす（003で半日溶かした罠）
+```python
+bpy.ops.mesh.primitive_cube_add(size=1, location=(0,0,z))
+o = bpy.context.active_object
+o.scale = (sx, sy, sz)
+bpy.ops.object.transform_apply(scale=True)   # ← ここで o.location.z が 0 に化ける
+```
+**症状**: 生成物が全部 z=0（床）に落ちる。ただし直後に `keyframe_insert(location)` で毎フレーム座標を書き込むオブジェクトは、キーが上書きするので**気づかない**。アニメを打たない固定オブジェクト（003では断層のライム層）だけが床に取り残される。
+**回避**: `transform_apply` の直後に `o.location = (0.0, 0.0, z)` を明示再設定する。あるいは scale を transform_apply せず `o.dimensions` / 親スケールで持つ。
+**教訓**: 「固定オブジェクトだけ位置がおかしい」時はまず transform_apply を疑う。デバッグは `o.matrix_world.translation` を print して数値で当たりを取ると速い（テストレンダーを何周も回すより桁違いに速い）。
+
+## 8. その他の実戦知識
 - `--factory-startup` を付けるとユーザー設定に汚染されず再現性が上がる
 - レンダー時間目安（M1 8core GPU・適応サンプリング）: 1600×2000/96smp ≈ 80秒、720×900/16smp ≈ 4秒/フレーム
 - glTF書き出しはオブジェクトのlocation/rotationキーフレームをそのままアニメとして持っていける: `bpy.ops.export_scene.gltf(export_format='GLB', use_selection=True, export_animations=True)`

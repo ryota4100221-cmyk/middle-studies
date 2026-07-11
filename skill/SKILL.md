@@ -33,7 +33,7 @@ description: >
 2. **雛形コピー**: `~/projects/blender-lab/monaka_filling.py`（複数体パーツ＋変形アニメの例）または `monaka_ribbon.py`（bmesh数式生成＋回転ループの例）を土台に、新しい `monaka_<slug>.py` を書く。マテリアル・床・キャプション・ライト・カメラ・レンダー設定・Bloom・出力モード(test/still/anim/glb/blend)のセクションは**そのまま流用**し、造形とアニメーションだけ差し替える
 3. **テストレンダー**: `Blender --background --factory-startup --python <script> -- test`（480×600/24smp、約1〜3分）
 4. **自己レビュー（必須・最重要）**: test.png を **Readツールで必ず目視**し、下のチェックリストで判定。不合格ならパラメータを直して再テスト。**2〜4周は回るのが正常**（001は4周、002は2周した）
-5. **本番**: `-- still glb blend` → `-- anim` を順に実行（M1でスチル約1.5分、アニメ約8〜10分）
+5. **本番**: `-- still glb blend` → `-- anim` を順に実行（M1でスチル約1.5分、アニメ約8〜10分）。**レンダーは必ず同期（フォアグラウンド）で実行し、完了を確認してから次工程へ進む**。バックグラウンド実行にして「完了待ち」でターンを終えてはいけない——ヘッドレス（`claude -p`）ではそこでセッションごと終了し、レンダー子プロセスも巻き添えで死に、公開工程まで到達しない（2026-07-11の003で発生。loop.mp4欠落＋デプロイ未実行のまま exit 0 になった）
 6. **公開**: `works/NNN_slug/` に hero.png / loop.mp4 / model.glb / script.py を配置、`works.json` と `LOG.md` と `BACKLOG.md` のチェックを更新、commit & push。続けて **Netlify本番デプロイ**（この定期デプロイは承認済み・例外運用）: `cd ~/projects/middle-studies && netlify deploy --prod --dir .`
 7. **記録**: Notion「デザインインプット（自動収集）」DBに1ページ作成
    - data_source: `collection://e7229880-2f1c-456f-873e-f8fe3d6cb36d`
