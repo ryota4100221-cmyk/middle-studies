@@ -42,6 +42,7 @@ RC=1
 while (( attempt <= MAX_ATTEMPTS )); do
   echo "[$(date)] --- attempt $attempt/$MAX_ATTEMPTS ---" >> "$LOG_FILE"
   /opt/homebrew/bin/claude -p "/blender-middle-study daily" \
+    --model claude-opus-4-8 \
     --dangerously-skip-permissions \
     > "$OUT_TMP" 2>&1
   RC=$?
@@ -51,6 +52,7 @@ while (( attempt <= MAX_ATTEMPTS )); do
   if grep -q "Unknown command" "$OUT_TMP"; then
     echo "[$(date)] slash command unresolved — retrying with direct skill prompt" >> "$LOG_FILE"
     /opt/homebrew/bin/claude -p "まず「$SKILL_MD」を読み、そこに書かれたパイプラインに厳密に従って daily 実行（今日のMIDDLE STUDYを1作品制作・公開・記録）を完走して。" \
+      --model claude-opus-4-8 \
       --dangerously-skip-permissions \
       > "$OUT_TMP" 2>&1
     RC=$?
