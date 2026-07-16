@@ -33,6 +33,12 @@ LOG_DIR="$HOME/projects/middle-studies/logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/$(TZ=Asia/Tokyo date +%F).log"
 
+# 成功ガード：今日すでに完走していたら何もしない（キャッチアップ枠9:00が重複制作しないため）
+if grep -q "=== done (exit 0" "$LOG_FILE" 2>/dev/null; then
+  echo "[$(date)] already succeeded today — skip (catch-up slot)" >> "$LOG_FILE"
+  exit 0
+fi
+
 # 二重起動ガード（前日の実行が長引いた場合など）
 LOCK="/tmp/middle-study.lock"
 if ! mkdir "$LOCK" 2>/dev/null; then
