@@ -17,6 +17,16 @@ export LANG="ja_JP.UTF-8"
 [ -f "$HOME/.config/monaka/slack.env" ] && source "$HOME/.config/monaka/slack.env"
 export SLACK_WEBHOOK="${SLACK_WEBHOOK_NIPPO:-}"   # #mona-日報
 
+notify() {
+  # 通知到達を最優先。Claudeが起動すらできない失敗でも、このシェルからは必ず1通出す。
+  # （2026-07-17 02:05 に claude が EPERM で即死し、どこにも通知が飛ばなかった対策。anime-demoと同じ実装）
+  local text="$1"
+  local payload
+  [ -z "$SLACK_WEBHOOK" ] && { echo "[$(date)] SLACK_WEBHOOK empty — notify skipped" >> "$LOG_FILE"; return 1; }
+  payload=$(printf '%s' "$text" | python3 -c 'import json,sys; print(json.dumps({"text": sys.stdin.read()}))')
+  curl -sS -m 15 -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK" >/dev/null 2>&1
+}
+
 CEO_DIR="/Users/shitoryota/Library/CloudStorage/GoogleDrive-ryota4100221@gmail.com/マイドライブ/monaka design./CEO"
 SKILL_MD="$HOME/projects/middle-studies/skill/SKILL.md"
 LOG_DIR="$HOME/projects/middle-studies/logs"
@@ -75,8 +85,27 @@ while (( attempt <= MAX_ATTEMPTS )); do
     continue
   fi
 
+  # 一時的な内部エラー（EPERM等）は5分待って再試行。
+  # 2026-07-17 02:05 に "An internal error occurred (EPERM)" で1回で即死した対策。
+  if (( RC != 0 )) && grep -qiE "internal error|EPERM" "$OUT_TMP"; then
+    echo "[$(date)] transient internal error — sleeping 5min then retrying" >> "$LOG_FILE"
+    sleep 300
+    (( attempt++ ))
+    continue
+  fi
+
   break
 done
+
+# 無言失敗ガード（スクリプト層）：セッション内のAIが送る通知は、セッションが死ぬと飛ばない。
+# exitが非0のまま終わったら、このシェルから必ず1通出す。
+if (( RC != 0 )); then
+  notify "🔴 *MIDDLE STUDY（$(TZ=Asia/Tokyo date +%F)）を完走できませんでした*
+原因：claude が exit $RC で終了（$attempt 回試行）
+ログ末尾：
+\`\`\`$(tail -n 6 "$LOG_FILE")\`\`\`
+手動再実行：bash ~/projects/middle-studies/scripts/daily.sh"
+fi
 
 rm -f "$OUT_TMP"
 echo "[$(date)] === done (exit $RC, attempts $attempt) ===" >> "$LOG_FILE"
