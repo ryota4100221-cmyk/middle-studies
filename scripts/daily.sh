@@ -9,6 +9,14 @@
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 export LANG="ja_JP.UTF-8"
 
+# Slack Webhook はリポジトリの外から読む。
+# 🔴 SKILL.md にも、このスクリプトにも、URLを直書きしない。
+#    skill/ は ~/.claude/skills/blender-middle-study/ とハードリンクで public にミラーされ、
+#    scripts/ も public。どちらに書いても GitHub の Push Protection が push を拒否し、
+#    毎晩のルーティンが公開まで到達できなくなる（2026-07-15に直書きして停止・7/16に解消）。
+[ -f "$HOME/.config/monaka/slack.env" ] && source "$HOME/.config/monaka/slack.env"
+export SLACK_WEBHOOK="${SLACK_WEBHOOK_NIPPO:-}"   # #mona-日報
+
 CEO_DIR="/Users/shitoryota/Library/CloudStorage/GoogleDrive-ryota4100221@gmail.com/マイドライブ/monaka design./CEO"
 SKILL_MD="$HOME/projects/middle-studies/skill/SKILL.md"
 LOG_DIR="$HOME/projects/middle-studies/logs"

@@ -40,7 +40,10 @@ description: >
    - 種別: `MIDDLE STUDY`／日付: **必ずJST**（`TZ=Asia/Tokyo date +%F`）
    - 参照URL: `https://middle-studies-monaka.netlify.app/`（**github.com URLは禁止・素のURLを単独で**。GitHub Pages https://ryota4100221-cmyk.github.io/middle-studies/ は副系）
    - 本文: 題・コンセプト・技法メモ（script.pyの冒頭コメントを流用）
-8. **通知**: Slack DM `D0AR1NB6N73` へ1通。**成功でも失敗でも必ず送る**。失敗時は⚠️＋止まった工程・原因・できた所まで。URLは装飾せず素のまま単独行
+8. **通知**: Slack Bot「mona」のIncoming Webhook経由で **#mona-日報** チャンネルへ1通。**成功でも失敗でも必ず送る**。失敗時は⚠️＋止まった工程・原因・できた所まで。URLは装飾せず素のまま単独行
+   - 手順: 本文を `{"text": "<本文>"}` 形式のJSONファイル（改行は `\n`、書式はSlack mrkdwn）に書き、`curl -s -X POST -H 'Content-type: application/json' --data @/tmp/slack_payload.json "$SLACK_WEBHOOK"` を実行、レスポンス `ok` を確認
+   - 🔴 **Webhook URLをこのファイルに書かない。** `scripts/daily.sh` が環境変数 `SLACK_WEBHOOK` で渡す。**このskill/ は public リポジトリにハードリンクでミラーされる**ため、直書きすると GitHub の Push Protection が push を拒否し、**毎晩のルーティンが公開まで到達できなくなる**（2026-07-15に直書きして実際に停止。7/16に解消）
+   - Webhookが2回失敗した時のみ従来のSlack DM `D0AR1NB6N73` にフォールバック
 
 ## 品質チェックリスト（テストレンダー目視時）
 
