@@ -227,7 +227,7 @@ scene.render.fps = FPS
 # PITFALL #14：色は目視で粘らず hero のライム画素平均を #A5E02E と数値比較して決める。
 # 発光面は隙間の奥にあり開き時だけ key を浴びる＝半遮蔽。HON の凹面（ES1.3→#AEEC2C）と
 # 同域を狙って 1.15 から。still 後に #14 の測定でスイープする。
-ES_BASE = float(os.environ.get("ES_BASE", "1.15"))
+ES_BASE = float(os.environ.get("ES_BASE", "2.8"))  # 2026-07-21引き上げ（#24ペンキ化是正・#14改訂）
 core_bsdf.inputs["Emission Strength"].default_value = ES_BASE
 
 

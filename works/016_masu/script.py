@@ -35,8 +35,9 @@ ROT_STEP = math.radians(34)   # 段ごとの捻れ角（螺旋）＝上から見
 BREATHS = 1          # 開閉回数（1＝ゆっくり一度開いて閉じる）
 GLOBAL_TURNS = 1     # 全体回転の周回数
 
-CORE_EMIT = 2.0      # 最内の底の発光強度（控えめ＝Glare箱回避）
-CORE_LIGHT_W = 26    # 底の点光源（塔の内側へ光をこぼす）
+CORE_EMIT = 5.5      # 最内の底の発光強度（2026-07-21引き上げ：旧2.0はペンキ化＝PITFALLS #24。面積広めでGlare箱は出ない）
+CORE_LIGHT_W = 70    # 底の点光源（2026-07-21引き上げ：旧26では内壁が暗オリーブに沈んだ）
+INNER_EMIT = float(os.environ.get("INNER_EMIT", "1.8"))  # 内壁の発光（2026-07-21追加・#24是正）
 
 CENTER_Z = 1.28
 BASE_Z = CENTER_Z - 0.22   # 閉時の枡の中心高さ
@@ -80,6 +81,14 @@ core_bsdf.inputs["Emission Color"].default_value = LIME
 core_bsdf.inputs["Emission Strength"].default_value = CORE_EMIT
 core_bsdf.inputs["Roughness"].default_value = 0.4
 
+# 枡の内壁（2026-07-21追加・#24是正）。半遮蔽の発光面＝開口とスリットから光が漏れる。
+mat_inner, inner_bsdf = make_principled("inner_lime")
+inner_bsdf.inputs["Base Color"].default_value = (0.015, 0.030, 0.005, 1)
+inner_bsdf.inputs["Emission Color"].default_value = LIME
+inner_bsdf.inputs["Emission Strength"].default_value = INNER_EMIT
+inner_bsdf.inputs["Specular IOR Level"].default_value = 0.10
+inner_bsdf.inputs["Roughness"].default_value = 0.5
+
 # 白い床
 mat_floor, b = make_principled("floor_white")
 b.inputs["Base Color"].default_value = (0.86, 0.86, 0.86, 1)
@@ -98,6 +107,9 @@ rig.name = "MasuRig"
 
 # ---------- 角枡フレーム（正方形の中空チューブ） ----------
 def make_frame_mesh(w, h, th):
+    # 2026-07-21改修（PITFALLS #24）: 内壁を黒のままにすると、緑は「黒への照り返し」
+    # にしかならず暗オリーブに沈む（光源をいくら上げても黒壁は光らない）。
+    # 内壁面だけ slot1 = ライム発光（半遮蔽なので#13の全暗ではなく中庸の純発光体）にする。
     bm = bmesh.new()
     outs, inns = w, w - th
     def sq(s, z):
@@ -108,7 +120,8 @@ def make_frame_mesh(w, h, th):
     for k in range(4):
         k2 = (k + 1) % 4
         bm.faces.new([ob[k], ob[k2], ot[k2], ot[k]])      # 外壁
-        bm.faces.new([ib[k2], ib[k], it[k], it[k2]])      # 内壁
+        f_in = bm.faces.new([ib[k2], ib[k], it[k], it[k2]])   # 内壁＝発光ライム
+        f_in.material_index = 1
         bm.faces.new([ot[k], ot[k2], it[k2], it[k]])      # 上縁
         bm.faces.new([ib[k], ib[k2], ob[k2], ob[k]])      # 下縁
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
@@ -116,6 +129,7 @@ def make_frame_mesh(w, h, th):
     bm.to_mesh(me)
     bm.free()
     me.materials.append(mat_box)
+    me.materials.append(mat_inner)
     return me
 
 pivots = []
@@ -182,7 +196,7 @@ for f in range(1, N_FRAMES + 1):
     rig.rotation_euler = (0, 0, 2 * math.pi * GLOBAL_TURNS * t)
     rig.keyframe_insert(data_path="rotation_euler", index=2, frame=f)
     # 開くほど底が強く光る
-    core_bsdf.inputs["Emission Strength"].default_value = 1.5 + 0.9 * op
+    core_bsdf.inputs["Emission Strength"].default_value = CORE_EMIT * (0.6 + 0.4 * op)
     core_bsdf.inputs["Emission Strength"].keyframe_insert(
         data_path="default_value", frame=f)
     core_light.data.energy = CORE_LIGHT_W * (0.4 + 0.8 * op)

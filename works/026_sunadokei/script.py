@@ -71,9 +71,9 @@ S_MIN = 0.06               # 空のときの残り
 # --- 光 ---
 FLOW_R = float(os.environ.get("FLOW_R", "0.050"))  # 細すぎる発光体は白緑に飛ぶ（#14の実測で確定）
 FLOW_H = 0.200            # 筋の半長（上端は上砂の中に隠れ、下端は宙で細って消える）
-ES_FLOW = float(os.environ.get("ES_FLOW", "1.25"))
+ES_FLOW = float(os.environ.get("ES_FLOW", "2.6"))  # 2026-07-21引き上げ（#24ペンキ化是正・#14改訂）
 GLOW_BASE = 0.30           # 反転中も残る燠火（ループの連続性）
-GLOW_W = float(os.environ.get("GLOW_W", "14"))   # くびれの点光源（強すぎるとコアが白緑に飛ぶ）
+GLOW_W = float(os.environ.get("GLOW_W", "26"))   # 2026-07-21引き上げ：ハロー復活のため（コア白緑は#22の面積側で制御）
 
 SPEC_RIB = float(os.environ.get("SPEC_RIB", "0.08"))  # #17-c
 

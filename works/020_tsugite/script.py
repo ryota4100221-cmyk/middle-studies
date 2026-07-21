@@ -235,7 +235,7 @@ es = tenon_bsdf.inputs["Emission Strength"]
 # ES 1.4→2.0 ではトーンマップのショルダーで飽和し G=239→245 しか動かない＝効かない。
 # 低域を測って base 0.75→#A7E329 / 0.95→#AEEC34 を確認し、色の正確さと発光感の
 # 両立点として 0.85 を採用（hero時 ES=1.15）。
-ES_BASE = float(os.environ.get("ES_BASE", "0.85"))
+ES_BASE = float(os.environ.get("ES_BASE", "2.4"))  # 2026-07-21引き上げ：旧0.85は白飛び0%最適化のペンキ化（#24）。ホットコア＋ハロー必須（#14改訂）
 
 for f in range(1, N_FRAMES + 1):
     t01 = (f - 1) / N_FRAMES

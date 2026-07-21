@@ -58,7 +58,7 @@ ARM_C = 8                  # 断面分割
 ARM_M = 52                 # 掃引分割
 
 # --- マテリアル調整（env で hero スイープ） ---
-ES_EYE = float(os.environ.get("ES_EYE", "0.92"))  # hero実測 #A2DF24（#A5E02E一致・白飛び0%）
+ES_EYE = float(os.environ.get("ES_EYE", "1.9"))  # 2026-07-21引き上げ：旧0.92は白飛び0%最適化のペンキ化（#24）。2.8はGlare箱（#11）が出たため1.9（中間調#A5E02E＋ホットコア・#14改訂）
 SPEC_FUNNEL = float(os.environ.get("SPEC_FUNNEL", "0.08"))  # #17-c: 一様bright env下の黒平面/曲面は反射率で決まる
 COAT_FUNNEL = float(os.environ.get("COAT_FUNNEL", "0.0"))
 

@@ -286,7 +286,7 @@ scene.render.fps = FPS
 #   2.6 → #ACE24B（白飛び26.9% ＝ NG） / 2.2 → #A6DD40（白飛び0%）
 #   1.8 → #9FD632 / 1.4 → #96CD21（暗い）
 # 2.2 が目標 #A5E02E に対し R=166/G=221（目標165/224）でほぼ一致＋白飛びゼロ＝採用。
-ES_BASE = float(os.environ.get("ES_BASE", "2.2"))
+ES_BASE = float(os.environ.get("ES_BASE", "3.2"))  # 2026-07-21引き上げ（#24ペンキ化是正・#14改訂：上位画素は飛んでよい）
 
 SPAN = Z_HI - Z_LO
 for f in range(1, N_FRAMES + 1):

@@ -274,7 +274,7 @@ pool = build_pool()
 
 
 # ---------- 内腔を洗う点光源（プールに随伴して上昇） ----------
-LIGHT_E = float(os.environ.get("LIGHT_E", "32"))
+LIGHT_E = float(os.environ.get("LIGHT_E", "64"))  # 2026-07-21引き上げ：内壁を洗う光を強化
 bpy.ops.object.light_add(type='POINT', location=(0.0, 0.0, 0.05))
 pool_light = bpy.context.active_object
 pool_light.name = "pool_light"
@@ -293,7 +293,7 @@ scene.render.fps = FPS
 # 020 の実測カーブ（0.85→#A7E329 / 1.05→#AEEC34 / 1.75→#B8F54E）に本作も概ね乗る想定で、
 # プールは exposed 気味なので中域から。内壁は常時ほのかに（満ち引きの主役はプール）。
 # hero実測でスイープ： 0.80→#9FD92B / 0.95→#A8E42F（目標 #A5E02E に一致・白飛び0%） / 1.6→#B6F04F（浅い）。
-ES_POOL = float(os.environ.get("ES_POOL", "0.95"))
+ES_POOL = float(os.environ.get("ES_POOL", "2.6"))  # 2026-07-21引き上げ（#24ペンキ化是正・#14改訂）
 # 内壁は自発光させない（＝ ES_INNER 相当は 0）。器の内側の光は「プール＋随伴点光源」だけが
 # 作る。こうすると空＝プールが底で小さく暗く沈み内壁は闇／満＝プールが縁まで上がり内腔全体が
 # ライムに満ちる、という明滅の落差が生まれる（深い器では水位は見えないので落差で満ち引きを読ませる）。

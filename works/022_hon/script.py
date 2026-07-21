@@ -292,7 +292,7 @@ scene.render.fps = FPS
 # 020の実測カーブ（0.85→#A7E329 / 1.05→#AEEC34 / 1.75→#B8F54E）に本作もよく乗るので、
 # 目標 #A5E02E に当たる 0.9 付近を採る。凹面は本の奥にあり key を遮る物が無いため、
 # 露出したほぞ（020）と同じ桁になる＝「遮蔽されているか露出しているか」で桁が決まる。
-ES_BASE = float(os.environ.get("ES_BASE", "1.3"))
+ES_BASE = float(os.environ.get("ES_BASE", "2.8"))  # 2026-07-21引き上げ（#24ペンキ化是正・#14改訂）
 core_bsdf.inputs["Emission Strength"].default_value = ES_BASE
 
 for f in range(1, N_FRAMES + 1):
