@@ -34,11 +34,11 @@ description: >
 3. **テストレンダー**: `Blender --background --factory-startup --python <script> -- test`（480×600/24smp、約1〜3分）
 4. **自己レビュー（必須・最重要）**: test.png を **Readツールで必ず目視**し、下のチェックリストで判定。不合格ならパラメータを直して再テスト。**2〜4周は回るのが正常**（001は4周、002は2周した）
 5. **本番**: `-- still glb blend` → `-- anim` を順に実行（M1でスチル約1.5分、アニメ約8〜10分）。**レンダーは必ず同期（フォアグラウンド）で実行し、完了を確認してから次工程へ進む**。バックグラウンド実行にして「完了待ち」でターンを終えてはいけない——ヘッドレス（`claude -p`）ではそこでセッションごと終了し、レンダー子プロセスも巻き添えで死に、公開工程まで到達しない（2026-07-11の003で発生。loop.mp4欠落＋デプロイ未実行のまま exit 0 になった）
-6. **公開**: `works/NNN_slug/` に hero.png / loop.mp4 / model.glb / script.py を配置、`works.json` と `LOG.md` と `BACKLOG.md` のチェックを更新、commit & push。続けて **Netlify本番デプロイ**（この定期デプロイは承認済み・例外運用）: `cd ~/projects/middle-studies && netlify deploy --prod --dir .`
+6. **公開**: `works/NNN_slug/` に hero.png / loop.mp4 / model.glb / script.py を配置、`works.json` と `LOG.md` と `BACKLOG.md` のチェックを更新、**commit & push だけで公開完了**——GitHub Pages（main/root からの自動配信・Pages有効済み）が反映する。🔴 **Netlifyへのデプロイは廃止（2026-07-23・motion-dictに続き課金源=Netlifyを断つため）。`netlify deploy` は実行しない。**
 7. **記録**: Notion「デザインインプット（自動収集）」DBに1ページ作成
    - data_source: `collection://e7229880-2f1c-456f-873e-f8fe3d6cb36d`
    - 種別: `MIDDLE STUDY`／日付: **必ずJST**（`TZ=Asia/Tokyo date +%F`）
-   - 参照URL: `https://middle-studies-monaka.netlify.app/`（**github.com URLは禁止・素のURLを単独で**。GitHub Pages https://ryota4100221-cmyk.github.io/middle-studies/ は副系）
+   - 参照URL: `https://ryota4100221-cmyk.github.io/middle-studies/`（GitHub Pages＝本系・**素のURLを単独で**。github.com のリポURLは禁止。旧 middle-studies-monaka.netlify.app は2026-07-23に廃止）
    - 本文: 題・コンセプト・技法メモ（script.pyの冒頭コメントを流用）
 8. **通知**: Slack Bot「mona」のIncoming Webhook経由で **#mona-日報** チャンネルへ1通。**成功でも失敗でも必ず送る**。失敗時は⚠️＋止まった工程・原因・できた所まで。URLは装飾せず素のまま単独行
    - 手順: 本文を `{"text": "<本文>"}` 形式のJSONファイル（改行は `\n`、書式はSlack mrkdwn）に書き、`curl -s -X POST -H 'Content-type: application/json' --data @/tmp/slack_payload.json "$SLACK_WEBHOOK"` を実行、レスポンス `ok` を確認
