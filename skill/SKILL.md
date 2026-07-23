@@ -38,7 +38,7 @@ description: >
 7. **記録**: Notion「デザインインプット（自動収集）」DBに1ページ作成
    - data_source: `collection://e7229880-2f1c-456f-873e-f8fe3d6cb36d`
    - 種別: `MIDDLE STUDY`／日付: **必ずJST**（`TZ=Asia/Tokyo date +%F`）
-   - 参照URL: `https://ryota4100221-cmyk.github.io/middle-studies/`（GitHub Pages＝本系・**素のURLを単独で**。github.com のリポURLは禁止。旧 middle-studies-monaka.netlify.app は2026-07-23に廃止）
+   - 参照URL: `https://middle.lab.monakadesign.com/`（本系・GitHub Pagesが配信・**素のURLを単独で**。github.com のリポURLは禁止。2026-07-23にNetlify→GH Pagesへドメイン移管済＝独自ドメインは維持したままNetlify卒業）
    - 本文: 題・コンセプト・技法メモ（script.pyの冒頭コメントを流用）
 8. **通知**: Slack Bot「mona」のIncoming Webhook経由で **#mona-日報** チャンネルへ1通。**成功でも失敗でも必ず送る**。失敗時は⚠️＋止まった工程・原因・できた所まで。URLは装飾せず素のまま単独行
    - 手順: 本文を `{"text": "<本文>"}` 形式のJSONファイル（改行は `\n`、書式はSlack mrkdwn）に書き、`curl -s -X POST -H 'Content-type: application/json' --data @/tmp/slack_payload.json "$SLACK_WEBHOOK"` を実行、レスポンス `ok` を確認
