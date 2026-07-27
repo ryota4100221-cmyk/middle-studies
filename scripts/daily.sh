@@ -9,6 +9,21 @@
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 export LANG="ja_JP.UTF-8"
 
+# claude 実体の解決（2026-07-27追加）。絶対パス直書きをやめた理由：
+# Claude Code の更新で /opt/homebrew/bin/claude の symlink が一時的に消えることがあり、
+# 2026-07-21 に routine-watchdog が実際にこれで1回目の実行に失敗した（5分後の再試行で復旧）。
+# 監視役を含む5本が同じパスを直書きしていたため、同時に沈黙しうる状態だった。
+CLAUDE_BIN=""
+for _c in "$(command -v claude 2>/dev/null || true)" \
+          /opt/homebrew/bin/claude \
+          "$HOME/.local/bin/claude" \
+          /opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe; do
+  if [ -n "$_c" ] && [ -x "$_c" ]; then CLAUDE_BIN="$_c"; break; fi
+done
+# 見つからなくても止めない（従来どおり実行に失敗させ、各スクリプトのリトライ＋無言失敗ガードに任せる）
+[ -n "$CLAUDE_BIN" ] || CLAUDE_BIN="/opt/homebrew/bin/claude"
+
+
 # Slack Webhook はリポジトリの外から読む。
 # 🔴 SKILL.md にも、このスクリプトにも、URLを直書きしない。
 #    skill/ は ~/.claude/skills/blender-middle-study/ とハードリンクで public にミラーされ、
@@ -65,7 +80,7 @@ attempt=1
 RC=1
 while (( attempt <= MAX_ATTEMPTS )); do
   echo "[$(date)] --- attempt $attempt/$MAX_ATTEMPTS ---" >> "$LOG_FILE"
-  /opt/homebrew/bin/claude -p "/blender-middle-study daily" \
+  "$CLAUDE_BIN" -p "/blender-middle-study daily" \
     --model claude-opus-5 \
     --dangerously-skip-permissions \
     > "$OUT_TMP" 2>&1
@@ -75,7 +90,7 @@ while (( attempt <= MAX_ATTEMPTS )); do
   # スラッシュコマンド解決に失敗した場合は、SKILL.md を直接読ませるプロンプトで即リトライ
   if grep -q "Unknown command" "$OUT_TMP"; then
     echo "[$(date)] slash command unresolved — retrying with direct skill prompt" >> "$LOG_FILE"
-    /opt/homebrew/bin/claude -p "まず「$SKILL_MD」を読み、そこに書かれたパイプラインに厳密に従って daily 実行（今日のMIDDLE STUDYを1作品制作・公開・記録）を完走して。" \
+    "$CLAUDE_BIN" -p "まず「$SKILL_MD」を読み、そこに書かれたパイプラインに厳密に従って daily 実行（今日のMIDDLE STUDYを1作品制作・公開・記録）を完走して。" \
       --model claude-opus-5 \
       --dangerously-skip-permissions \
       > "$OUT_TMP" 2>&1
