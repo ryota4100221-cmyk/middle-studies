@@ -106,10 +106,13 @@ while (( attempt <= MAX_ATTEMPTS )); do
     continue
   fi
 
-  # 一時的な内部エラー（EPERM等）は5分待って再試行。
+  # 一時的な内部エラー（EPERM等）とネットワーク断・タイムアウトは5分待って再試行。
   # 2026-07-17 02:05 に "An internal error occurred (EPERM)" で1回で即死した対策。
-  if (( RC != 0 )) && grep -qiE "internal error|EPERM" "$OUT_TMP"; then
-    echo "[$(date)] transient internal error — sleeping 5min then retrying" >> "$LOG_FILE"
+  # 2026-07-30 02:10 の "Request timed out"（約5時間掴んだ末にexit 1）はこの正規表現のどれにも
+  # 当たらず、MAX_ATTEMPTS=10 の設計にもかかわらず attempts 1 で即死した。9:00のキャッチアップ枠が
+  # 救ったが、予備枠も同じタイムアウトを踏めばその日は丸ごと欠番になる。通信系も同じ枠で拾う。
+  if (( RC != 0 )) && grep -qiE "internal error|EPERM|timed out|timeout|ECONNRESET|ETIMEDOUT|ENOTFOUND|network error|fetch failed" "$OUT_TMP"; then
+    echo "[$(date)] transient error (internal/network) — sleeping 5min then retrying" >> "$LOG_FILE"
     sleep 300
     (( attempt++ ))
     continue
