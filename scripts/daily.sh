@@ -118,6 +118,16 @@ while (( attempt <= MAX_ATTEMPTS )); do
     continue
   fi
 
+  # 🔴 exit 0 を信用しない（2026-08-01追加）。
+  #    design-nippo の初回実行で「**AIが権限を求めて止まったのに exit 0**」を実際に踏んだ。
+  #    「終わったつもりで終わっていない」は最も気づけない壊れ方なので、完走の証拠を要求する。
+  #    ⚠️ **制御フローは変えない**（RCもリトライも触らない）。動いているものを壊さないため。
+  #    証拠が無ければ印を置くだけにし、**毎朝10:00のローカル日次点検がその印を拾って通知する**。
+  if (( RC == 0 )) && ! tail -8 "$OUT_TMP" | grep -q "MIDDLE_OK"; then
+    echo "[$(date)] exit 0 だが完走の証拠（MIDDLE_OK）が無い" >> "$LOG_FILE"
+    touch "$(dirname "$LOG_FILE")/INCOMPLETE-$(TZ=Asia/Tokyo date +%F)"
+  fi
+
   break
 done
 
