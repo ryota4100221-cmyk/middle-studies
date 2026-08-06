@@ -30,7 +30,7 @@ done
 #    scripts/ も public。どちらに書いても GitHub の Push Protection が push を拒否し、
 #    毎晩のルーティンが公開まで到達できなくなる（2026-07-15に直書きして停止・7/16に解消）。
 [ -f "$HOME/.config/monaka/slack.env" ] && source "$HOME/.config/monaka/slack.env"
-export SLACK_WEBHOOK="${SLACK_WEBHOOK_NIPPO:-}"   # #mona-日報
+export SLACK_WEBHOOK="${SLACK_WEBHOOK_SAKUHIN:-}"   # #mona-作品
 
 notify() {
   # 通知到達を最優先。Claudeが起動すらできない失敗でも、このシェルからは必ず1通出す。
@@ -111,7 +111,7 @@ while (( attempt <= MAX_ATTEMPTS )); do
   # 2026-07-30 02:10 の "Request timed out"（約5時間掴んだ末にexit 1）はこの正規表現のどれにも
   # 当たらず、MAX_ATTEMPTS=10 の設計にもかかわらず attempts 1 で即死した。9:00のキャッチアップ枠が
   # 救ったが、予備枠も同じタイムアウトを踏めばその日は丸ごと欠番になる。通信系も同じ枠で拾う。
-  if (( RC != 0 )) && grep -qiE "internal error|EPERM|timed out|timeout|ECONNRESET|ETIMEDOUT|ENOTFOUND|network error|fetch failed" "$OUT_TMP"; then
+  if (( RC != 0 )) && grep -qiE "internal error|EPERM|timed out|timeout|ECONNRESET|ETIMEDOUT|ENOTFOUND|network error|fetch failed|connection closed|connection reset|overloaded" "$OUT_TMP"; then
     echo "[$(date)] transient error (internal/network) — sleeping 5min then retrying" >> "$LOG_FILE"
     sleep 300
     (( attempt++ ))
