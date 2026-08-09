@@ -102,7 +102,7 @@ D_POW = float(os.environ.get("D_POW", "1.0"))   # 楕円距離のべき。小さ
 GLOW_E = float(os.environ.get("GLOW_E", "0.06"))   # 裂け目の側壁を洗うこぼれ光（#22）
 
 # --- 材質（#17：曲面／#17-c：一様bright env 下は反射率を落とす） ---
-SPEC_BLACK = float(os.environ.get("SPEC_BLACK", "0.030"))
+SPEC_BLACK = float(os.environ.get("SPEC_BLACK", "0.10"))
 ROUGH_BLACK = float(os.environ.get("ROUGH_BLACK", "0.46"))
 
 CAP_Z = (float(os.environ.get("CAP_Z1", "0.72")),

@@ -115,7 +115,7 @@ ES_CORE = float(os.environ.get("ES_CORE", "9.0"))
 GLOW_E = float(os.environ.get("GLOW_E", "0.05"))   # 窓の内壁を洗うこぼれ光（#22）
 
 # --- 材質（#17-c：黒は反射率を落とす。曲面の皿は env を拾いやすい） ---
-SPEC_BLACK = float(os.environ.get("SPEC_BLACK", "0.055"))
+SPEC_BLACK = float(os.environ.get("SPEC_BLACK", "0.10"))
 ROUGH_BLACK = float(os.environ.get("ROUGH_BLACK", "0.42"))
 
 CAP_Z = (float(os.environ.get("CAP_Z1", "0.66")),

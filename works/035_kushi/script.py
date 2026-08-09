@@ -60,7 +60,7 @@ SPINE_C = 0.55                                             # 峰の弧（端で�
 T_SPINE = 0.100                                            # 峰の厚み（歯より厚い＝「背」の階層）
 THETA = math.radians(float(os.environ.get("THETA", "8.0")))  # 端の歯の最大の開き
 
-SPEC_TOOTH = float(os.environ.get("SPEC_TOOTH", "0.06"))   # #17-c：平面×一様bright env は反射率が支配項
+SPEC_TOOTH = float(os.environ.get("SPEC_TOOTH", "0.10"))   # #17-c：平面×一様bright env は反射率が支配項
 ROUGH_TOOTH = 0.38
 SPEC_SPINE = 0.15
 ROUGH_SPINE = 0.30

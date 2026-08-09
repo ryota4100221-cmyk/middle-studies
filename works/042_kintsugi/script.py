@@ -98,7 +98,7 @@ D_POW = float(os.environ.get("D_POW", "1.45"))     # #38④：べきが小さい
 GLOW_E = float(os.environ.get("GLOW_E", "0.05"))   # 割れ口の側壁を洗うこぼれ光（#22）
 
 # --- 材質（#17：曲面／#17-c：一様bright env 下は反射率を落とす） ---
-SPEC_BLACK = float(os.environ.get("SPEC_BLACK", "0.022"))
+SPEC_BLACK = float(os.environ.get("SPEC_BLACK", "0.10"))
 ROUGH_BLACK = float(os.environ.get("ROUGH_BLACK", "0.50"))
 
 # --- 姿勢 ---

@@ -96,7 +96,7 @@ FZ_EM = float(os.environ.get("FZ_EM", "0.24")) * SZ
 GLOW_E = float(os.environ.get("GLOW_E", "1.1"))       # 胴の内側を洗うこぼれ光（#22/#32）
 
 # --- 材質（#17-b 紙 / #17-c 一様bright env では反射率が支配項） ---
-SPEC_PAPER = float(os.environ.get("SPEC_PAPER", "0.06"))
+SPEC_PAPER = float(os.environ.get("SPEC_PAPER", "0.10"))
 ROUGH_PAPER = float(os.environ.get("ROUGH_PAPER", "0.56"))
 
 CAP_Z = (float(os.environ.get("CAP_Z1", "0.59")),

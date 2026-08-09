@@ -63,8 +63,8 @@ def principled(name):
 # 布は #17-b（紙・布はマット）。曲面だが漆の艶は乗らない
 mat_cloth, p = principled("noren_cloth")
 p.inputs["Base Color"].default_value = BLACK
-p.inputs["Roughness"].default_value = 0.74
-p.inputs["Specular IOR Level"].default_value = 0.085   # #17-c 一様bright env では反射率が支配項
+p.inputs["Roughness"].default_value = 0.58   # 黒繻子寄り。マット過ぎると面がハイライトを返さない（#45）
+p.inputs["Specular IOR Level"].default_value = 0.22    # 🔴 #45：主材の下限は0.10。割ると黒が光を拾わず「影絵」に退化する
 
 # 発光帯：#32 Base純黒で裏当てを兼ね、#34 2軸楕円で縁を厳密に0へ
 mat_glow = bpy.data.materials.new("glow"); mat_glow.use_nodes = True
@@ -101,7 +101,7 @@ nt.links.new(mr.outputs["Result"], gp.inputs["Emission Strength"])
 mat_rod, rp = principled("rod")
 rp.inputs["Base Color"].default_value = BLACK
 rp.inputs["Roughness"].default_value = 0.40
-rp.inputs["Specular IOR Level"].default_value = 0.032   # 曲面（#17）
+rp.inputs["Specular IOR Level"].default_value = 0.26    # 竿は塗りの丸棒。#45の下限0.10を割らない
 
 mat_back, bkp = principled("backing")
 bkp.inputs["Base Color"].default_value = (0, 0, 0, 1)

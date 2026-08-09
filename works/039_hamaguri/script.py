@@ -112,7 +112,7 @@ FY_EM = float(os.environ.get("FY_EM", "0.50"))     # 前後方向の落ち（芯
 GLOW_E = float(os.environ.get("GLOW_E", "1.3"))    # 殻の内側を洗うこぼれ光（#22）
 
 # --- 材質（#17：曲面／#17-c・037：曲面＋細かい筋は env を線状に拾うので反射率を落とす） ---
-SPEC_SHELL = float(os.environ.get("SPEC_SHELL", "0.07"))
+SPEC_SHELL = float(os.environ.get("SPEC_SHELL", "0.10"))
 ROUGH_SHELL = float(os.environ.get("ROUGH_SHELL", "0.40"))
 
 CAP_Z = (float(os.environ.get("CAP_Z1", "0.66")),

@@ -82,9 +82,9 @@ ES_CORE = float(os.environ.get("ES_CORE", "5.6"))
 D_POW = float(os.environ.get("D_POW", "1.20"))          # #38④：暗い裾の広さ＝中間調
 
 # --- 材質（#17-b 紙／#17-c 一様bright env では反射率が支配項） ---
-SPEC_PAPER = float(os.environ.get("SPEC_PAPER", "0.030"))
+SPEC_PAPER = float(os.environ.get("SPEC_PAPER", "0.10"))
 ROUGH_PAPER = float(os.environ.get("ROUGH_PAPER", "0.62"))
-SPEC_WOOD = float(os.environ.get("SPEC_WOOD", "0.008"))
+SPEC_WOOD = float(os.environ.get("SPEC_WOOD", "0.10"))
 ROUGH_WOOD = float(os.environ.get("ROUGH_WOOD", "0.75"))
 
 CAP_Z = (float(os.environ.get("CAP_Z1", "0.90")),

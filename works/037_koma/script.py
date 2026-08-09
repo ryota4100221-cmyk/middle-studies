@@ -104,7 +104,7 @@ GLOW_E = float(os.environ.get("GLOW_E", "0.7"))        # 隙間からこぼれ�
 # --- 材質（#17 曲面 / #17-c 一様bright env では反射率が支配項） ---
 # 2周目 Spec0.12/Rough0.38 は hero の黒が #1A1B17（灰）。曲面＋削り筋が env を線状に
 # 拾うので、質感でなく**鏡面反射率**を落とす（#17-c）。
-SPEC_BODY = float(os.environ.get("SPEC_BODY", "0.045"))
+SPEC_BODY = float(os.environ.get("SPEC_BODY", "0.10"))
 ROUGH_BODY = float(os.environ.get("ROUGH_BODY", "0.50"))
 
 CAP_Z = (float(os.environ.get("CAP_Z1", "0.59")),

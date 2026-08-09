@@ -22,6 +22,13 @@ BLACK_STD_WARN = 12     # #45 陰影の幅。ただし一様に明るい造形�
 BLACK_MEAN_HI = 52      # #17-c 灰色ヴェール側の警告（従来の失敗の方向）
 
 CAPTION_TOP = 0.80      # キャプション3行を除外（下20%は測らない）
+DARK_CUT    = 70        # これ未満を「黒画素」とみなす
+
+# ⚠️ p98 の読み方：黒画素の定義が「輝度 < DARK_CUT」なので、黒が明るくなるほど
+#    明るい画素が母集団から抜け、p98 は頭打ち〜わずかに下がることがある。
+#    **黒平均が上がっているのに p98 が微減した場合は退行ではない。** 必ず2つを併せて読む。
+#    p98 が意味を持つのは「暗い側＝光を拾っていない」の検知（50を割る）であって、
+#    明るい側の優劣を比べる物差しではない。
 
 
 def lum(p):
@@ -49,7 +56,7 @@ def measure(path):
 
     # --- 黒（#45）: キャプションを除いた上80%で測る ---
     dark = [lum(p) for p in body
-            if lum(p) < 70 and not (p[1] > p[0] + 18 and p[1] > p[2] + 18)]
+            if lum(p) < DARK_CUT and not (p[1] > p[0] + 18 and p[1] > p[2] + 18)]
     if len(dark) < 300:
         return dict(lime_mid=avg, lime_std=std, halo=halo,
                     b_area=0.0, b_mean=0.0, b_std=0.0, b_p98=0.0)

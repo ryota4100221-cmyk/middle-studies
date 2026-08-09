@@ -120,7 +120,7 @@ D_POW = float(os.environ.get("D_POW", "1.50"))     # #38④：べきが小さい
 GLOW_E = float(os.environ.get("GLOW_E", "0.03"))   # 糸の内側を洗うこぼれ光（#22）
 
 # --- 材質（#17/#38①/#39-c：細い曲面＋一様bright env は反射率を落とす） ---
-SPEC_BLACK = float(os.environ.get("SPEC_BLACK", "0.030"))
+SPEC_BLACK = float(os.environ.get("SPEC_BLACK", "0.20"))
 ROUGH_BLACK = float(os.environ.get("ROUGH_BLACK", "0.50"))
 
 # --- 姿勢 ---
@@ -322,7 +322,7 @@ b.inputs["Coat Weight"].default_value = 0.0
 mat_cap, b = make_principled("mayu_cap")          # 詰まった両端
 b.inputs["Base Color"].default_value = BLACK
 b.inputs["Roughness"].default_value = 0.62
-b.inputs["Specular IOR Level"].default_value = 0.018
+b.inputs["Specular IOR Level"].default_value = 0.20
 b.inputs["Coat Weight"].default_value = 0.0
 
 mat_em, em_bsdf = make_principled("mayu_em")      # 発光シェル＝光

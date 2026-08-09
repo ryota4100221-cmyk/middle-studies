@@ -91,9 +91,9 @@ THETA = math.radians(float(os.environ.get("THETA", "26.5")))
 W_MODE = (0.45, -0.80, 1.00, -0.80, 0.45)         # 交互・対称・真ん中が腹
 
 # --- 材質（#17-c/#39-c：一様bright env では反射率が支配項） ---
-SPEC_ROOF = float(os.environ.get("SPEC_ROOF", "0.030"))
+SPEC_ROOF = float(os.environ.get("SPEC_ROOF", "0.18"))
 ROUGH_ROOF = float(os.environ.get("ROUGH_ROOF", "0.52"))
-SPEC_BODY = float(os.environ.get("SPEC_BODY", "0.042"))
+SPEC_BODY = float(os.environ.get("SPEC_BODY", "0.18"))
 ROUGH_BODY = float(os.environ.get("ROUGH_BODY", "0.46"))
 
 CAP_Z = (float(os.environ.get("CAP_Z1", "0.72")),
@@ -236,13 +236,13 @@ b.inputs["Coat Weight"].default_value = 0.0
 mat_stone, b = make_principled("to_stone")         # 基壇（石）
 b.inputs["Base Color"].default_value = BLACK
 b.inputs["Roughness"].default_value = 0.64
-b.inputs["Specular IOR Level"].default_value = 0.050
+b.inputs["Specular IOR Level"].default_value = 0.18
 b.inputs["Coat Weight"].default_value = 0.0
 
 mat_metal, b = make_principled("to_sourin")        # 相輪（鋳物）＝小さいので少しだけ照らせる
 b.inputs["Base Color"].default_value = BLACK
 b.inputs["Roughness"].default_value = 0.36
-b.inputs["Specular IOR Level"].default_value = 0.105
+b.inputs["Specular IOR Level"].default_value = 0.20
 b.inputs["Coat Weight"].default_value = 0.0
 
 mat_em, em_bsdf = make_principled("to_shinbashira")  # 心柱＝光

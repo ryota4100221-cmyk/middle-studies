@@ -58,7 +58,7 @@ GAP = float(os.environ.get("GAP", "0.080"))                # 二隻のあいだ�
 PHI_MID = math.radians(float(os.environ.get("PHI_MID", "54")))   # 折り角の中央値
 PHI_AMP = math.radians(float(os.environ.get("PHI_AMP", "12")))   # 折り角の振れ幅
 
-SPEC_PAPER = float(os.environ.get("SPEC_PAPER", "0.08"))   # #17-c：平面×一様bright env は反射率が支配項
+SPEC_PAPER = float(os.environ.get("SPEC_PAPER", "0.16"))   # #17-c：平面×一様bright env は反射率が支配項
 ROUGH_PAPER = 0.55                                         # #17-b：紙はマット
 SPEC_FRAME = 0.13                                          # 框はわずかに照らせて階層を作る
 ROUGH_FRAME = 0.33

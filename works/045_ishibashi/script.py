@@ -96,9 +96,9 @@ D_MID = float(os.environ.get("D_MID", "0.021")) * BS   # 開離（m）
 D_AMP = float(os.environ.get("D_AMP", "0.017")) * BS
 
 # --- 材質（#17-c/#39-c：一様bright env では反射率が支配項） ---
-SPEC_STONE = float(os.environ.get("SPEC_STONE", "0.028"))
+SPEC_STONE = float(os.environ.get("SPEC_STONE", "0.16"))
 ROUGH_STONE = float(os.environ.get("ROUGH_STONE", "0.55"))
-SPEC_RING = float(os.environ.get("SPEC_RING", "0.026"))
+SPEC_RING = float(os.environ.get("SPEC_RING", "0.16"))
 ROUGH_RING = float(os.environ.get("ROUGH_RING", "0.56"))
 
 CAP_Z = (float(os.environ.get("CAP_Z1", "0.72")),
