@@ -61,9 +61,11 @@ T_SPINE = 0.100                                            # 峰の厚み（歯�
 THETA = math.radians(float(os.environ.get("THETA", "8.0")))  # 端の歯の最大の開き
 
 SPEC_TOOTH = float(os.environ.get("SPEC_TOOTH", "0.10"))   # #17-c：平面×一様bright env は反射率が支配項
-ROUGH_TOOTH = 0.38
-SPEC_SPINE = 0.15
-ROUGH_SPINE = 0.30
+ROUGH_TOOTH = float(os.environ.get("ROUGH_TOOTH", "0.38"))
+SPEC_SPINE = float(os.environ.get("SPEC_SPINE", "0.15"))
+ROUGH_SPINE = float(os.environ.get("ROUGH_SPINE", "0.30"))
+COAT_TOOTH = float(os.environ.get("COAT_TOOTH", "0.0"))
+COAT_SPINE = float(os.environ.get("COAT_SPINE", "0.06"))
 
 # --- 光（歯間と同軸・同形の発光スラブ／#29） ---
 D_EM = float(os.environ.get("D_EM", "0.055"))              # 歯の面からの奥行き
@@ -142,13 +144,13 @@ mat_tooth, b = make_principled("kushi_tooth")
 b.inputs["Base Color"].default_value = BLACK
 b.inputs["Roughness"].default_value = ROUGH_TOOTH
 b.inputs["Specular IOR Level"].default_value = SPEC_TOOTH
-b.inputs["Coat Weight"].default_value = 0.0
+b.inputs["Coat Weight"].default_value = COAT_TOOTH
 
 mat_spine, b = make_principled("kushi_spine")
 b.inputs["Base Color"].default_value = BLACK
 b.inputs["Roughness"].default_value = ROUGH_SPINE
 b.inputs["Specular IOR Level"].default_value = SPEC_SPINE
-b.inputs["Coat Weight"].default_value = 0.06
+b.inputs["Coat Weight"].default_value = COAT_SPINE
 
 # 光＝歯間と同形の発光スラブ。#13 純発光体／#32 Base は**純黒**
 mat_core, core_bsdf = make_principled("kushi_light")

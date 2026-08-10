@@ -95,6 +95,8 @@ SPEC_ROOF = float(os.environ.get("SPEC_ROOF", "0.18"))
 ROUGH_ROOF = float(os.environ.get("ROUGH_ROOF", "0.52"))
 SPEC_BODY = float(os.environ.get("SPEC_BODY", "0.18"))
 ROUGH_BODY = float(os.environ.get("ROUGH_BODY", "0.46"))
+COAT_ROOF = float(os.environ.get("COAT_ROOF", "0.0"))
+COAT_BODY = float(os.environ.get("COAT_BODY", "0.0"))
 
 CAP_Z = (float(os.environ.get("CAP_Z1", "0.72")),
          float(os.environ.get("CAP_Z2", "0.54")),
@@ -225,13 +227,13 @@ mat_roof, b = make_principled("to_roof")           # 瓦屋根（大きな傾斜
 b.inputs["Base Color"].default_value = BLACK
 b.inputs["Roughness"].default_value = ROUGH_ROOF
 b.inputs["Specular IOR Level"].default_value = SPEC_ROOF
-b.inputs["Coat Weight"].default_value = 0.0
+b.inputs["Coat Weight"].default_value = COAT_ROOF
 
 mat_body, b = make_principled("to_body")           # 塔身（板壁・柱）
 b.inputs["Base Color"].default_value = BLACK
 b.inputs["Roughness"].default_value = ROUGH_BODY
 b.inputs["Specular IOR Level"].default_value = SPEC_BODY
-b.inputs["Coat Weight"].default_value = 0.0
+b.inputs["Coat Weight"].default_value = COAT_BODY
 
 mat_stone, b = make_principled("to_stone")         # 基壇（石）
 b.inputs["Base Color"].default_value = BLACK
