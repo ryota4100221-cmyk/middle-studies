@@ -87,6 +87,52 @@ def is_lime(p):
     return p[1] > 90 and p[1] > p[2] + 45 and p[1] >= p[0] + 20
 
 
+def _clusters(body, W, bh, step=6):
+    """#57 被写体が画面の中でいくつの塊に分かれているか（対・群の判定用）。
+       1/6 に間引いたグリッドで4近傍の連結成分を数える。小さすぎる粒（ノイズ）は捨てる。"""
+    gw, gh = W // step, bh // step
+    grid = [[False] * gw for _ in range(gh)]
+    for gy in range(gh):
+        row = grid[gy]
+        base = gy * step * W
+        for gx in range(gw):
+            p = body[base + gx * step]
+            row[gx] = is_lime(p) or lum(p) < DARK_CUT
+    # 🔴 膨張してから数える。ブルームのハロー（淡い黄白）は「ライムでも黒でもない」ので
+    #    素のマスクだと1つの物が途中で切れる（001 THE FILLING が6塊と出た）。
+    for _ in range(1):
+        grow = [row[:] for row in grid]
+        for gy in range(gh):
+            for gx in range(gw):
+                if grid[gy][gx]:
+                    continue
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    nx, ny = gx + dx, gy + dy
+                    if 0 <= nx < gw and 0 <= ny < gh and grid[ny][nx]:
+                        grow[gy][gx] = True
+                        break
+        grid = grow
+    seen = [[False] * gw for _ in range(gh)]
+    sizes = []
+    for gy in range(gh):
+        for gx in range(gw):
+            if not grid[gy][gx] or seen[gy][gx]:
+                continue
+            stack = [(gx, gy)]; seen[gy][gx] = True; n = 0
+            while stack:
+                x, y = stack.pop(); n += 1
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < gw and 0 <= ny < gh and grid[ny][nx] and not seen[ny][nx]:
+                        seen[ny][nx] = True; stack.append((nx, ny))
+            sizes.append(n)
+    total = sum(sizes)
+    if not total:
+        return 0, 0.0
+    keep = [s for s in sizes if s >= max(6, total * 0.02)]   # 2%未満の粒は数えない
+    return len(keep), max(sizes) / total * 100
+
+
 def measure(path):
     im = Image.open(path).convert("RGB")
     W, H = im.size
@@ -121,14 +167,22 @@ def measure(path):
         x0, x1 = trim(xs)
         y0, y1 = trim(ys)
         s_w, s_h = (x1 - x0) / W * 100, (y1 - y0) / H * 100
+        # --- 構図（#57）: 重心・枠への接触・塊の数 ---
+        # 🔴 下端は数えない。body は上80%で切っているので、下端＝キャプション帯であって画面の端ではない。
+        c_x = sum(xs) / len(xs) / W * 100
+        c_y = sum(ys) / len(ys) / bh * 100
+        edge = ((min(xs) < W * 0.005) + (max(xs) > W * 0.995) + (min(ys) < bh * 0.005))
     else:
-        s_w = s_h = 0.0
+        s_w = s_h = c_x = c_y = 0.0
+        edge = 0
+    clusters, big_share = _clusters(body, W, bh)
 
     # --- 黒（#45）: キャプションを除いた上80%で測る ---
     dark = [lum(p) for p in body
             if lum(p) < DARK_CUT and not (p[1] > p[0] + 18 and p[1] > p[2] + 18)]
     base = dict(lime_mid=avg, lime_std=std, halo=halo, lime_area=lime_area,
-                s_w=s_w, s_h=s_h, s_long=max(s_w, s_h))
+                s_w=s_w, s_h=s_h, s_long=max(s_w, s_h),
+                c_x=c_x, c_y=c_y, edge=edge, clusters=clusters, big_share=big_share)
     if len(dark) < 300:
         base.update(b_area=0.0, b_mean=0.0, b_std=0.0, b_p98=0.0)
         return base
@@ -181,7 +235,8 @@ def verdict(r):
     if r["lime_area"] > LIME_AREA_HI:
         warn.append(f"ライム面積 {r['lime_area']:.1f}%（>{LIME_AREA_HI}%：光が地になっている）")
     if not (LONG_LO <= r["s_long"] <= LONG_HI):
-        warn.append(f"長辺 {r['s_long']:.0f}%（健全域 {LONG_LO}〜{LONG_HI}%＝SKILL.mdの55〜65%）")
+        warn.append(f"長辺 {r['s_long']:.0f}%（健全域 {LONG_LO}〜{LONG_HI}%＝SKILL.mdの55〜65%。"
+                    f"ただし#57の「寄り」の型では枠から出るのが正しいので、この△は無視してよい）")
     if BLACK_P98_MIN <= r["b_p98"] < BLACK_P98_WARN:
         warn.append(f"黒p98 {r['b_p98']:.0f}（健全域56〜69の下端）")
     if r["b_std"] < BLACK_STD_WARN:
