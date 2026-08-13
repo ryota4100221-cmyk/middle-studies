@@ -2,3 +2,5 @@ logs/
 .netlify/
 out/
 works/*/out_*/
+
+scripts/.measure_cache.json
