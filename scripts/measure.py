@@ -48,6 +48,12 @@ HALO_HI       = 250000  # #51 上限側の警告（白飛び・画面が緑に�
 LIME_AREA_MIN = 0.8     # #51 「真ん中に光がある」の下限。これを割ると光が点景になる
 LIME_AREA_HI  = 12.0    # #51 上限側の警告（光が主役でなく地になる）
 
+# --- #58 光が空間に作用しているか（床に落ちたライム） -------
+# 51作の実測：中央値 0.42% / P75 1.53%。強いのは初期作（001=24.5・016=22.4・007=17.5）。
+# 🔴 「光っている物」と「光源」は別物。床に何も落ちていない絵は、発光面がただの点いたパネルに見える。
+FLOOR_LIME_MIN = 0.3    # #58 下限（現状51作中21作がここを割る＝ほぼ半分が空間に光を出していない）
+FLOOR_LIME_HI  = 32.0   # #58 上限の警告（床まで緑に染まると舞台が緑になる。001=24.5 は健全側）
+
 # --- #51 被写体の大きさ（長辺で測る） -------------------------
 # 🔴 面積で測らない。001〜030 と 041〜050 で bbox 面積は 37%→26% に落ちるが、
 #    **長辺は 54%→55% で変わっていない**＝小さくなったのではなく縦長になっただけ。
@@ -177,12 +183,25 @@ def measure(path):
         edge = 0
     clusters, big_share = _clusters(body, W, bh)
 
+    # --- 光の作用（#58）: 被写体の下の床に、ライムの照り返しが落ちているか ---
+    # 発光体の外に光が出ていない作は「光っている物」でなく「点いている面」に見える。
+    # 被写体の下端からキャプション帯までを床とみなし、緑に寄った明るい画素の割合を測る。
+    # 🔴 帯は固定（画面の62〜80%＝床が写る帯）。被写体のbboxの下だけを見る作り方は、
+    #    被写体が下まで伸びている作で帯が消えて**一律0%になり、検知器として死ぬ**（最初そう作って失敗した）。
+    #    分母は「被写体でない画素」だけ。発光そのもの（is_lime）と白飛びは数えない。
+    fl = [body[i] for i in range(int(bh * 0.62) * W, bh * W, 3)]
+    ground = [p for p in fl if not is_lime(p) and lum(p) >= DARK_CUT and lum(p) < 250]
+    # 帯の大半が被写体で埋まっている（＝#57「寄り」の型など）ときは測れない → -1（判定を飛ばす）
+    floor_lime = (sum(1 for p in ground if p[1] > p[0] + 4 and p[1] > p[2] + 8)
+                  / len(ground) * 100) if len(ground) > len(fl) * 0.15 else -1.0
+
     # --- 黒（#45）: キャプションを除いた上80%で測る ---
     dark = [lum(p) for p in body
             if lum(p) < DARK_CUT and not (p[1] > p[0] + 18 and p[1] > p[2] + 18)]
     base = dict(lime_mid=avg, lime_std=std, halo=halo, lime_area=lime_area,
                 s_w=s_w, s_h=s_h, s_long=max(s_w, s_h),
-                c_x=c_x, c_y=c_y, edge=edge, clusters=clusters, big_share=big_share)
+                c_x=c_x, c_y=c_y, edge=edge, clusters=clusters, big_share=big_share,
+                floor_lime=floor_lime)
     if len(dark) < 300:
         base.update(b_area=0.0, b_mean=0.0, b_std=0.0, b_p98=0.0)
         return base
@@ -228,8 +247,12 @@ def verdict(r):
     if r["lime_std"] < LIME_STD_MIN:  ng.append(f"#14 ライムstd {r['lime_std']:.0f}<{LIME_STD_MIN}（ペンキ化）")
     if r["halo"] < HALO_MIN:          ng.append(f"#51 halo {r['halo']}<{HALO_MIN}（光が滲んでいない＝点景化）")
     if r["lime_area"] < LIME_AREA_MIN: ng.append(f"#51 ライム面積 {r['lime_area']:.2f}%<{LIME_AREA_MIN}%（光が主役でない）")
+    if 0 <= r.get("floor_lime", -1) < FLOOR_LIME_MIN:
+        ng.append(f"#58 床のライム {r['floor_lime']:.2f}%<{FLOOR_LIME_MIN}%（光が空間に出ていない）")
     if r["b_p98"] < BLACK_P98_MIN:    ng.append(f"#45 黒p98 {r['b_p98']:.0f}<{BLACK_P98_MIN}（黒が光を拾っていない＝影絵）")
     if r["b_mean"] < BLACK_MEAN_LO:   ng.append(f"#45 黒平均 {r['b_mean']:.0f}<{BLACK_MEAN_LO}（沈めすぎ）")
+    if r.get("floor_lime", -1) > FLOOR_LIME_HI:
+        warn.append(f"床のライム {r['floor_lime']:.0f}%（>{FLOOR_LIME_HI}%：舞台まで緑に染まっている）")
     if r["halo"] > HALO_HI:
         warn.append(f"halo {r['halo']}（>{HALO_HI}：白飛び側）")
     if r["lime_area"] > LIME_AREA_HI:
@@ -312,6 +335,9 @@ def main():
           % (*r["lime_mid"], r["lime_std"], r["halo"], r["lime_area"]))
     print("── 黒（PITFALLS #45）")
     print("   面積 %.1f%%   平均 %.1f   std %.1f   p98 %.1f" % (r["b_area"], r["b_mean"], r["b_std"], r["b_p98"]))
+    print("── 光の作用（PITFALLS #58）")
+    print("   床のライム %s" % ("測れない（帯が被写体で埋まっている）" if r["floor_lime"] < 0
+                                 else "%.2f%%" % r["floor_lime"]))
     print("── 被写体（PITFALLS #51）")
     print("   長辺 %.0f%%（幅 %.0f%% / 高さ %.0f%%）" % (r["s_long"], r["s_w"], r["s_h"]))
     ng, warn = verdict(r)
@@ -325,6 +351,8 @@ def main():
         print("   主材の下限は 0.10。0.02〜0.05 まで落とすと黒は影絵になる。")
         print("   光が不合格のときは**造形を作り直す前に光の出し方を変える**（PITFALLS #51）。")
         print("   細い線で出していないか＝面で出す・透過させる・内側から出す。2周で入らなければ題材を替える。")
+        print("   床のライムが不合格のときは**随伴のライム光源のW数**（#58）。4.5W では床に届かない＝150W前後。")
+        print("   🔴 その光源は発光体の**外**に置く。中に置くと発光体自身が遮って1ルクスも出ない。")
         trend()
         sys.exit(1)
     trend()
