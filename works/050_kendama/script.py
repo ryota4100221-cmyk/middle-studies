@@ -56,7 +56,7 @@ R_SP      = 0.055
 SP_POW    = 0.85       # 先細りのべき（1.0 で直円錐・小さいほど張った稜線）
 Z_HOT     = 2.100      # ホットコアの高さ（#34 長軸）
 FZ        = 0.235      # 縦の減衰（ES=0 が根元 1.87 にちょうど来る）
-FX        = 0.058      # 横の減衰（#34：発光体の半幅と同じか少し狭く）
+FX        = 0.072      # 🔴 #51：ライム面積0.35%・halo2,805＝細すぎた。横の減衰を広げる      # 横の減衰（#34：発光体の半幅と同じか少し狭く）
 GPOW      = 1.55       # 勾配のべき（#38④ 暗い裾を締める）
 ES_CORE   = 3.6
 LAMP_W    = 4.5        # 随伴点光源（#22 spill）。強いと玉の腹が抹茶色に被る
@@ -66,7 +66,7 @@ BALL_R    = 0.315
 BORE_R    = 0.068      # 穴（剣先が入る）
 BORE_D    = 0.200
 GAP0      = 0.005      # 最上位相の隙間（剣先の頭と玉の底）。大きくすると #44 の「前半ずっと100%」になる
-TRAVEL    = 0.150      # 差し込みの深さ
+TRAVEL    = 0.260      # 差し込みの深さ
 
 # --- 糸 -------------------------------------------------------
 STR_L     = 0.685      # 弦長一定。たわみは懸垂線で解く（玉が降りるほど弛む）
@@ -638,6 +638,41 @@ setup_bloom()
 scene.frame_start = 1
 scene.frame_end = N_FRAMES
 scene.render.fps = FPS
+
+
+# ---------- #58 光を空間に出す（2026-08-14 の作り直しで追加） ----------
+# 床にライムが1つも落ちていない絵は「光っている物」でなく「点いているパネル」に見える。
+# 効くのは発光の強さでもバウンス数でもなく**随伴のライム光源のW数**（4.5W→150Wで床0.03%→4.68%）。
+# 🔴 発光体の中に置くと発光体自身が遮って1ルクスも出ないので、被写体の下端の外に置く。
+def _add_lime_spill(energy=300.0):
+    xs, zs, ys = [], [], []
+    dg = bpy.context.evaluated_depsgraph_get()
+    for o in bpy.data.objects:
+        if o.type != 'MESH' or o.name.lower().startswith(("floor", "plane", "text")):
+            continue
+        if max(o.dimensions) > 8:      # 床の巨大プレーンを除く
+            continue
+        for c in o.bound_box:
+            w = o.matrix_world @ Vector(c)
+            xs.append(w.x); ys.append(w.y); zs.append(w.z)
+    if not zs:
+        return None
+    cx, cy, zmin = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, min(zs)
+    # 🔴 浮いている作は真下へ。床に接している作は真下だと**床の下に潜って1ルクスも出ない**ので、
+    #    カメラ側(-Y)へ逃がして床すれすれに置く（031 TOURO で踏んだ）
+    # 🔴 被写体の真下に置くと、床の光が画面の測定帯（62〜80%）より下に落ちて見えない。
+    #    手前(-Y)の床を照らす位置にすると、光の溜まりがそのまま絵に入る（031で実測 0.00%→0.39%）。
+    loc = (cx, cy - 0.62, min(0.42, max(0.16, zmin - 0.10)))
+    bpy.ops.object.light_add(type='POINT', location=loc)
+    L = bpy.context.active_object; L.name = "lime_spill"
+    L.data.energy = energy; L.data.color = LIME[:3]
+    L.data.shadow_soft_size = 0.30
+    L.visible_camera = False
+    print(">> lime_spill %.2f,%.2f,%.2f  (zmin %.2f, %.0fW)" % (loc[0], loc[1], loc[2], zmin, energy))
+    return L
+
+
+_add_lime_spill()
 
 modes = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else ["probe"]
 print(">> modes:", modes, " STILL_FRAME:", STILL_FRAME)

@@ -93,7 +93,7 @@ FZ = float(os.environ.get("FZ", "0.58"))           # 長軸の減衰幅[m]（縦
 FA = float(os.environ.get("FA", "1.15"))           # 同（横の継ぎ目＝方位[rad]）
 Z_HOT = float(os.environ.get("Z_HOT", "0.00"))     # 光の芯の高さ＝器の腹＝真ん中
 
-ES_CORE = float(os.environ.get("ES_CORE", "4.2"))
+ES_CORE = float(os.environ.get("ES_CORE", "9.8"))   # 🔴 7.0 でも halo 7,636＝下限9,000に届かず   # 🔴 #51：halo 5,763 で下限9,000に届いていなかった
 D_POW = float(os.environ.get("D_POW", "1.45"))     # #38④：べきが小さいと暗い裾が中間調を沈める
 GLOW_E = float(os.environ.get("GLOW_E", "0.05"))   # 割れ口の側壁を洗うこぼれ光（#22）
 
@@ -103,8 +103,8 @@ ROUGH_BLACK = float(os.environ.get("ROUGH_BLACK", "0.50"))
 
 # --- 姿勢 ---
 POSE_YAW = math.radians(float(os.environ.get("POSE_YAW", "3.1")))  # 前面をカメラ光軸へ
-SWAY = math.radians(float(os.environ.get("SWAY", "1.3")))
-BOB = float(os.environ.get("BOB", "0.012"))
+SWAY = math.radians(float(os.environ.get("SWAY", "5.0")))
+BOB = float(os.environ.get("BOB", "0.045"))
 
 CAP_Z = (float(os.environ.get("CAP_Z1", "0.72")),
          float(os.environ.get("CAP_Z2", "0.54")),
@@ -700,6 +700,41 @@ def lit_len(t, n=400):
 
 
 # ---------- 出力モード ----------
+
+# ---------- #58 光を空間に出す（2026-08-14 の作り直しで追加） ----------
+# 床にライムが1つも落ちていない絵は「光っている物」でなく「点いているパネル」に見える。
+# 効くのは発光の強さでもバウンス数でもなく**随伴のライム光源のW数**（4.5W→150Wで床0.03%→4.68%）。
+# 🔴 発光体の中に置くと発光体自身が遮って1ルクスも出ないので、被写体の下端の外に置く。
+def _add_lime_spill(energy=300.0):
+    xs, zs, ys = [], [], []
+    dg = bpy.context.evaluated_depsgraph_get()
+    for o in bpy.data.objects:
+        if o.type != 'MESH' or o.name.lower().startswith(("floor", "plane", "text")):
+            continue
+        if max(o.dimensions) > 8:      # 床の巨大プレーンを除く
+            continue
+        for c in o.bound_box:
+            w = o.matrix_world @ Vector(c)
+            xs.append(w.x); ys.append(w.y); zs.append(w.z)
+    if not zs:
+        return None
+    cx, cy, zmin = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, min(zs)
+    # 🔴 浮いている作は真下へ。床に接している作は真下だと**床の下に潜って1ルクスも出ない**ので、
+    #    カメラ側(-Y)へ逃がして床すれすれに置く（031 TOURO で踏んだ）
+    # 🔴 被写体の真下に置くと、床の光が画面の測定帯（62〜80%）より下に落ちて見えない。
+    #    手前(-Y)の床を照らす位置にすると、光の溜まりがそのまま絵に入る（031で実測 0.00%→0.39%）。
+    loc = (cx, cy - 0.62, min(0.42, max(0.16, zmin - 0.10)))
+    bpy.ops.object.light_add(type='POINT', location=loc)
+    L = bpy.context.active_object; L.name = "lime_spill"
+    L.data.energy = energy; L.data.color = LIME[:3]
+    L.data.shadow_soft_size = 0.30
+    L.visible_camera = False
+    print(">> lime_spill %.2f,%.2f,%.2f  (zmin %.2f, %.0fW)" % (loc[0], loc[1], loc[2], zmin, energy))
+    return L
+
+
+_add_lime_spill()
+
 modes = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else ["test"]
 print(">> modes:", modes)
 

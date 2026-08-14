@@ -88,12 +88,12 @@ HW_EM = float(os.environ.get("HW_EM", "0.046")) * BS   # 合わせ石の半幅
 FX = float(os.environ.get("FX", "0.046")) * BS         # 短軸（横）の減衰幅＝縁で ES=0（#34）
 Z_HOT = float(os.environ.get("Z_HOT", "0.440")) * BS   # 光の芯＝橋脚の面の中ほど
 FZ = float(os.environ.get("FZ", "0.460")) * BS         # 長軸（縦）＝橋脚の足元〜天端に届く一本の線
-ES_CORE = float(os.environ.get("ES_CORE", "4.4"))
+ES_CORE = float(os.environ.get("ES_CORE", "6.0"))   # 🔴 #51：ライム面積0.79%で下限0.8%にわずかに届かず
 D_POW = float(os.environ.get("D_POW", "2.00"))         # #38④：暗い裾の広さ＝中間調
 KEY_BACK = 0.003 * BS                                  # 合わせ石の面の引っ込み（同一平面を作らない）
 
-D_MID = float(os.environ.get("D_MID", "0.021")) * BS   # 開離（m）
-D_AMP = float(os.environ.get("D_AMP", "0.017")) * BS
+D_MID = float(os.environ.get("D_MID", "0.060")) * BS   # 開離（m）
+D_AMP = float(os.environ.get("D_AMP", "0.055")) * BS
 
 # --- 材質（#17-c/#39-c：一様bright env では反射率が支配項） ---
 SPEC_STONE = float(os.environ.get("SPEC_STONE", "0.16"))
@@ -586,6 +586,41 @@ def screen_x(x, y=0.0):
 
 
 # ---------- 出力モード ----------
+
+# ---------- #58 光を空間に出す（2026-08-14 の作り直しで追加） ----------
+# 床にライムが1つも落ちていない絵は「光っている物」でなく「点いているパネル」に見える。
+# 効くのは発光の強さでもバウンス数でもなく**随伴のライム光源のW数**（4.5W→150Wで床0.03%→4.68%）。
+# 🔴 発光体の中に置くと発光体自身が遮って1ルクスも出ないので、被写体の下端の外に置く。
+def _add_lime_spill(energy=300.0):
+    xs, zs, ys = [], [], []
+    dg = bpy.context.evaluated_depsgraph_get()
+    for o in bpy.data.objects:
+        if o.type != 'MESH' or o.name.lower().startswith(("floor", "plane", "text")):
+            continue
+        if max(o.dimensions) > 8:      # 床の巨大プレーンを除く
+            continue
+        for c in o.bound_box:
+            w = o.matrix_world @ Vector(c)
+            xs.append(w.x); ys.append(w.y); zs.append(w.z)
+    if not zs:
+        return None
+    cx, cy, zmin = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, min(zs)
+    # 🔴 浮いている作は真下へ。床に接している作は真下だと**床の下に潜って1ルクスも出ない**ので、
+    #    カメラ側(-Y)へ逃がして床すれすれに置く（031 TOURO で踏んだ）
+    # 🔴 被写体の真下に置くと、床の光が画面の測定帯（62〜80%）より下に落ちて見えない。
+    #    手前(-Y)の床を照らす位置にすると、光の溜まりがそのまま絵に入る（031で実測 0.00%→0.39%）。
+    loc = (cx, cy - 0.62, min(0.42, max(0.16, zmin - 0.10)))
+    bpy.ops.object.light_add(type='POINT', location=loc)
+    L = bpy.context.active_object; L.name = "lime_spill"
+    L.data.energy = energy; L.data.color = LIME[:3]
+    L.data.shadow_soft_size = 0.30
+    L.visible_camera = False
+    print(">> lime_spill %.2f,%.2f,%.2f  (zmin %.2f, %.0fW)" % (loc[0], loc[1], loc[2], zmin, energy))
+    return L
+
+
+_add_lime_spill()
+
 modes = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else ["test"]
 print(">> modes:", modes)
 

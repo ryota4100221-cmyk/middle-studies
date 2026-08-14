@@ -67,11 +67,11 @@ ES_CORE = float(os.environ.get("ES_CORE", "6.2"))   # 火袋中央＝ホット�
 ES_RIM = float(os.environ.get("ES_RIM", "0.40"))    # 上下端＝暗部へ落とす（縦勾配で std を上げる）
 GLOW_E = float(os.environ.get("GLOW_E", "10.0"))    # 随伴ライム点光源（窓越しに床へ光をこぼす・#22。塊にほぼ遮蔽されるので弱め）
 
-SEED_S = float(os.environ.get("SEED_S", "0.60"))    # 種火 scale（点にせず広い溜まりに・#26③/#11）
+SEED_S = float(os.environ.get("SEED_S", "0.30"))    # 種火 scale（点にせず広い溜まりに・#26③/#11）
 
 FPS = 24
 N_FRAMES = 120           # 5秒 完全ループ
-STILL_FRAME = 61         # t≈0.5 ＝ 満（炎が最も満ちた瞬間）
+STILL_FRAME = 31  # 🔴 2周期にしたので満ちる位相は t=0.25（旧61はt=0.5＝最小の瞬間だった）         # t≈0.5 ＝ 満（炎が最も満ちた瞬間）
 
 
 def hex_to_linear(h):
@@ -172,7 +172,7 @@ def shade_flat(o):
 
 
 def breath(t01):
-    return 0.5 * (1.0 - math.cos(2 * math.pi * t01))
+    return 0.5 * (1.0 - math.cos(4 * math.pi * t01))   # 🔴 #59：1周期・SEED_S0.60では動き量0.34
 
 
 def hexpts(radius, cx=0.0, cy=0.0):
@@ -494,6 +494,39 @@ setup_bloom()
 
 
 # ---------- 出力モード ----------
+
+# ---------- #58 光を空間に出す（2026-08-14 の作り直しで追加） ----------
+# 床にライムが1つも落ちていない絵は「光っている物」でなく「点いているパネル」に見える。
+# 効くのは発光の強さでもバウンス数でもなく**随伴のライム光源のW数**（4.5W→150Wで床0.03%→4.68%）。
+# 🔴 発光体の中に置くと発光体自身が遮って1ルクスも出ないので、被写体の下端の外に置く。
+def _add_lime_spill(energy=300.0):
+    xs, zs, ys = [], [], []
+    dg = bpy.context.evaluated_depsgraph_get()
+    for o in bpy.data.objects:
+        if o.type != 'MESH' or o.name.lower().startswith(("floor", "plane", "text")):
+            continue
+        if max(o.dimensions) > 8:      # 床の巨大プレーンを除く
+            continue
+        for c in o.bound_box:
+            w = o.matrix_world @ Vector(c)
+            xs.append(w.x); ys.append(w.y); zs.append(w.z)
+    if not zs:
+        return None
+    cx, cy, zmin = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, min(zs)
+    # 🔴 浮いている作は真下へ。床に接している作は真下だと**床の下に潜って1ルクスも出ない**ので、
+    #    カメラ側(-Y)へ逃がして床すれすれに置く（031 TOURO で踏んだ）
+    loc = (cx, cy - 0.62, min(0.42, max(0.16, zmin - 0.10)))
+    bpy.ops.object.light_add(type='POINT', location=loc)
+    L = bpy.context.active_object; L.name = "lime_spill"
+    L.data.energy = energy; L.data.color = LIME[:3]
+    L.data.shadow_soft_size = 0.30
+    L.visible_camera = False
+    print(">> lime_spill %.2f,%.2f,%.2f  (zmin %.2f, %.0fW)" % (loc[0], loc[1], loc[2], zmin, energy))
+    return L
+
+
+_add_lime_spill()
+
 modes = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else ["test"]
 print(">> modes:", modes)
 
