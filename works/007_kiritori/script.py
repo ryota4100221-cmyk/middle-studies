@@ -124,6 +124,20 @@ bev.angle_limit = math.radians(30)
 
 cube.parent = rig
 cutter.parent = rig  # 立方体と一緒に傾く（相対位置固定）
+# 🔴 2026-08-14 機構変更（#60）：カッターを毎フレーム動かすとブーリアンで**頂点数が変わり**、
+#    morph target が使えず glb に動きが1つも乗らなかった。
+#    → 窓は R_MAX で固定（静的メッシュ）にし、**内側の黒い栓のスケール**で光を隠す。
+#    「切り取られて、はじめて見える」は保ったまま、動きが位置キーだけになって glb に乗る。
+cutter.scale = (R_MAX, R_MAX, R_MAX)
+bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, location=(0, 0, CENTER_Z),
+                                     segments=96, ring_count=48)
+plug = bpy.context.active_object
+plug.name = "plug"
+bpy.ops.object.shade_smooth()
+plug.data.materials.append(mat_cube)   # 黒。窓の内側を塞ぐ
+plug.parent = rig
+PLUG_MAX = R_MAX - 0.015     # 空洞をほぼ埋める＝窓が黒く見える
+PLUG_MIN = R_MIN * 0.72      # 引くとライムの内壁が見える
 
 # ---------- 内部ポイントライト（窓から光をこぼす） ----------
 bpy.ops.object.light_add(type='POINT', location=(0, 0, CENTER_Z))
@@ -145,9 +159,9 @@ def osc(t01, cycles=1):
 for f in range(1, N_FRAMES + 1):
     t = (f - 1) / N_FRAMES
     op = osc(t, BREATHS)                      # 0=閉 1=開
-    r = R_MIN + (R_MAX - R_MIN) * op
-    cutter.scale = (r, r, r)                  # 球半径＝ブーリアンが毎フレーム再計算
-    cutter.keyframe_insert(data_path="scale", frame=f)
+    pr = PLUG_MAX - (PLUG_MAX - PLUG_MIN) * op   # 開くほど栓が引く＝光が現れる
+    plug.scale = (pr, pr, pr)
+    plug.keyframe_insert(data_path="scale", frame=f)
     # 開くほど内壁が強く光り、内部ライトも強まる
     core_bsdf.inputs["Emission Strength"].default_value = 1.25 + 0.7 * op
     core_bsdf.inputs["Emission Strength"].keyframe_insert(
@@ -283,7 +297,7 @@ if "glb" in modes:
     scene.frame_set(STILL_FRAME)
     # ブーリアン適用済みメッシュをエクスポートするためcubeを評価してGLBへ
     for o in bpy.data.objects:
-        o.select_set(o.name == "cube")
+        o.select_set(o.name in ("cube", "plug", "KiritoriRig") or o.name.endswith("Rig"))
     bpy.ops.export_scene.gltf(
         filepath=os.path.join(OUT, "monaka_kiritori.glb"),
         export_format='GLB', use_selection=True,

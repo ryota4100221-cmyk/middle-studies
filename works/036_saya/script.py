@@ -51,7 +51,7 @@ os.makedirs(OUT, exist_ok=True)
 LIME_HEX = "A5E02E"
 BLACK_HEX = "0A0A0A"
 
-CENTER_Z = float(os.environ.get("CENTER_Z", "2.50"))   # 鯉口（＝光）の world 高さ
+CENTER_Z = float(os.environ.get("CENTER_Z", "2.78"))   # 🔴 開きを0.56にすると鞘がキャプションを跨ぐので、被写体ごと上げる（LOOK_Zを上げると逆に下がる）   # 鯉口（＝光）の world 高さ
 LOOK_Z = float(os.environ.get("LOOK_Z", "2.14"))       # カメラ注視点（#29：縦長モチーフは分離）
 CAM_LOC = (0.55, -8.3, 1.95)
 LEAN = math.radians(float(os.environ.get("LEAN", "7.0")))  # #18：空いている右へ倒す
@@ -92,13 +92,14 @@ WRAP_PW = 0.21                        # 帯の幅（周期に対する半幅）
 
 # --- 抜き（d の呼吸） ---
 DMIN = float(os.environ.get("DMIN", "0.075"))
-DMAX = float(os.environ.get("DMAX", "0.800"))
+DMAX = float(os.environ.get("DMAX", "0.560"))   # 🔴 1.45は柄が画面外へ飛んだ。0.56は開きとしては成立するが、
+#                                                  そのままだと鞘がキャプションを跨ぐので LOOK_Z を上げて構図で逃がす
 
 # --- 発光（#27 の1次元バンド／#31-d バンドは短く） ---
-ES_CORE = float(os.environ.get("ES_CORE", "15.0"))   # 🔴 #51：ライム面積0.25%・halo3303 で光が点景だった
+ES_CORE = float(os.environ.get("ES_CORE", "10.0"))   # 芯を白飛びさせるとhaloは逆に減る（042で実測）   # 🔴 #51：ライム面積0.25%・halo3303 で光が点景だった
 ES_RIM = float(os.environ.get("ES_RIM", "0.0"))       # #32：暗部は完全な黒＝裏当てになる
 Z_HOT = float(os.environ.get("Z_HOT", "0.035"))       # ホットコア＝鯉口の直上
-W_EM = float(os.environ.get("W_EM", "0.320"))         # そこから ES=0 までの距離（縦）
+W_EM = float(os.environ.get("W_EM", "0.560"))   # 🔴 #51：発光面が小さくライム面積0.39%だった。光る帯を倍に         # そこから ES=0 までの距離（縦）
 FX_EM = float(os.environ.get("FX_EM", "0.044"))       # 同（横）＝刃の縁で 0 に落として芯を残す
 GLOW_E = float(os.environ.get("GLOW_E", "0.7"))       # 金具・鞘へこぼれる光（#22）
 

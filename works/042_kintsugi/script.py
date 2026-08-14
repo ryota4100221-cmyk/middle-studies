@@ -86,14 +86,14 @@ ROT_A_L = float(os.environ.get("ROT_A_L", "0.0115"))   # 破片の振れ角[rad]
 ROT_A_U = float(os.environ.get("ROT_A_U", "0.0080"))   # 同（上帯・2片なので小さく）
 
 # --- 継ぎ材のリボン（＝光） ---
-RIB_W = float(os.environ.get("RIB_W", "0.030"))    # 実体の半幅[m]（裏当てを兼ねる）
+RIB_W = float(os.environ.get("RIB_W", "0.115"))   # 🔴 #51：線が細くhalo 6,850。光は強さでなく面の広さ    # 実体の半幅[m]（裏当てを兼ねる）
 RIB_OFF = float(os.environ.get("RIB_OFF", "0.005"))  # 内皮からの引っ込み[m]
 FU = float(os.environ.get("FU", "0.0120"))         # 短軸の減衰幅[m]＝開いた継ぎ目の半幅
 FZ = float(os.environ.get("FZ", "0.58"))           # 長軸の減衰幅[m]（縦の継ぎ目）
 FA = float(os.environ.get("FA", "1.15"))           # 同（横の継ぎ目＝方位[rad]）
 Z_HOT = float(os.environ.get("Z_HOT", "0.00"))     # 光の芯の高さ＝器の腹＝真ん中
 
-ES_CORE = float(os.environ.get("ES_CORE", "9.8"))   # 🔴 7.0 でも halo 7,636＝下限9,000に届かず   # 🔴 #51：halo 5,763 で下限9,000に届いていなかった
+ES_CORE = float(os.environ.get("ES_CORE", "7.2"))   # 上げすぎると白飛びしてhaloが減る（実測7.0→9.8でhalo低下）   # 🔴 7.0 でも halo 7,636＝下限9,000に届かず   # 🔴 #51：halo 5,763 で下限9,000に届いていなかった
 D_POW = float(os.environ.get("D_POW", "1.45"))     # #38④：べきが小さいと暗い裾が中間調を沈める
 GLOW_E = float(os.environ.get("GLOW_E", "0.05"))   # 割れ口の側壁を洗うこぼれ光（#22）
 
