@@ -55,8 +55,8 @@ SP_TIP    = 2.170
 R_SP      = 0.055   # 🔴 2026-08-14：0.105まで太らせたら #50 の「蝋燭」に転んだ。元に戻す
 SP_POW    = 0.85       # 先細りのべき（1.0 で直円錐・小さいほど張った稜線）
 Z_HOT     = 2.100      # ホットコアの高さ（#34 長軸）
-FZ        = 0.235      # 縦の減衰（ES=0 が根元 1.87 にちょうど来る）
-FX        = 0.072      # 🔴 #51：ライム面積0.35%・halo2,805＝細すぎた。横の減衰を広げる      # 横の減衰（#34：発光体の半幅と同じか少し狭く）
+FZ        = 0.300      # 縦の減衰（ES=0 が根元 1.87 にちょうど来る）
+FX        = 0.115      # 🔴 #51：ライム面積0.35%・halo2,805＝細すぎた。横の減衰を広げる      # 横の減衰（#34：発光体の半幅と同じか少し狭く）
 GPOW      = 1.55       # 勾配のべき（#38④ 暗い裾を締める）
 ES_CORE   = 3.6
 LAMP_W    = 4.5        # 随伴点光源（#22 spill）。強いと玉の腹が抹茶色に被る
@@ -332,6 +332,10 @@ mat_bore, bo = principled("bore")
 bo.inputs["Base Color"].default_value = (0, 0, 0, 1)
 bo.inputs["Roughness"].default_value = 0.85
 bo.inputs["Specular IOR Level"].default_value = 0.0
+# 🔴 #51：剣先だけでは光が小さすぎる（ライム面積0.36%）。剣先を太らせると #50 の蝋燭に転ぶので、
+#    代わりに**玉が呑んだ光**として穴の内壁をわずかに発光させる。silhouette は1mmも変えない。
+bo.inputs["Emission Color"].default_value = LIME
+bo.inputs["Emission Strength"].default_value = 1.15
 
 mat_str, sp_ = principled("string")
 sp_.inputs["Base Color"].default_value = BLACK

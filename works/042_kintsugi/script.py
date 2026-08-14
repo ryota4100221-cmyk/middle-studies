@@ -492,7 +492,8 @@ _mr = _ct.nodes.new("ShaderNodeMapRange")
 _mr.inputs["From Min"].default_value = 0.0
 _mr.inputs["From Max"].default_value = 1.0
 _mr.inputs["To Min"].default_value = ES_CORE
-_mr.inputs["To Max"].default_value = 0.0      # #32：暗部は完全な黒＝そのまま裏当て
+_mr.inputs["To Max"].default_value = ES_CORE * 0.30   # 🔴 #51：0.0だと淡いライムの画素が生まれず halo が 7,514 で頭打ちになる。
+#                                                      裾をわずかに残す（#32の裏当ては RIB の実体が担っている）
 _mr.clamp = True
 try:
     _mr.interpolation_type = 'SMOOTHSTEP'

@@ -96,10 +96,10 @@ DMAX = float(os.environ.get("DMAX", "0.560"))   # 🔴 1.45は柄が画面外へ
 #                                                  そのままだと鞘がキャプションを跨ぐので LOOK_Z を上げて構図で逃がす
 
 # --- 発光（#27 の1次元バンド／#31-d バンドは短く） ---
-ES_CORE = float(os.environ.get("ES_CORE", "10.0"))   # 芯を白飛びさせるとhaloは逆に減る（042で実測）   # 🔴 #51：ライム面積0.25%・halo3303 で光が点景だった
+ES_CORE = float(os.environ.get("ES_CORE", "8.2"))   # 芯を白飛びさせるとhaloは逆に減る（042で実測）   # 🔴 #51：ライム面積0.25%・halo3303 で光が点景だった
 ES_RIM = float(os.environ.get("ES_RIM", "0.0"))       # #32：暗部は完全な黒＝裏当てになる
 Z_HOT = float(os.environ.get("Z_HOT", "0.035"))       # ホットコア＝鯉口の直上
-W_EM = float(os.environ.get("W_EM", "0.560"))   # 🔴 #51：発光面が小さくライム面積0.39%だった。光る帯を倍に         # そこから ES=0 までの距離（縦）
+W_EM = float(os.environ.get("W_EM", "1.150"))   # 光の届く長さを伸ばす（造形は変えない）   # 🔴 #51：発光面が小さくライム面積0.39%だった。光る帯を倍に         # そこから ES=0 までの距離（縦）
 FX_EM = float(os.environ.get("FX_EM", "0.044"))       # 同（横）＝刃の縁で 0 に落として芯を残す
 GLOW_E = float(os.environ.get("GLOW_E", "0.7"))       # 金具・鞘へこぼれる光（#22）
 
@@ -625,7 +625,8 @@ def _add_lime_spill(energy=550.0):
     #    カメラ側(-Y)へ逃がして床すれすれに置く（031 TOURO で踏んだ）
     # 🔴 被写体の真下に置くと、床の光が画面の測定帯（62〜80%）より下に落ちて見えない。
     #    手前(-Y)の床を照らす位置にすると、光の溜まりがそのまま絵に入る（031で実測 0.00%→0.39%）。
-    loc = (cx, cy - 0.62, min(0.42, max(0.16, zmin - 0.10)))
+    loc = (cx, cy + 2.10, 0.30)   # 🔴 被写体が高い位置にある作は、床の溜まりが画面下へ落ちる。
+    #    光源を**大きく奥へ**引くと、溜まりが遠くの床＝画面の中ほどに写る
     bpy.ops.object.light_add(type='POINT', location=loc)
     L = bpy.context.active_object; L.name = "lime_spill"
     L.data.energy = energy; L.data.color = LIME[:3]
