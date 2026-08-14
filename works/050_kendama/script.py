@@ -337,6 +337,22 @@ bo.inputs["Specular IOR Level"].default_value = 0.0
 bo.inputs["Emission Color"].default_value = LIME
 bo.inputs["Emission Strength"].default_value = 1.15
 
+# 🔴 #51：剣先だけではライム面積0.39%。剣先を太らせると #50 の蝋燭に転ぶ（#61で実証済み）。
+#    → **玉が呑んだ光が玉の腹に滲む**。穴（底）に近いほど強く、上へ消える勾配を玉の材質に焼く。
+_bnt = mat_ball.node_tree
+_btc = _bnt.nodes.new("ShaderNodeTexCoord")
+_bsep = _bnt.nodes.new("ShaderNodeSeparateXYZ")
+_bnt.links.new(_btc.outputs["Object"], _bsep.inputs["Vector"])
+_bmr = _bnt.nodes.new("ShaderNodeMapRange")
+_bmr.inputs["From Min"].default_value = -BALL_R * 0.98      # 玉の底（穴のある側）
+_bmr.inputs["From Max"].default_value = BALL_R * 0.10
+_bmr.inputs["To Min"].default_value = 0.75
+_bmr.inputs["To Max"].default_value = 0.0
+_bmr.clamp = True
+_bnt.links.new(_bsep.outputs["Z"], _bmr.inputs["Value"])
+_bnt.links.new(_bmr.outputs["Result"], bp_.inputs["Emission Strength"])
+bp_.inputs["Emission Color"].default_value = LIME
+
 mat_str, sp_ = principled("string")
 sp_.inputs["Base Color"].default_value = BLACK
 sp_.inputs["Roughness"].default_value = 0.46

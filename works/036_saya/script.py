@@ -171,6 +171,24 @@ b.inputs["Roughness"].default_value = ROUGH_SAYA
 b.inputs["Specular IOR Level"].default_value = SPEC_SAYA
 b.inputs["Coat Weight"].default_value = 0.0   # #17-c：一様bright env では Coat が黒を灰にする
 
+# 🔴 #51：刃の露出だけではライム面積0.50%（下限0.8%）。刃を太らせても鞘を開いても構図が壊れる（#61）。
+#    → **鞘の中の光が漆越しに透ける**という出し方に変える。造形は1mmも変えない。
+#    口元（+Z側）が最も強く、下るほど消える勾配を、鞘の材質そのものに焼く。
+_snt = mat_saya.node_tree
+_stc = _snt.nodes.new("ShaderNodeTexCoord")
+_ssep = _snt.nodes.new("ShaderNodeSeparateXYZ")
+_snt.links.new(_stc.outputs["Object"], _ssep.inputs["Vector"])
+_smr = _snt.nodes.new("ShaderNodeMapRange")
+_smr.inputs["From Min"].default_value = -L_SAYA * 0.62     # 鞘尻
+_smr.inputs["From Max"].default_value = 0.02               # 鯉口
+_smr.inputs["To Min"].default_value = 0.0
+_smr.inputs["To Max"].default_value = float(os.environ.get("ES_SAYA", "0.55"))
+_smr.clamp = True
+_snt.links.new(_ssep.outputs["Z"], _smr.inputs["Value"])
+_sb = next(n for n in _snt.nodes if n.type == 'BSDF_PRINCIPLED')
+_sb.inputs["Emission Color"].default_value = LIME
+_snt.links.new(_smr.outputs["Result"], _sb.inputs["Emission Strength"])
+
 mat_met, b = make_principled("saya_fittings")      # 鍔・鎺・縁・頭＝鉄（#17-c 低反射）
 b.inputs["Base Color"].default_value = BLACK
 b.inputs["Roughness"].default_value = ROUGH_MET
