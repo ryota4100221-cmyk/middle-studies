@@ -359,7 +359,7 @@ if "blend" in modes:
 if "glb" in modes:
     scene.frame_set(STILL_FRAME)
     for o in bpy.data.objects:
-        o.select_set(o.name == "aya")
+        o.select_set(o.name in ("aya", "lime_back"))   # 🔴 #60：発光面を外すとglbが真っ黒になる
     bpy.ops.export_scene.gltf(
         filepath=os.path.join(OUT, "aya.glb"),
         export_format='GLB',

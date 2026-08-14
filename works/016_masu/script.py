@@ -329,7 +329,8 @@ if "blend" in modes:
 if "glb" in modes:
     scene.frame_set(STILL_FRAME)
     for o in bpy.data.objects:
-        o.select_set(o.name.startswith("box_") or o.name == "core")
+        o.select_set(o.name.startswith("box_") or o.name.startswith("pivot_")
+                     or o.name in ("core", "MasuRig"))   # 🔴 #60：ピボットとリグを外すと動きがglbに乗らない
     bpy.ops.export_scene.gltf(
         filepath=os.path.join(OUT, "monaka_masu.glb"),
         export_format='GLB', use_selection=True,

@@ -523,7 +523,7 @@ if "glb" in modes:
         sk.value = 1.0 if i == keep[0] else 0.0     # 折り返し（最終→先頭）
         sk.keyframe_insert("value", frame=N_FRAMES + 1)
     for o in bpy.data.objects:
-        o.select_set(o.name == "noren_exp")
+        o.select_set(o.name == "noren_exp" or o.name.startswith("glow"))   # 🔴 #60：発光面を外すとglbが真っ黒になる
     bpy.context.view_layer.objects.active = eo
     try:
         bpy.ops.export_scene.gltf(filepath=os.path.join(OUT, "model.glb"),

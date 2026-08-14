@@ -324,7 +324,7 @@ if "blend" in modes:
 if "glb" in modes:
     scene.frame_set(STILL_FRAME)
     for o in bpy.data.objects:
-        o.select_set(o.name in ("plate", "panel"))
+        o.select_set(o.name in ("plate", "panel", "KagianaRig"))   # 🔴 #60：リグを外すと回転がglbに乗らない
     bpy.ops.export_scene.gltf(
         filepath=os.path.join(OUT, "monaka_kagiana.glb"),
         export_format='GLB', use_selection=True,
