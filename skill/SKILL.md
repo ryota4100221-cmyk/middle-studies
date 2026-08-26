@@ -56,6 +56,24 @@ description: >
 4. **自己レビュー（必須・最重要）**: test.png を **Readツールで必ず目視**し、下のチェックリストで判定。不合格ならパラメータを直して再テスト。**2〜4周は回るのが正常**（001は4周、002は2周した）
 5. **本番**: `-- still glb blend` → `-- anim` を順に実行（anim の後に **`python3 scripts/motion.py <loop.mp4>`**、
    glb を書き出したら **`python3 scripts/model.py <model.glb>`** を必ず通す＝#59・#60）（M1でスチル約1.5分、アニメ約8〜10分）。**レンダーは必ず同期（フォアグラウンド）で実行し、完了を確認してから次工程へ進む**。バックグラウンド実行にして「完了待ち」でターンを終えてはいけない——ヘッドレス（`claude -p`）ではそこでセッションごと終了し、レンダー子プロセスも巻き添えで死に、公開工程まで到達しない（2026-07-11の003で発生。loop.mp4欠落＋デプロイ未実行のまま exit 0 になった）
+
+   🔴 **2026-08-25／26に再発した（062 SUKETA・2晩連続）。** 「バックグラウンドにするな」だけでは守れないので、
+   **45分の anim をターンを終えずに待つ具体的な手順を置く**（→ PITFALLS #73）。Bashツールは1回600秒で切れるが、
+   `caffeinate -w <PID>` は **sleep ではないので使え、指定PIDの終了まで戻らない**。これを繋いで呼び直す：
+
+   ```bash
+   cd works/NNN_slug && rm -f loop.mp4
+   nohup /Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup \
+         --python script.py -- anim > /tmp/NNN_anim.log 2>&1 < /dev/null &
+   disown                      # 🔴 macOS に setsid は無い
+   PID=$(pgrep -f "script.py -- anim")
+   caffeinate -w $PID          # 600秒で切れたら、同じ行をもう一度呼ぶ（4〜5回で45分）
+   tail -1 /tmp/NNN_anim.log   # 進捗＝`Video append frame NN`
+   ```
+
+   🔴 **完了の判定は「プロセスが消えた」ではなくファイルを測る。** 空の MP4 は48バイトで生成され、
+   `ls` にも `git status` にも普通のファイルとして出る＝**サイズを見るまで気づけない**：
+   `ffprobe -v error -show_entries stream=nb_frames -of default=nw=1 loop.mp4` で **nb_frames=120 を確認する**
 6. **公開**: `works/NNN_slug/` に hero.png / loop.mp4 / model.glb / script.py を配置、`works.json`（🔴 `light_type` を忘れない＝#53）と `LOG.md` と `BACKLOG.md` のチェックを更新、**commit & push だけで公開完了**——GitHub Pages（main/root からの自動配信・Pages有効済み）が反映する。🔴 **Netlifyへのデプロイは廃止（2026-07-23・motion-dictに続き課金源=Netlifyを断つため）。`netlify deploy` は実行しない。**
 7. **記録**: Notion「デザインインプット（自動収集）」DBに1ページ作成
    - data_source: `collection://e7229880-2f1c-456f-873e-f8fe3d6cb36d`
