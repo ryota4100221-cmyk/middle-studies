@@ -98,8 +98,22 @@ while (( attempt <= MAX_ATTEMPTS )); do
     cat "$OUT_TMP" >> "$LOG_FILE"
   fi
 
+  # 🔴 完走の証拠があれば、失敗判定に一切かけずに抜ける（2026-09-10追加）。
+  #    失敗判定は「AIが吐いた本文を grep する」ので、AI自身が経緯として同じ語を書くと誤爆する。
+  #    実際に 2026-09-10 15:03 の回は 075 を完走（MIDDLE_OK・公開もNotionもSlackも済）したのに、
+  #    本文中の「12:38 の catch-up は session limit に当たって中断」を掴んで「usage limit hit」と誤判定し、
+  #    60分寝てから4回目を起動した＝**同じ日に2作目を作らせかけた**。
+  #    成功の判定を失敗の判定より先に置くのが唯一の直し方（順序が仕様）。
+  if (( RC == 0 )) && tail -8 "$OUT_TMP" | grep -q "MIDDLE_OK"; then
+    echo "[$(date)] MIDDLE_OK 確認 — 完走（以降の再試行判定はしない）" >> "$LOG_FILE"
+    break
+  fi
+
   # 利用上限なら1時間待って再試行（上限リセットを跨ぐまで粘る）
-  if grep -qiE "session limit|usage limit|rate limit" "$OUT_TMP"; then
+  # 🔴 2026-09-10：素の "session limit" では上記のとおり本文に誤爆する。
+  #    CLIが出す英文そのものか、**出力の末尾3行**（本当に上限で切れたならそこに出る）だけを見る。
+  if grep -qiE "You.?ve hit your [a-z]+ limit|usage limit reached|rate limit exceeded" "$OUT_TMP" \
+     || tail -n 3 "$OUT_TMP" | grep -qiE "session limit|usage limit|rate limit"; then
     echo "[$(date)] usage limit hit — sleeping 60min then retrying" >> "$LOG_FILE"
     sleep 3600
     (( attempt++ ))
