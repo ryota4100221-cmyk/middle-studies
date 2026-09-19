@@ -80,11 +80,18 @@ description: >
    - 種別: `MIDDLE STUDY`／日付: **必ずJST**（`TZ=Asia/Tokyo date +%F`）
    - 参照URL: `https://middle.lab.monakadesign.com/`（本系・GitHub Pagesが配信・**素のURLを単独で**。github.com のリポURLは禁止。2026-07-23にNetlify→GH Pagesへドメイン移管済＝独自ドメインは維持したままNetlify卒業）
    - 本文: 題・コンセプト・技法メモ（script.pyの冒頭コメントを流用）
-8. **通知**: Slack Bot「mona」のIncoming Webhook経由で **#mona-作品** チャンネルへ1通。**成功でも失敗でも必ず送る**。
-   🔴 **2026-08-19 訂正**：ここには長らく「#mona-日報」と書いてあったが、実際に投げているのは
-   `scripts/daily.sh` L33 の `SLACK_WEBHOOK="${SLACK_WEBHOOK_SAKUHIN}"`＝**#mona-作品**。
-   正典が実装と別のチャンネルを指していた（＝正典ドリフト）。実装が唯一の根拠なので正典の方を実態に合わせた。
-   🔴 本文の末尾に **`python3 scripts/measure.py --trend` の出力3行をそのまま貼る**（#51）。🔴が出ていたら文頭にも書く。失敗時は⚠️＋止まった工程・原因・できた所まで。URLは装飾せず素のまま単独行
+8. **通知**: 🔴 **2026-09-19（棚卸し・Ryota決定）から、完走したときはSlackへ送らない。**
+   作品4本（MIDDLE STUDY／動きの辞典／辞典のFramer同期／3D Daily）がそれぞれ長文を1通ずつ投げていて
+   **1日4通になり、通知そのものが読まれなくなっていた**。毎朝5:55の **作品ダイジェスト**
+   （`~/projects/sakuhin-digest`・AI不使用）が `works.json` を読んで4本を1通に束ねる。
+   **本文を捨てたのではない**——題・コンセプト・技法は Notion（工程7）と作品ページに全文が残る。
+   - 🔴 **送るのは失敗したときだけ**：⚠️＋止まった工程・原因・できた所まで。これは今までどおり必ず送る。
+     （`scripts/daily.sh` の無言失敗ガードとは別に、AI自身が途中で諦めた場合の1通）
+   - 🔴 **`python3 scripts/measure.py --trend` は今までどおり毎作実行する。** 貼り先が変わっただけで、
+     🔴が出た行はダイジェストが自動で拾って先頭に立てる（`digest.py` の `middle_study_drift()`）。
+     **測るのをやめない**＝測っていない軸には必ず寄る（#51・2026-08-17の3D Daily事故と同じ型）。
+   - 通知先は **#mona-作品**（`scripts/daily.sh` L33 の `SLACK_WEBHOOK="${SLACK_WEBHOOK_SAKUHIN}"`）。
+     2026-08-19まで正典が「#mona-日報」と書いていたが実装が唯一の根拠＝実態に合わせてある。
    - 手順: 本文を `{"text": "<本文>"}` 形式のJSONファイル（改行は `\n`、書式はSlack mrkdwn）に書き、`curl -s -X POST -H 'Content-type: application/json' --data @/tmp/slack_payload.json "$SLACK_WEBHOOK"` を実行、レスポンス `ok` を確認
    - 🔴 **Webhook URLをこのファイルに書かない。** `scripts/daily.sh` が環境変数 `SLACK_WEBHOOK` で渡す。**このskill/ は public リポジトリにハードリンクでミラーされる**ため、直書きすると GitHub の Push Protection が push を拒否し、**毎晩のルーティンが公開まで到達できなくなる**（2026-07-15に直書きして実際に停止。7/16に解消）
    - Webhookが2回失敗した時のみ従来のSlack DM `D0AR1NB6N73` にフォールバック
