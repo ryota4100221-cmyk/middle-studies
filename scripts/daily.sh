@@ -91,7 +91,8 @@ attempt=1
 RC=1
 while (( attempt <= MAX_ATTEMPTS )); do
   echo "[$(date)] --- attempt $attempt/$MAX_ATTEMPTS ---" >> "$LOG_FILE"
-  "$CLAUDE_BIN" -p "/blender-middle-study daily" \
+  # II_FORCE=1 のときは AI にも force を渡す（SKILL.md 工程0の「制作日か／今日の分は済んだか」を飛ばす）
+  "$CLAUDE_BIN" -p "/blender-middle-study daily${II_FORCE:+ force}" \
     --model claude-opus-5-5 \
     --dangerously-skip-permissions \
     > "$OUT_TMP" 2>&1
@@ -101,7 +102,7 @@ while (( attempt <= MAX_ATTEMPTS )); do
   # スラッシュコマンド解決に失敗した場合は、SKILL.md を直接読ませるプロンプトで即リトライ
   if grep -q "Unknown command" "$OUT_TMP"; then
     echo "[$(date)] slash command unresolved — retrying with direct skill prompt" >> "$LOG_FILE"
-    "$CLAUDE_BIN" -p "まず「$SKILL_MD」を読み、そこに書かれたパイプラインに厳密に従って daily 実行（今日のMIDDLE STUDIES IIを1作品制作・公開・記録）を完走して。" \
+    "$CLAUDE_BIN" -p "まず「$SKILL_MD」を読み、そこに書かれたパイプラインに厳密に従って daily${II_FORCE:+ force} 実行（今日のMIDDLE STUDIES IIを1作品制作・公開・記録）を完走して。" \
       --model claude-opus-5-5 \
       --dangerously-skip-permissions \
       > "$OUT_TMP" 2>&1

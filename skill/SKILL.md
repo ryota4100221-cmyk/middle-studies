@@ -72,6 +72,7 @@ description: >
 0. **曜日の確認**：`TZ=Asia/Tokyo date +%u` が 1・3・5 以外なら何もせず `MIDDLE_OK` だけ出して終わる
    （launchd は月水金にしか起動しないが、手動・キャッチアップ枠で呼ばれたとき用）。
    今日すでに `ii/works.json` の最終行が今日の日付なら、作らずに `MIDDLE_OK` で終わる。
+   **引数に `force` があるときは、この工程0の2つの判定を両方とも飛ばして作る**（`II_FORCE=1 zsh scripts/daily.sh` で試作するとき。番号は works.json の続き）。
 1. **準備と基準**：`~/projects/middle-studies` で `git pull`。`ii/works.json` の最終行から今回の track（OBJECT/FORM）を決める。
    上の探し先から基準を1件選び、撮る：
    ```bash
