@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MIDDLE STUDIES II — monaka design.</title>
+<meta name="description" content="Objects and forms, three times a week. Built headless in Blender, by code only.">
+<style>
+  :root {
+    --bg: #111110;
+    --fg: #f2f1ee;
+    --mute: #8c8a85;
+    --line: #262523;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "Helvetica Neue", Helvetica, Arial, "Hiragino Kaku Gothic ProN", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  header {
+    padding: 12vh 40px 8vh;
+    border-bottom: 1px solid var(--line);
+    display: grid;
+    grid-template-columns: 1fr minmax(0, 420px);
+    gap: 40px;
+    align-items: end;
+  }
+  .kicker { font-size: 11px; letter-spacing: 0.3em; color: var(--mute); margin-bottom: 24px; }
+  h1 {
+    font-size: clamp(44px, 8.4vw, 128px);
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    line-height: 0.92;
+  }
+  .sub { font-size: 14px; color: var(--mute); line-height: 1.9; letter-spacing: 0.03em; }
+  .sub a { color: var(--fg); }
+  .tracks { margin-top: 20px; display: flex; gap: 24px; font-size: 11px; letter-spacing: 0.2em; }
+  .tracks b { font-weight: 700; color: var(--fg); }
+  main {
+    padding: 40px;
+    columns: 3 360px;
+    column-gap: 40px;
+  }
+  .card { break-inside: avoid; display: block; text-decoration: none; margin-bottom: 64px; }
+  .card video { width: 100%; height: auto; display: block; background: #1b1a19; }
+  .meta { margin-top: 18px; display: flex; justify-content: space-between; font-size: 11px; letter-spacing: 0.22em; color: var(--mute); }
+  .card h2 { margin-top: 10px; font-size: 24px; font-weight: 700; letter-spacing: -0.01em; }
+  .card h2 span { font-size: 13px; color: var(--mute); font-weight: 400; margin-left: 10px; letter-spacing: 0.04em; }
+  .card p { margin-top: 12px; font-size: 14px; line-height: 1.8; color: var(--mute); }
+  .empty { padding: 20vh 0; font-size: 14px; color: var(--mute); line-height: 2; columns: 1; }
+  footer { padding: 10vh 40px; border-top: 1px solid var(--line); font-size: 12px; color: var(--mute); line-height: 2; }
+  footer strong { color: var(--fg); }
+  @media (max-width: 720px) {
+    header { grid-template-columns: 1fr; padding: 10vh 16px 6vh; gap: 28px; }
+    main { padding: 24px 16px; columns: 1; }
+    footer { padding: 8vh 16px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="kicker">MIDDLE STUDIES II</div>
+    <h1>Objects<br>and forms.</h1>
+  </div>
+  <div>
+    <p class="sub">
+      週に3本、Blenderをコードだけで動かして作る3Dの習作。
+      毎回、実在の作品を1つ基準に置き、並べて見劣りしないところまで詰めてから出しています。
+      色も光も判型も、作品ごとに決め直します。<br>
+      <a href="../">第1期 MIDDLE STUDIES（001–089）</a>
+    </p>
+    <div class="tracks"><span><b>OBJECT</b> 使えるもの</span><span><b>FORM</b> かたちと光</span></div>
+  </div>
+</header>
+<main id="grid"></main>
+<footer>
+  <strong>monaka design.</strong><br>
+  Procedural 3D studies — built headless in Blender, by code only.<br>
+  We wrap your vision in design.
+</footer>
+<script>
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+fetch('works.json')
+  .then(r => r.json())
+  .then(works => {
+    const grid = document.getElementById('grid');
+    if (!works.length) {
+      grid.innerHTML = '<p class="empty">第1作は準備中です。</p>';
+      return;
+    }
+    works.slice().reverse().forEach(w => {
+      const dir = `works/${w.id}_${w.slug}`;
+      const a = document.createElement('a');
+      a.className = 'card';
+      a.href = `${dir}/hero.png`;
+      a.innerHTML = `
+        <video src="${dir}/loop.mp4" poster="${dir}/hero.png" autoplay loop muted playsinline></video>
+        <div class="meta"><span>II / ${esc(w.id)} — ${esc(w.track)}</span><span>${esc(w.date)}</span></div>
+        <h2>${esc(w.title)}<span>${esc(w.title_ja)}</span></h2>
+        <p>${esc(w.concept)}</p>`;
+      grid.appendChild(a);
+    });
+  });
+</script>
+</body>
+</html>

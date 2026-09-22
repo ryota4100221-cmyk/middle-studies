@@ -1,6 +1,7 @@
 #!/bin/zsh
-# MIDDLE STUDIES 日次制作ジョブ（launchd: com.monaka.middle-study が毎日 2:00 JST に起動）
+# MIDDLE STUDIES II 制作ジョブ（launchd: com.monaka.middle-study が 月・水・金 2:00 JST に起動／4:30 がキャッチアップ）
 # Claude Code をヘッドレスで起動し、スキル blender-middle-study の手順で1作品を制作・公開する。
+# 2026-09-23：第1期（毎日・001〜089）を完結し、第2期（週3本・ii/）へ移行（Ryota決定）。
 #
 # 注意: launchd起動のプロセスはmacOSのTCC制限でGoogle Drive(CloudStorage)配下を読めない。
 # そのためスキル本体は ~/projects/middle-studies/skill/（= ~/.claude/skills/blender-middle-study への
@@ -54,6 +55,15 @@ if grep -q "=== done (exit 0" "$LOG_FILE" 2>/dev/null; then
   exit 0
 fi
 
+# 制作日ガード（2026-09-23）：月・水・金（JST）以外は何もしない。
+# launchd は月水金しか起動しないが、手で叩かれたときに制作日でない日に1本作らないため。
+# 意図して作らせたいときは II_FORCE=1 を付ける。
+DOW="$(TZ=Asia/Tokyo date +%u)"
+if [[ "$DOW" != (1|3|5) && -z "${II_FORCE:-}" ]]; then
+  echo "[$(date)] not a production day (dow=$DOW) — skip" >> "$LOG_FILE"
+  exit 0
+fi
+
 # 二重起動ガード（前日の実行が長引いた場合など）
 LOCK="/tmp/middle-study.lock"
 if ! mkdir "$LOCK" 2>/dev/null; then
@@ -81,7 +91,7 @@ RC=1
 while (( attempt <= MAX_ATTEMPTS )); do
   echo "[$(date)] --- attempt $attempt/$MAX_ATTEMPTS ---" >> "$LOG_FILE"
   "$CLAUDE_BIN" -p "/blender-middle-study daily" \
-    --model claude-opus-5 \
+    --model claude-opus-5-5 \
     --dangerously-skip-permissions \
     > "$OUT_TMP" 2>&1
   RC=$?
@@ -90,8 +100,8 @@ while (( attempt <= MAX_ATTEMPTS )); do
   # スラッシュコマンド解決に失敗した場合は、SKILL.md を直接読ませるプロンプトで即リトライ
   if grep -q "Unknown command" "$OUT_TMP"; then
     echo "[$(date)] slash command unresolved — retrying with direct skill prompt" >> "$LOG_FILE"
-    "$CLAUDE_BIN" -p "まず「$SKILL_MD」を読み、そこに書かれたパイプラインに厳密に従って daily 実行（今日のMIDDLE STUDYを1作品制作・公開・記録）を完走して。" \
-      --model claude-opus-5 \
+    "$CLAUDE_BIN" -p "まず「$SKILL_MD」を読み、そこに書かれたパイプラインに厳密に従って daily 実行（今日のMIDDLE STUDIES IIを1作品制作・公開・記録）を完走して。" \
+      --model claude-opus-5-5 \
       --dangerously-skip-permissions \
       > "$OUT_TMP" 2>&1
     RC=$?
@@ -148,7 +158,7 @@ done
 # 無言失敗ガード（スクリプト層）：セッション内のAIが送る通知は、セッションが死ぬと飛ばない。
 # exitが非0のまま終わったら、このシェルから必ず1通出す。
 if (( RC != 0 )); then
-  notify "🔴 *MIDDLE STUDY（$(TZ=Asia/Tokyo date +%F)）を完走できませんでした*
+  notify "🔴 *MIDDLE STUDIES II（$(TZ=Asia/Tokyo date +%F)）を完走できませんでした*
 原因：claude が exit $RC で終了（$attempt 回試行）
 ログ末尾：
 \`\`\`$(tail -n 6 "$LOG_FILE")\`\`\`

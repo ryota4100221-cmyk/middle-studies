@@ -1,0 +1,342 @@
+#!/usr/bin/env python3
+# =============================================================
+# MIDDLE STUDIES II — 出す前の機械点検（2026-09-23 新設）
+#
+#   python3 ii/scripts/check.py hero    <hero.png>              # 露出（白飛び・黒つぶれ）とコントラスト
+#   python3 ii/scripts/check.py variety <hero.png> [--id NNN]   # 直近6作との画像距離
+#   python3 ii/scripts/check.py look    <look.json> [--id NNN]  # 直近3作とルックの軸が重なっていないか
+#   python3 ii/scripts/check.py motion  <loop.mp4>              # 動き量・ループの閉じ・静止率
+#   python3 ii/scripts/check.py glb     <model.glb>             # 容量・動き・三角形数
+#   python3 ii/scripts/check.py review  <作品フォルダ>            # 自己レビューが3周以上回っているか
+#   python3 ii/scripts/check.py all     <作品フォルダ>            # 上を全部（公開前に必ずこれを通す）
+#   python3 ii/scripts/check.py trend                           # 直近の作品の🔴だけを出す（作品ダイジェストが読む）
+#
+# 🔴 なぜ在るか：第1期（MIDDLE STUDIES 001〜089）は「ライムが光に見えるか」を測る道具
+#    （scripts/measure.py）しか持っていなかった。第2期は色も舞台も毎回変わるので、それは使えない。
+#    代わりに**どんな見た目でも成り立つもの**だけを測る＝露出・違い・動き・容量・周回数。
+#    良し悪しの審美は測らない（それは基準の作品と並べて目で見る＝SKILL.md 工程4）。
+#
+# 🔴 数字を添えないガードは静かにオフになる。🔴 が0件でも必ず件数を出す。
+# 終了コード：🔴 が1件でもあれば 1。
+# =============================================================
+import sys, os, json, glob, subprocess, tempfile, re
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+II = os.path.normpath(os.path.join(HERE, ".."))
+sys.path.insert(0, os.path.normpath(os.path.join(II, "..", "scripts")))
+
+from PIL import Image  # noqa: E402
+
+WORKS_JSON = os.path.join(II, "works.json")
+WORKS_DIR = os.path.join(II, "works")
+
+# --- 帯 ---
+# 画像距離は 3d-daily の variety-check と同じ式・同じ閾値（Day001〜048で較正済み）。
+# 第2期の実測が10作たまったら、ここを実測で引き直す（→ SKILL.md「帯の引き直し」）。
+DIST_FAIL = 0.06       # これ未満は同じ絵 → 🔴
+DIST_JUSTIFY = 0.14    # 0.06〜0.14 は works.json の `sameish` に理由が要る（無ければ🔴）
+VARIETY_N = 6
+# ルックの軸。直近3作のどれかと LOOK_FAIL 軸以上が一致したら🔴（色だけ変えて同じ絵、を止める）
+LOOK_AXES = ["track", "palette_family", "background", "lighting", "lens", "aspect", "material"]
+LOOK_FAIL = 5
+LOOK_N = 3
+# 露出（被写体ではなく画面全体で見る。意図した白地・黒地は works.json の look.background で分かる）
+CLIP_HI = 2.0          # %。RGB全チャンネル254以上の画素。これを超えたら白飛び
+CRUSH_HI = 25.0        # %。輝度3以下の画素。黒地の作品でも25%を超えたら被写体が沈んでいる疑い
+CONTRAST_LO = 0.10     # 輝度の標準偏差/255。これ未満は眠い（全面グレー）
+# 動き（第1期 motion.py の基準期001〜030の帯を流用。ライムに依存する「光の振れ」だけ外した）
+MOTION_MIN = 0.62
+CLOSE_MAX = 2.2
+STILL_MAX = 0.20
+N_FRAMES = 24
+# glb
+SIZE_HI = 8.0          # MB
+# 自己レビュー
+REVIEW_MIN = 3
+
+
+def load_works():
+    try:
+        return json.load(open(WORKS_JSON))
+    except Exception:
+        return []
+
+
+def work_dir(w):
+    return os.path.join(WORKS_DIR, f"{w['id']}_{w['slug']}")
+
+
+def prior_works(wid, n):
+    """wid より前の作品を新しい順に n 件。wid が None なら全体の末尾 n 件。"""
+    ws = load_works()
+    if wid:
+        ws = [w for w in ws if w["id"] < wid]
+    return list(reversed(ws))[:n]
+
+
+# ---------------------------------------------------------------- hero
+def luma(r, g, b):
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def hero(path):
+    ng, lines = [], []
+    im = Image.open(path).convert("RGB")
+    w, h = im.size
+    sm = im.resize((min(w, 800), int(h * min(w, 800) / w)))
+    px = list(sm.getdata())
+    n = len(px)
+    clip = sum(1 for r, g, b in px if r >= 254 and g >= 254 and b >= 254) / n * 100
+    lum = [luma(*p) for p in px]
+    crush = sum(1 for l in lum if l <= 3) / n * 100
+    mean = sum(lum) / n
+    std = (sum((l - mean) ** 2 for l in lum) / n) ** 0.5 / 255
+    lines.append(f"  hero {w}×{h}  白飛び {clip:.2f}%  黒つぶれ {crush:.1f}%  平均輝度 {mean:.0f}  コントラスト {std:.3f}")
+    if max(w, h) < 2400:
+        ng.append(f"hero の長辺 {max(w, h)}px（2400未満＝第2期の納品寸法に届いていない）")
+    if clip > CLIP_HI:
+        ng.append(f"白飛び {clip:.2f}%（>{CLIP_HI}%）")
+    if crush > CRUSH_HI:
+        ng.append(f"黒つぶれ {crush:.1f}%（>{CRUSH_HI}%）")
+    if std < CONTRAST_LO:
+        ng.append(f"コントラスト {std:.3f}（<{CONTRAST_LO}＝眠い）")
+    return ng, lines
+
+
+# ---------------------------------------------------------------- variety
+def signature(path):
+    im = Image.open(path).convert("RGB")
+    im.thumbnail((400, 400))
+    w, h = im.size
+    px = im.load()
+    G = 8
+    cell = [0.0] * (G * G * 3)
+    cnt = [0] * (G * G)
+    hist = [0.0] * 16
+    for y in range(h):
+        gy = min(G - 1, y * G // h)
+        for x in range(w):
+            gx = min(G - 1, x * G // w)
+            r, g, b = px[x, y]
+            c = (gy * G + gx) * 3
+            cell[c] += r; cell[c + 1] += g; cell[c + 2] += b
+            cnt[gy * G + gx] += 1
+            hist[min(15, int(luma(r, g, b) / 16))] += 1
+    for i in range(G * G):
+        k = cnt[i] or 1
+        for j in range(3):
+            cell[i * 3 + j] /= k * 255
+    tot = w * h
+    hist = [v / tot for v in hist]
+    return cell, hist
+
+
+def distance(a, b):
+    dc = sum(abs(x - y) for x, y in zip(a[0], b[0])) / len(a[0])
+    dh = sum(abs(x - y) for x, y in zip(a[1], b[1])) / 2
+    return 0.5 * dc + 0.5 * dh
+
+
+def variety(path, wid=None):
+    ng, lines = [], []
+    me = signature(path)
+    prev = prior_works(wid, VARIETY_N)
+    if not prev:
+        lines.append("  画像距離: 比較対象なし（第2期の1作目）")
+        return ng, lines
+    sameish = {}
+    for w in load_works():
+        if w["id"] == wid and w.get("sameish"):
+            sameish = w["sameish"] if isinstance(w["sameish"], dict) else {"*": w["sameish"]}
+    ds = []
+    for w in prev:
+        p = os.path.join(work_dir(w), "hero.png")
+        if not os.path.exists(p):
+            continue
+        d = distance(me, signature(p))
+        ds.append((w["id"], d))
+        if d < DIST_FAIL:
+            ng.append(f"{w['id']} との画像距離 {d:.3f}（<{DIST_FAIL}＝同じ絵）")
+        elif d < DIST_JUSTIFY and not (sameish.get(w["id"]) or sameish.get("*")):
+            ng.append(f"{w['id']} との画像距離 {d:.3f}（{DIST_FAIL}〜{DIST_JUSTIFY}：works.json の sameish に理由が要る）")
+    lines.append("  画像距離: " + "  ".join(f"{i} {d:.3f}" for i, d in ds))
+    return ng, lines
+
+
+# ---------------------------------------------------------------- look
+def look(src, wid=None):
+    ng, lines = [], []
+    lk = json.load(open(src)) if isinstance(src, str) else src
+    lk = lk.get("look", lk)
+    missing = [a for a in LOOK_AXES if not lk.get(a)]
+    if missing:
+        ng.append("look に空の軸: " + ", ".join(missing))
+    for w in prior_works(wid, LOOK_N):
+        o = w.get("look", {})
+        same = [a for a in LOOK_AXES if lk.get(a) and lk.get(a) == o.get(a)]
+        lines.append(f"  ルック vs {w['id']}: 一致 {len(same)}/{len(LOOK_AXES)} {same}")
+        if len(same) >= LOOK_FAIL:
+            ng.append(f"{w['id']} とルックが {len(same)} 軸一致（≥{LOOK_FAIL}）：{same}")
+    # 交互の規則（OBJECT → FORM → OBJECT …）
+    prev = prior_works(wid, 1)
+    if prev and lk.get("track") and prev[0].get("look", {}).get("track") == lk.get("track"):
+        ng.append(f"track が前作と同じ {lk.get('track')}（OBJECT と FORM を交互に出す）")
+    if not lines:
+        lines.append("  ルック: 比較対象なし")
+    return ng, lines
+
+
+# ---------------------------------------------------------------- motion
+def frames(path, n=N_FRAMES):
+    tmp = tempfile.mkdtemp()
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=nb_frames,duration",
+                        "-of", "json", path], capture_output=True, text=True)
+    st = json.loads(r.stdout or "{}").get("streams", [{}])[0]
+    nb = int(st.get("nb_frames", 0) or 0)
+    dur = float(st.get("duration", 0) or 0)
+    if nb < 2 or dur <= 0:
+        return nb, dur, []
+    fps = nb / dur
+    subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-vf", f"fps={n / dur:.6f},scale=180:-2",
+                    os.path.join(tmp, "f%03d.png")], capture_output=True)
+    fs = sorted(glob.glob(os.path.join(tmp, "f*.png")))
+    # 最終フレームを別に抜く（ループの閉じを見るため）
+    last = os.path.join(tmp, "last.png")
+    subprocess.run(["ffmpeg", "-v", "error", "-sseof", f"-{1.5 / fps:.4f}", "-i", path,
+                    "-frames:v", "1", "-vf", "scale=180:-2", last], capture_output=True)
+    ims = [Image.open(f).convert("L") for f in fs]
+    if os.path.exists(last):
+        ims.append(Image.open(last).convert("L"))
+    return nb, dur, ims
+
+
+def diff(a, b):
+    pa, pb = list(a.getdata()), list(b.getdata())
+    return sum(abs(x - y) for x, y in zip(pa, pb)) / len(pa)
+
+
+def motion(path):
+    ng, lines = [], []
+    nb, dur, ims = frames(path)
+    if len(ims) < 4:
+        ng.append(f"loop.mp4 が読めない（nb_frames={nb}）")
+        return ng, lines
+    seq, last = ims[:-1], ims[-1]
+    ds = [diff(seq[i], seq[i + 1]) for i in range(len(seq) - 1)]
+    med = sorted(ds)[len(ds) // 2]
+    around = (ds[0] + ds[-1]) / 2 or 1e-6
+    close = diff(last, seq[0]) / around
+    still = sum(1 for d in ds if d < med * 0.2) / len(ds)
+    lines.append(f"  loop {nb}f/{dur:.1f}s  動き量 {med:.2f}  閉じ {close:.2f}  静止率 {still * 100:.0f}%")
+    if dur < 5.0 or dur > 8.5:
+        ng.append(f"尺 {dur:.1f}s（5〜8秒）")
+    if med < MOTION_MIN:
+        ng.append(f"動き量 {med:.2f}（<{MOTION_MIN}＝ほぼ動いていない）")
+    if close > CLOSE_MAX:
+        ng.append(f"ループの閉じ {close:.2f}（>{CLOSE_MAX}＝継ぎ目で飛ぶ）")
+    if still > STILL_MAX:
+        ng.append(f"静止率 {still * 100:.0f}%（>{STILL_MAX * 100:.0f}%）")
+    return ng, lines
+
+
+# ---------------------------------------------------------------- glb
+def glb(path):
+    from model import read_glb  # 第1期の読み取り器をそのまま使う
+    ng, lines = [], []
+    js, _ = read_glb(path)
+    if not js:
+        return [f"glb が読めない: {path}"], lines
+    mb = os.path.getsize(path) / 1048576
+    anim = bool(js.get("animations")) or any("targets" in p for m in js.get("meshes", []) for p in m.get("primitives", []))
+    lines.append(f"  glb {mb:.1f}MB  動き {'あり' if anim else 'なし'}  マテリアル {len(js.get('materials', []))}")
+    if mb > SIZE_HI:
+        ng.append(f"glb {mb:.1f}MB（>{SIZE_HI}MB）")
+    if not anim:
+        ng.append("glb に動きが乗っていない")
+    return ng, lines
+
+
+# ---------------------------------------------------------------- review
+def review(d):
+    ng, lines = [], []
+    p = os.path.join(d, "REVIEW.md")
+    if not os.path.exists(p):
+        return ["REVIEW.md が無い（自己レビューの記録が無い）"], lines
+    txt = open(p, encoding="utf-8").read()
+    rounds = re.findall(r"^##\s*round\s*(\d+)", txt, re.M | re.I)
+    has_ref = bool(re.search(r"^基準[:：]\s*\S+", txt, re.M))
+    lines.append(f"  自己レビュー {len(rounds)}周  基準の記載 {'あり' if has_ref else 'なし'}")
+    if len(rounds) < REVIEW_MIN:
+        ng.append(f"自己レビュー {len(rounds)}周（<{REVIEW_MIN}）")
+    if not has_ref:
+        ng.append("REVIEW.md に「基準: <URL>」の行が無い（何と並べて判定したか分からない）")
+    return ng, lines
+
+
+# ---------------------------------------------------------------- all / trend
+def all_checks(d):
+    d = os.path.abspath(d)
+    wid = os.path.basename(d).split("_")[0]
+    me = next((w for w in load_works() if w["id"] == wid), None)
+    ng, lines = [], []
+    def run(fn, *a):
+        n, l = fn(*a); ng.extend(n); lines.extend(l)
+    for f, fn in (("hero.png", hero), ("loop.mp4", motion), ("model.glb", glb)):
+        p = os.path.join(d, f)
+        if os.path.exists(p):
+            run(fn, p)
+        else:
+            ng.append(f"{f} が無い")
+    if os.path.exists(os.path.join(d, "hero.png")):
+        run(variety, os.path.join(d, "hero.png"), wid)
+    if me:
+        run(look, me, wid)
+    else:
+        ng.append(f"works.json に {wid} の行が無い（look を照合できない）")
+    run(review, d)
+    return ng, lines
+
+
+def trend():
+    out = []
+    for w in list(reversed(load_works()))[:3]:
+        d = work_dir(w)
+        if not os.path.isdir(d):
+            continue
+        ng, _ = all_checks(d)
+        for n in ng:
+            out.append(f"🔴 II {w['id']} {w['title']}: {n}")
+    return out
+
+
+def report(ng, lines, label):
+    for l in lines:
+        print(l)
+    print(f"{label}: 🔴 {len(ng)}件")
+    for n in ng:
+        print(f"  🔴 {n}")
+    return 1 if ng else 0
+
+
+def main():
+    a = sys.argv[1:]
+    if not a:
+        print(__doc__ or open(__file__).read().split("# ===")[1]); return 2
+    cmd = a[0]
+    wid = a[a.index("--id") + 1] if "--id" in a else None
+    if cmd == "trend":
+        for l in trend():
+            print(l)
+        return 0
+    fn = {"hero": hero, "motion": motion, "glb": glb, "review": review, "all": all_checks}.get(cmd)
+    if fn:
+        return report(*fn(a[1]), cmd)
+    if cmd == "variety":
+        return report(*variety(a[1], wid), cmd)
+    if cmd == "look":
+        return report(*look(a[1], wid), cmd)
+    print(f"unknown: {cmd}"); return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
