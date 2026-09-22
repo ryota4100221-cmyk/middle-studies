@@ -50,7 +50,8 @@ mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/$(TZ=Asia/Tokyo date +%F).log"
 
 # 成功ガード：今日すでに完走していたら何もしない（キャッチアップ枠9:00が重複制作しないため）
-if grep -q "=== done (exit 0" "$LOG_FILE" 2>/dev/null; then
+# II_FORCE=1 のときは飛ばす（2026-09-23：第1期の089が同日朝に完走済みの日に、IIの試作を手で走らせるため）
+if [[ -z "${II_FORCE:-}" ]] && grep -q "=== done (exit 0" "$LOG_FILE" 2>/dev/null; then
   echo "[$(date)] already succeeded today — skip (catch-up slot)" >> "$LOG_FILE"
   exit 0
 fi
