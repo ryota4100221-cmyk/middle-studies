@@ -7,7 +7,7 @@
 #   python3 ii/scripts/check.py look    <look.json> [--id NNN]  # 直近3作とルックの軸が重なっていないか
 #   python3 ii/scripts/check.py motion  <loop.mp4>              # 動き量・ループの閉じ・静止率
 #   python3 ii/scripts/check.py glb     <model.glb>             # 容量・動き・三角形数
-#   python3 ii/scripts/check.py review  <作品フォルダ>            # 自己レビューが3周以上回っているか
+#   python3 ii/scripts/check.py review  <作品フォルダ>            # 自己レビューの周回・testhero・拡大での確認
 #   python3 ii/scripts/check.py all     <作品フォルダ>            # 上を全部（公開前に必ずこれを通す）
 #   python3 ii/scripts/check.py trend                           # 直近の作品の🔴だけを出す（作品ダイジェストが読む）
 #
@@ -52,7 +52,9 @@ N_FRAMES = 24
 # glb
 SIZE_HI = 8.0          # MB
 # 自己レビュー
-REVIEW_MIN = 3
+REVIEW_MIN = 6          # 2026-09-23 3→6（II 001 は1周20秒で、6周が27分で終わった＝3周は歯止めにならない）
+TESTHERO_MIN = 2        # 長辺1600で細部を見た周
+RULES_V2_FROM = "002"   # 上の2つと「拡大:」は 002 から（001 は旧規則の3周で作って公開済み。遡って🔴にするとダイジェストが毎日鳴る）
 
 
 def load_works():
@@ -265,9 +267,25 @@ def review(d):
     txt = open(p, encoding="utf-8").read()
     rounds = re.findall(r"^##\s*round\s*(\d+)", txt, re.M | re.I)
     has_ref = bool(re.search(r"^基準[:：]\s*\S+", txt, re.M))
-    lines.append(f"  自己レビュー {len(rounds)}周  基準の記載 {'あり' if has_ref else 'なし'}")
+    heads = re.findall(r"^##\s*round\s*\d+.*$", txt, re.M | re.I)
+    hero_rounds = sum(1 for h in heads if "testhero" in h.lower())
+    crop_lines = len(re.findall(r"^拡大[:：]", txt, re.M))
+    lines.append(f"  自己レビュー {len(rounds)}周（うちtesthero {hero_rounds}周）  拡大での確認 {crop_lines}件  基準の記載 {'あり' if has_ref else 'なし'}")
+    wid = os.path.basename(os.path.abspath(d)).split("_")[0]
+    if wid < RULES_V2_FROM:
+        if len(rounds) < 3:
+            ng.append(f"自己レビュー {len(rounds)}周（<3・旧規則）")
+        if not has_ref:
+            ng.append("REVIEW.md に「基準: <URL>」の行が無い")
+        return ng, lines
     if len(rounds) < REVIEW_MIN:
         ng.append(f"自己レビュー {len(rounds)}周（<{REVIEW_MIN}）")
+    if hero_rounds < TESTHERO_MIN:
+        ng.append(f"testhero の周 {hero_rounds}（<{TESTHERO_MIN}）＝細部を見ずに止めている")
+    if heads and "testhero" not in heads[-1].lower():
+        ng.append("最後の周が testhero ではない（最終判定は長辺1600で見る）")
+    if crop_lines < 2:
+        ng.append(f"「拡大:」の行が {crop_lines} 件（<2）＝見劣りしないと書いた箇所を拡大して確かめていない")
     if not has_ref:
         ng.append("REVIEW.md に「基準: <URL>」の行が無い（何と並べて判定したか分からない）")
     return ng, lines
