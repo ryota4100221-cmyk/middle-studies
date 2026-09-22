@@ -1,1 +1,27 @@
-[]
+[
+  {
+    "id": "001",
+    "slug": "flask",
+    "title": "FLASK",
+    "title_ja": "水筒",
+    "date": "2026-09-23",
+    "track": "OBJECT",
+    "concept": "テラコッタとサンドの真空断熱ボトル2本。左奥の窓光1灯で胴に左→右の階調を作り、奥の1本をボカして主役を立てた。見どころはキャップ下の真鍮の細帯と、天板に長く伸びる影。",
+    "source": {
+      "url": "https://www.balmuda.com/jp/pot/img/og/index.jpg",
+      "took": "光：左奥の大きな窓1灯＋右の消し板で片側を落とす / 素材：粉体塗装のマットな肌 / 構図：天板すれすれの望遠・主役左・脇役を右奥にボカす・上半分を空ける / 色：中性グレーの天板と壁＋主役の濃色＋金の差し色1点"
+    },
+    "look": {
+      "track": "OBJECT",
+      "palette_family": "warm-neutral",
+      "background": "floor-wall",
+      "lighting": "softbox",
+      "lens": "tele",
+      "aspect": "16:9",
+      "material": "powder-coat"
+    },
+    "review_rounds": 6,
+    "loop_seconds": 6,
+    "use": "雑貨・D2C・ライフスタイル系のFVに。上半分の壁にコピー、右の天板にCTAを置ける"
+  }
+]
