@@ -23,5 +23,30 @@
     "review_rounds": 6,
     "loop_seconds": 6,
     "use": "雑貨・D2C・ライフスタイル系のFVに。上半分の壁にコピー、右の天板にCTAを置ける"
+  },
+  {
+    "id": "002",
+    "slug": "reed",
+    "title": "REED",
+    "title_ja": "型板",
+    "date": "2026-09-23",
+    "track": "FORM",
+    "concept": "浅いリブの型板ガラスをS字に曲げた1枚の衝立と、ガラスの粒1つ。奥から差す細い光が板を抜け、リブ1本ずつが床にV字の白い集光を落とす。見どころは影の中を走る光の線と、粒の真下の白い焦点。光の向きがゆっくり振れ、集光の線が床を流れる。",
+    "source": {
+      "url": "https://mir-s3-cdn-cf.behance.net/project_modules/1400/7bb04e110661009.5ff3430ba1437.png",
+      "took": "光：奥から差す硬い光1灯＝ガラスを抜けた集光が影の代わりになる / 素材：透明ガラス・縁に薄い分散 / 構図：奥の壁→上段→下段の段差を斜めに見下ろす縦長 / 色：灰みの青の単色グラデ＋白い集光だけ"
+    },
+    "look": {
+      "track": "FORM",
+      "palette_family": "cool-mono",
+      "background": "floor-wall",
+      "lighting": "hard-sun",
+      "lens": "normal",
+      "aspect": "4:5",
+      "material": "glass"
+    },
+    "review_rounds": 23,
+    "loop_seconds": 6,
+    "use": "FVの背景・区切りビジュアルに。右下の空いた床にコピーを置ける。ガラス・透明感・光を扱う美容/建築/テック系に"
   }
 ]
