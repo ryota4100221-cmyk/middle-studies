@@ -2,7 +2,7 @@
 # MIDDLE STUDIES II — 雛形（2026-09-23）
 #
 #   Blender --background --factory-startup --python script.py -- <modes>
-#   modes: test / testhero / still / anim / glb / phases   （省略時 test）
+#   modes: test / testhero / still / anim / glb / shots   （省略時 test）
 #
 # 🔴 これは「インフラ」の雛形であって、見た目の雛形ではない。
 #    第1期の雛形（白床・3色・85mm・キャプション・4灯）は**持ち込まない**。
@@ -30,9 +30,8 @@ LOOK = dict(
     exposure=-0.6,
     bg=(0.24, 0.24, 0.38),
 )
-FPS, SECONDS = 24, 7
-N_FRAMES = FPS * SECONDS
-STILL_FRAME = 1
+FPS = 24
+# 尺（N_FRAMES）と静止画のフレーム（STILL_FRAME）は、下の「動画」節の SHOTS から決まる
 
 def res(long_side):
     a, b = LOOK["aspect"]
@@ -162,8 +161,11 @@ def front_height(X, Y):
     return H
 
 
-# 動き：布の下を通る「うねり」。cos/sin の2枚のシェイプキーを cos(2πt)/sin(2πt) で混ぜる＝進行波で、t=1 で閉じる
-WAVES_BACK = [((1.0, 1.6), 0.07, 1), ((-1.5, 0.8), 0.04, 2)]   # (波数ベクトル, 振幅, 1ループの周回数)
+# 動き：布の下を通る「うねり」。cos/sin の2枚のシェイプキーを cos(2πt)/sin(2πt) で混ぜる＝進行波
+# （キーは下の「動画」節で打つ。旧版の7秒ループと同じ速さで、最後のフレームが hero の位相に来る）
+WAVE_PERIOD = 7 * 24   # 周回数1の波が1周するフレーム数
+WAVE_KEYS = []
+WAVES_BACK = [((1.0, 1.6), 0.07, 1), ((-1.5, 0.8), 0.04, 2)]   # (波数ベクトル, 振幅, WAVE_PERIOD あたりの周回数)
 WAVES_FRONT = [((1.6, 0.9), 0.05, 1)]
 
 
@@ -195,12 +197,7 @@ def build_sheet(name, fn, waves, xr, yr, nx, ny, mat):
             sk.slider_min, sk.slider_max = -1, 1
             co = verts.copy(); co[:, 2] += (env * f(ph)).ravel()
             sk.data.foreach_set("co", co.ravel())
-            keys.append((sk, tag, cyc))
-    for fr in range(1, N_FRAMES + 2):
-        t = (fr - 1) / N_FRAMES
-        for sk, tag, cyc in keys:
-            sk.value = math.cos(2 * math.pi * cyc * t) if tag == "c" else math.sin(2 * math.pi * cyc * t)
-            sk.keyframe_insert("value", frame=fr)
+            WAVE_KEYS.append((sk, tag, cyc))
     return ob
 
 
@@ -277,6 +274,114 @@ cd.dof.focus_distance = (Vector((0.3, 0.4, 0.45)) - cam.location).length
 cd.dof.aperture_fstop = LOOK["fstop"]
 scene.camera = cam
 
+# ------------------------------------------------------------- 動画＝プロダクトフィルム（2026-09-24 作り直し）
+# 旧版は7秒の据え置き1カット（うねりが通るだけ）。hero・ルック・造形はそのままに、カメラを4カットに割り直す。
+# 物の動き：うねりは旧版と同じ速さで通り続け、最後のフレームで hero と同じ位相に来る
+HERO_CAM, HERO_AIM = cam.location.copy(), AIM.copy()
+HERO_FOCUS = Vector((0.3, 0.4, 0.45))
+
+
+def ease(t):                  # 加減速（sine in-out）
+    return 0.5 - 0.5 * math.cos(math.pi * max(0.0, min(1.0, t)))
+
+
+def ease_out(t):              # 動きながら入って止まる（決めのカット向き）
+    t = max(0.0, min(1.0, t))
+    return 1 - (1 - t) ** 3
+
+
+def lerp(a, b, t):
+    return Vector(a).lerp(Vector(b), t)
+
+
+def orbit(center, radius, height, deg):   # 被写体まわりの弧（deg=0 が正面 -Y）
+    r = math.radians(deg)
+    return Vector((center[0] + radius * math.sin(r), center[1] - radius * math.cos(r), height))
+
+
+def focus_ray(loc, tgt, lens, u, v, want=None):
+    """画面の (u, v)（中心0・幅/高さ±0.5）を通る光線で、当たった面までのピント距離（光軸方向）を測る。
+    want を渡すと、画面の縦線 u 上で v から下へ走査して、最初に want の布に当たった所（＝稜線の頂）を測る"""
+    dg = bpy.context.evaluated_depsgraph_get()
+    loc, tgt = Vector(loc), Vector(tgt)
+    q = (tgt - loc).to_track_quat('-Z', 'Y')
+    fwd, right, up = q @ Vector((0, 0, -1)), q @ Vector((1, 0, 0)), q @ Vector((0, 1, 0))
+    a, b = LOOK["aspect"]
+    while True:
+        d = (fwd * lens + right * u * 36 + up * v * 36 * b / a).normalized()
+        hit, pt, _, _, ob, _ = scene.ray_cast(dg, loc, d)
+        if hit and (want is None or ob.name == want):
+            return (pt - loc).dot(fwd)
+        v -= 0.01
+        if v < -0.5:
+            return (tgt - loc).length
+
+
+# 各カット：cam(t)→(カメラ位置, 注視点, レンズmm, f値, ピント距離 or None=注視点まで / "hero")
+MAC_A, MAC_B = Vector((-0.60, 0.02, 0.45)), Vector((-0.28, 0.06, 0.54))   # 稜線に直交して見る。頂の高さに沿って右上へ滑る
+MAC_AIM = Vector((0.05, 0.88, -0.24))   # カメラからの相対（頂の少し上＝上に奥の紫が入る）
+MAC_F0 = focus_ray(MAC_A, MAC_A + MAC_AIM, 135, 0.0, -0.40)                 # 手前の綾目
+MAC_F1 = focus_ray(MAC_B, MAC_B + MAC_AIM, 135, 0.0, 0.5, "front")          # 稜線の頂
+print(">> macro focus %.2f → %.2f" % (MAC_F0, MAC_F1))
+SHOTS = [
+    dict(sec=3.0, kind="マクロ",     # 寄り：藍の稜線の頂を正面やや上から見て右へ滑る。ピントを手前の綾目から頂へ送る
+         cam=lambda t: (lerp(MAC_A, MAC_B, ease(t)), lerp(MAC_A, MAC_B, ease(t)) + MAC_AIM, 135, 4.0,
+                        MAC_F0 + (MAC_F1 - MAC_F0) * ease(t))),
+    dict(sec=2.5, kind="光の走り",   # 中：稜線を越えて奥の紫の起伏を見下ろす。キーが左から回り、膨らみの頂の光が横へ走る
+         cam=lambda t: (lerp((0.9, -1.2, 1.75), (0.75, -1.2, 1.70), ease(t)), Vector((0.2, 6.0, 0.55)), 85, 5.6, None)),
+    dict(sec=3.0, kind="押し込み",   # 引き：高い俯瞰から、紫の起伏の原と藍の稜線の全体へ、まっすぐ寄る
+         cam=lambda t: (lerp((0.3, -4.6, 4.3), (0.25, -3.6, 3.6), ease(t)), Vector((0.1, 3.2, 0.2)), 50, 8.0, None)),
+    dict(sec=3.0, kind="決め",       # 右下から寄りながら入り、hero の構図で止まる
+         cam=lambda t: (lerp(HERO_CAM + Vector((0.30, -0.45, -0.12)), HERO_CAM, ease_out(min(1.0, t / 0.6))),
+                        lerp(HERO_AIM + Vector((0.25, 0, 0.0)), HERO_AIM, ease_out(min(1.0, t / 0.6))),
+                        LOOK["lens"], LOOK["fstop"], "hero")),
+]
+shot_start, N_FRAMES = [], 0
+for sh in SHOTS:
+    shot_start.append(N_FRAMES + 1)
+    sh["frames"] = round(sh["sec"] * FPS)
+    N_FRAMES += sh["frames"]
+SECONDS = N_FRAMES / FPS
+STILL_FRAME = N_FRAMES        # 最後のフレーム＝決めのカットが止まったところ＝hero
+
+key_light = bpy.data.objects["key"]
+KEY_LOC, KEY_TGT = key_light.location.copy(), Vector((0, 4, 0))
+
+
+def light_path(i, t):
+    """光の走り：2カット目だけキーを左手前から元の位置へ回す（膨らみの頂の光が横へ走る）"""
+    d = Vector((-7.0, -9.0, 0.0)) * (1 - ease(t)) if i == 1 else Vector((0, 0, 0))
+    key_light.location = KEY_LOC + d
+    key_light.rotation_euler = (KEY_TGT - key_light.location).to_track_quat('-Z', 'Y').to_euler()
+
+
+for fr in range(1, N_FRAMES + 2):   # うねり：最後のフレーム（N_FRAMES）で位相0＝hero
+    ph = 2 * math.pi * (fr - N_FRAMES) / WAVE_PERIOD
+    for sk, tag, cyc in WAVE_KEYS:
+        sk.value = math.cos(cyc * ph) if tag == "c" else math.sin(cyc * ph)
+        sk.keyframe_insert("value", frame=fr)
+
+for i, sh in enumerate(SHOTS):
+    for k in range(sh["frames"]):
+        f = shot_start[i] + k
+        t = k / max(1, sh["frames"] - 1)
+        loc, tgt, lens, fstop, focus = sh["cam"](t)
+        cam.location = loc
+        cam.rotation_euler = (Vector(tgt) - Vector(loc)).to_track_quat('-Z', 'Y').to_euler()
+        cd.lens = lens
+        cd.dof.aperture_fstop = fstop
+        if focus == "hero":
+            focus = (HERO_FOCUS - Vector(loc)).length
+        cd.dof.focus_distance = focus if focus else (Vector(tgt) - Vector(loc)).length
+        for path in ("location", "rotation_euler"):
+            cam.keyframe_insert(path, frame=f)
+        cd.keyframe_insert("lens", frame=f)
+        cd.dof.keyframe_insert("aperture_fstop", frame=f)
+        cd.dof.keyframe_insert("focus_distance", frame=f)
+        light_path(i, t)
+        key_light.keyframe_insert("location", frame=f)
+        key_light.keyframe_insert("rotation_euler", frame=f)
+
 # ------------------------------------------------------------- レンダー設定
 scene.render.engine = 'CYCLES'
 try:
@@ -318,17 +423,19 @@ if "testhero" in modes:
     still(os.path.join(OUT, "_testhero.png"), 1600, 128)
     print(">> testhero done")
 
-if "phases" in modes:   # 動きの途中を4枚（ループの破綻は hero には出ない）
-    for i, fr in enumerate((1, N_FRAMES // 4 + 1, N_FRAMES // 2 + 1, 3 * N_FRAMES // 4 + 1)):
-        still(os.path.join(OUT, "_phase_%d.png" % i), 600, 32, fr)
-    print(">> phases done")
+if "shots" in modes:    # 各カットの頭・中・終わり（ii/scripts/contact.py で1枚に並べる）
+    for i, sh in enumerate(SHOTS):
+        for j, frac in enumerate((0.0, 0.5, 1.0)):
+            fr = shot_start[i] + round(frac * (sh["frames"] - 1))
+            still(os.path.join(OUT, "_shot_%d_%d.png" % (i, j)), 480, 24, fr)
+    print(">> shots done")
 
 if "still" in modes:
     still(os.path.join(OUT, "hero.png"), 2560, 256)
     print(">> hero done")
 
 if "anim" in modes:
-    scene.render.resolution_x, scene.render.resolution_y = res(1080)
+    scene.render.resolution_x, scene.render.resolution_y = res(int(os.environ.get("II_ANIM_LONG", "1080")))  # II_ANIM_LONG は試験用
     scene.cycles.samples = int(os.environ.get("II_ANIM_SAMPLES", "24"))
     scene.render.image_settings.media_type = 'VIDEO'
     scene.render.image_settings.file_format = 'FFMPEG'
