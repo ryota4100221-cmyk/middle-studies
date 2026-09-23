@@ -150,24 +150,31 @@ description: >
      🔴なら構図を直す周を回す。**意図して沈めた・透明素材で透けるのが正しい**ときだけ、works.json の
      `compose_note` に辺ごとの理由を書けば通る（`{"上": "ガラスの天端は背景が透けるのが正しい"}`）。
      ⚠️ 被写体は script.py の `parts` から取る。**被写体のオブジェクトは全部 `parts` に入れておく**（雛形どおり）。
-5. **本番**：`-- still glb` → `-- anim` の順。🔴 **レンダーは同期で待つ**（バックグラウンドにしてターンを終えると
-   ヘッドレスではセッションごと死ぬ＝#5・#73）。anim が10分を超えるときの待ち方：
+5. **本番**：🔴 **daily（launchd・`claude -p`）では、AI は動画（anim）を描かない。** 描くのは `daily.sh`。
+   > **なぜ**：「anim は同期で待て」と何度書いても、AI は「完了通知を待ちます」と書いてターンを終え、
+   > ヘッドレスではそこでセッションが終わった（第1期 003・062／II 002・005＝試作5本中2本）。005 では anim も道連れで死に、
+   > 作り直しに30分かかった。**待つ仕事をAIに持たせないのが唯一の直し方**なので、シェルに移した（2026-09-23）。
+   手順（daily）：
    ```bash
-   cd ii/works/NNN_slug && rm -f loop.mp4
-   nohup /Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup \
-         --python script.py -- anim > /tmp/iiNNN_anim.log 2>&1 < /dev/null &
-   disown                      # 🔴 macOS に setsid は無い
-   PID=$(pgrep -f "script.py -- anim")
-   caffeinate -w $PID          # 600秒で切れたら同じ行をもう一度呼ぶ
-   tail -1 /tmp/iiNNN_anim.log
+   cd ii/works/NNN_slug
+   Blender --background --factory-startup --python script.py -- still glb                 # hero.png・model.glb
+   Blender --background --factory-startup --python ../../scripts/mask.py -- script.py mask.png   # 本番の hero に対して描き直す
    ```
-   **anim の時間は test で1フレームの秒数を測ってから決める**：`秒/フレーム × 144 が 90分を超えるなら`
-   `II_ANIM_SAMPLES` を下げる（既定24。デノイズが効くので16でも粒は出にくい）。
-   完了はプロセスではなくファイルで判定：`ffprobe -v error -show_entries stream=nb_frames -of default=nw=1 loop.mp4`。
+   `works.json` に行を足し（工程6の形式）、**anim のサンプル数を決めて依頼書を置く**：
+   test で1フレームの秒数を測り、`秒/フレーム × フレーム数` が90分を超えないサンプル数にする（既定24・デノイズがあるので16でも粒は出にくい）。
+   ```bash
+   echo "samples=24" > ii/works/NNN_slug/ANIM_REQUEST
+   ```
+   ここで**最後の行に `MIDDLE_ANIM_READY` とだけ出して終わる**（点検・公開・Notion はまだやらない）。
+   `daily.sh` が anim を描き、フレーム数を確かめてから、**工程6〜7だけを担当する次のセッション**を起動する。
+   - 対話セッション（人が見ている）で作るときだけは、自分で anim を描いてよい。そのときは同期で待つ：
+     `nohup Blender … -- anim > /tmp/iiNNN_anim.log 2>&1 < /dev/null & disown` → `caffeinate -w $(pgrep -f "script.py -- anim")`
+     （600秒で切れたら同じ行をもう一度）。完了は `ffprobe -v error -show_entries stream=nb_frames -of default=nw=1 loop.mp4` で判定。
 6. **点検と公開**：`works.json` に行を足してから
    ```bash
    python3 ii/scripts/check.py all ii/works/NNN_slug     # 🔴 0件になるまで公開しない
    ```
+   （daily では、ここからは `daily.sh` が起動した2つ目のセッションが担当する。anim は描き終わっている）
    🔴が出たら直してから出す。画像距離が 0.06〜0.14 のときは意図があれば `sameish` に理由を書けば通る。
    作品フォルダに置くのは `hero.png` `loop.mp4` `model.glb` `script.py` `REVIEW.md` `mask.png`（本番の hero に対して描き直す）だけ（`_test*.png` `_sbs.png` `_crop*.png` は消す）。
    `ii/SOURCES.md` に行を足し、**commit & push だけで公開完了**（GitHub Pages が `/ii/` を配信）。`netlify deploy` はしない。
@@ -243,6 +250,7 @@ description: >
 ## 完走の証明
 
 全工程（本番レンダー・点検🔴0件・GitHub Pages公開・Notion記録）を終えたら、**最後の行に `MIDDLE_OK` とだけ出力する**。
+（daily の1つ目のセッションは工程5で `MIDDLE_ANIM_READY` を出して終わる。`MIDDLE_OK` を出すのは公開まで終えた2つ目のセッション）
 （工程0で「今日は制作日ではない／今日の分は済んでいる」と判定して終えたときも `MIDDLE_OK`）
 
 🔴 **push や Notion 記録を実際に済ませていないのに `MIDDLE_OK` と書いてはいけない。**

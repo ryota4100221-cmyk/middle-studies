@@ -55,7 +55,7 @@ N_FRAMES = 24
 SIZE_HI = 8.0          # MB
 # 構図（2026-09-23 追加・試作3本で較正）
 MARGIN_MIN = 3.0       # %。被写体の外接枠と画面の辺の距離。0.3%未満は「切っている」＝意図した寄りとみなし判定しない
-SEP_DL = 10            # 輪郭の内側と外側の輝度差（0〜255）。これ未満の区間は「地に溶けている」
+SEP_DL = 8             # 輪郭の内側と外側の色差 ΔE76（Lab）。これ未満の区間は「地に溶けている」＝試作5本で較正
 SEP_MERGE_MAX = 0.50   # 1辺のうち溶けている区間の割合の上限
 RING_GAP = 4           # 輪郭から帯までの隙間（px・長辺2560換算）
 RING = 16              # 帯の外端（px・長辺2560換算）
@@ -270,6 +270,19 @@ def glb(path):
 
 
 # ---------------------------------------------------------------- compose
+def _lab(rgb):
+    """sRGB(0-255) → CIE Lab（D65）"""
+    def lin(c):
+        c /= 255
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    r, g, b = (lin(v) for v in rgb)
+    x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047
+    y = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883
+    f = lambda t: t ** (1 / 3) if t > 0.008856 else 7.787 * t + 16 / 116
+    fx, fy, fz = f(x), f(y), f(z)
+    return 116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)
+
 def compose(hero_path, mask_path, note=None):
     """被写体マスク（ii/scripts/mask.py）から、四辺の余白と輪郭の分離を測る。
     note＝works.json の compose_note（{"上": "理由"} など）。理由のある辺は🔴にしない
@@ -279,7 +292,7 @@ def compose(hero_path, mask_path, note=None):
     ng, lines = [], []
     if not os.path.exists(mask_path):
         return [f"mask.png が無い（Blender で ii/scripts/mask.py を回していない）"], lines
-    hero_im = Image.open(hero_path).convert("L")
+    hero_im = Image.open(hero_path).convert("RGB")
     m = Image.open(mask_path).getchannel("A").point(lambda v: 255 if v >= 128 else 0)
     if m.size != hero_im.size:
         # 🔴 手順どおり testhero（長辺1600）に対して回すと、mask（長辺2560）と寸法が必ず違う（2026-09-23 004で発覚）。
@@ -307,12 +320,12 @@ def compose(hero_path, mask_path, note=None):
     di = lambda im, n: im.filter(ImageFilter.MaxFilter(2 * n + 1))
     inner = ImageChops.subtract(er(ms, g_), er(ms, r_))
     outer = ImageChops.subtract(di(ms, r_), di(ms, g_))
-    L = hero_im.resize(size, Image.BOX).load()
+    L = hero_im.resize(size, Image.BOX).load()   # RGB
     I, O = inner.load(), outer.load()
     cx, cy = (x0 + x1) / 2 * sc, (y0 + y1) / 2 * sc
     hw, hh = max(1, (x1 - x0) / 2 * sc), max(1, (y1 - y0) / 2 * sc)
     SEG = 8
-    acc = {s: [[0, 0, 0, 0] for _ in range(SEG)] for s in ("上", "下", "左", "右")}  # [Lin, nin, Lout, nout]
+    acc = {s: [[[0, 0, 0], 0, [0, 0, 0], 0] for _ in range(SEG)] for s in ("上", "下", "左", "右")}  # [RGBin, nin, RGBout, nout]
     for y in range(size[1]):
         for x in range(size[0]):
             wi, wo = I[x, y] / 255, O[x, y] / 255
@@ -326,22 +339,34 @@ def compose(hero_path, mask_path, note=None):
             seg = min(SEG - 1, max(0, int(t * SEG)))
             a = acc[side][seg]
             if wi >= 0.2:
-                a[0] += L[x, y] * wi; a[1] += wi
+                px_ = L[x, y]
+                for c in range(3):
+                    a[0][c] += px_[c] * wi
+                a[1] += wi
             if wo >= 0.2:
-                a[2] += L[x, y] * wo; a[3] += wo
+                px_ = L[x, y]
+                for c in range(3):
+                    a[2][c] += px_[c] * wo
+                a[3] += wo
     for side in ("上", "下", "左", "右"):
         if mg[side] < 0.3:
             lines.append(f"  輪郭 {side}: 画面の辺で切っている（判定しない）")
             continue
-        dls = [abs(a[0] / a[1] - a[2] / a[3]) for a in acc[side] if a[1] > 0.5 and a[3] > 0.5]
+        # 🔴 明るさの差ではなく Lab の色差（ΔE76）で見る（2026-09-23 005：パステルのマグと明るい天板は
+        #    明るさが近いが色相で分かれて読める。明るさだけでは「溶けている」と誤判定した）
+        dls = []
+        for a in acc[side]:
+            if a[1] > 0.5 and a[3] > 0.5:
+                li = _lab([v / a[1] for v in a[0]]); lo = _lab([v / a[3] for v in a[2]])
+                dls.append(sum((p - q) ** 2 for p, q in zip(li, lo)) ** 0.5)
         if not dls:
             continue
         merged = sum(1 for d in dls if d < SEP_DL) / len(dls)
-        lines.append(f"  輪郭 {side}: 明暗差 中央 {sorted(dls)[len(dls) // 2]:.0f}  溶けた区間 {merged * 100:.0f}%")
+        lines.append(f"  輪郭 {side}: 色差ΔE 中央 {sorted(dls)[len(dls) // 2]:.0f}  溶けた区間 {merged * 100:.0f}%")
         if merged > SEP_MERGE_MAX and note.get(side):
             lines.append(f"    └ 理由あり（compose_note）：{note[side]}")
         elif merged > SEP_MERGE_MAX:
-            ng.append(f"輪郭の{side}辺が地に溶けている（{merged * 100:.0f}%の区間で明暗差<{SEP_DL}）＝被写体がどこまでか読めない")
+            ng.append(f"輪郭の{side}辺が地に溶けている（{merged * 100:.0f}%の区間で色差ΔE<{SEP_DL}）＝被写体がどこまでか読めない")
     return ng, lines
 
 

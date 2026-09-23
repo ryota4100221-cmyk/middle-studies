@@ -120,6 +120,10 @@ while (( attempt <= MAX_ATTEMPTS )); do
     echo "[$(date)] MIDDLE_OK 確認 — 完走（以降の再試行判定はしない）" >> "$LOG_FILE"
     break
   fi
+  if (( RC == 0 )) && tail -8 "$OUT_TMP" | grep -q "MIDDLE_ANIM_READY"; then
+    echo "[$(date)] MIDDLE_ANIM_READY 確認 — 制作は完了。anim はこのシェルが描く" >> "$LOG_FILE"
+    break
+  fi
 
   # 利用上限なら1時間待って再試行（上限リセットを跨ぐまで粘る）
   # 🔴 2026-09-10：素の "session limit" では上記のとおり本文に誤爆する。
@@ -149,13 +153,54 @@ while (( attempt <= MAX_ATTEMPTS )); do
   #    「終わったつもりで終わっていない」は最も気づけない壊れ方なので、完走の証拠を要求する。
   #    ⚠️ **制御フローは変えない**（RCもリトライも触らない）。動いているものを壊さないため。
   #    証拠が無ければ印を置くだけにし、**毎朝10:00のローカル日次点検がその印を拾って通知する**。
-  if (( RC == 0 )) && ! tail -8 "$OUT_TMP" | grep -q "MIDDLE_OK"; then
+  if (( RC == 0 )) && ! tail -8 "$OUT_TMP" | grep -qE "MIDDLE_OK|MIDDLE_ANIM_READY"; then
     echo "[$(date)] exit 0 だが完走の証拠（MIDDLE_OK）が無い" >> "$LOG_FILE"
     touch "$(dirname "$LOG_FILE")/INCOMPLETE-$(TZ=Asia/Tokyo date +%F)"
   fi
 
   break
 done
+
+# 🔴 anim はシェルが描く（2026-09-23）。AI にレンダーを待たせると、ターンを終えてセッションごと死ぬ
+#    （第1期 003・062／II 002・005）。AI は still・glb・mask まで作って MIDDLE_ANIM_READY で抜ける。
+#    シェルは時間の制限なくレンダーを待てるので、ここで描いてフレーム数を確かめ、公開だけを次のセッションに渡す。
+BLENDER="/Applications/Blender.app/Contents/MacOS/Blender"
+publish_prompt() {
+  echo "まず「$SKILL_MD」を読む。今日のMIDDLE STUDIES IIは、制作（工程1〜5）と anim のレンダーまで終わっている。制作・自己レビュー・レンダーはやり直さない。ii/works/ の最新の作品フォルダ（$(basename "$1")）について、工程6（check.py all が🔴0件→commit & push）→工程7（Notion）→完走の証明 までを完走して。🔴が出たら、直せるもの（works.json の記入漏れ・compose_note・不要ファイル）は直す。anim の描き直しが要る🔴なら直さずに、止まった理由を書いて終わる。"
+}
+if (( RC == 0 )) && tail -8 "$OUT_TMP" | grep -q "MIDDLE_ANIM_READY"; then
+  REQ="$(ls -t "$HOME"/projects/middle-studies/ii/works/*/ANIM_REQUEST 2>/dev/null | head -1)"
+  if [[ -z "$REQ" ]]; then
+    echo "[$(date)] 🔴 MIDDLE_ANIM_READY なのに ANIM_REQUEST が無い" >> "$LOG_FILE"
+    RC=1
+  else
+    ADIR="$(dirname "$REQ")"
+    SAMPLES="$(grep -o 'samples=[0-9]*' "$REQ" | cut -d= -f2)"
+    for try in 1 2; do
+      echo "[$(date)] anim 開始 $(basename "$ADIR") samples=${SAMPLES:-24}（試行 $try）" >> "$LOG_FILE"
+      ( cd "$ADIR" && rm -f loop.mp4 && II_ANIM_SAMPLES="${SAMPLES:-24}" caffeinate -i "$BLENDER" --background --factory-startup \
+          --python script.py -- anim 2>&1 | grep -E "anim done|Error|Traceback" >> "$LOG_FILE" )
+      NB="$(ffprobe -v error -show_entries stream=nb_frames -of default=nw=1:nk=1 "$ADIR/loop.mp4" 2>/dev/null)"
+      echo "[$(date)] anim 終了 nb_frames=${NB:-0}" >> "$LOG_FILE"
+      (( ${NB:-0} >= 100 )) && break
+    done
+    if (( ${NB:-0} >= 100 )); then
+      rm -f "$REQ"
+      "$CLAUDE_BIN" -p "$(publish_prompt "$ADIR")" --model claude-opus-5-5 --dangerously-skip-permissions > "$OUT_TMP" 2>&1
+      RC=$?
+      cat "$OUT_TMP" >> "$LOG_FILE"
+      if (( RC == 0 )) && tail -8 "$OUT_TMP" | grep -q "MIDDLE_OK"; then
+        echo "[$(date)] 公開セッションで MIDDLE_OK 確認 — 完走" >> "$LOG_FILE"
+      else
+        touch "$(dirname "$LOG_FILE")/INCOMPLETE-$(TZ=Asia/Tokyo date +%F)"
+      fi
+    else
+      echo "[$(date)] 🔴 anim を2回描いても loop.mp4 が120フレームに届かない" >> "$LOG_FILE"
+      touch "$(dirname "$LOG_FILE")/INCOMPLETE-$(TZ=Asia/Tokyo date +%F)"
+      RC=1
+    fi
+  fi
+fi
 
 # 🔴 レンダー待ちでターンを終えた回の救済（2026-09-23 追加）
 #    SKILL.md に「anim は caffeinate -w で同期して待つ」と書いてあっても、AIは
