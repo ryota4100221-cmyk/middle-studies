@@ -59,6 +59,17 @@ for id in "$@"; do
   FRC=$?
   if (( FRC != 0 )); then
     echo "[$(date)] 🔴 $NAME：check.py film が🔴。公開しない（新しい loop.mp4 は $D に残す）" >> "$LOG"
+    # 🔴 works.json のこの作品の行だけ、公開済みの内容に戻す（戻さないと、次の作品の commit に混ざって
+    #    「サイトの動画は旧版なのに記録だけ film」になる＝2026-09-24 に 001・003 で実際に起きた）
+    python3 - "$id" <<'PY'
+import json, subprocess, sys
+wid = sys.argv[1]
+head = json.loads(subprocess.run(["git", "show", "HEAD:ii/works.json"], capture_output=True, text=True).stdout)
+cur = json.load(open("ii/works.json"))
+old = next((w for w in head if w["id"] == wid), None)
+cur = [old if (w["id"] == wid and old) else w for w in cur]
+json.dump(cur, open("ii/works.json", "w"), ensure_ascii=False, indent=2); open("ii/works.json", "a").write("\n")
+PY
     rm -f "$OUT"; continue
   fi
   git add "$D/script.py" "$D/loop.mp4" "$D/REVIEW.md" ii/works.json
