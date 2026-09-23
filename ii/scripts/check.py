@@ -519,7 +519,7 @@ def all_checks(d):
         p = os.path.join(d, f)
         if not os.path.exists(p):
             ng.append(f"{f} が無い")
-        elif f == "loop.mp4" and wid >= RULES_FILM_FROM:
+        elif f == "loop.mp4" and (wid >= RULES_FILM_FROM or (me or {}).get("film")):   # 001〜005 は作り直した後（works.json に film がある）
             run(film, p, os.path.join(d, "hero.png"))
         else:
             run(fn, p)
