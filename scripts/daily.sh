@@ -157,6 +157,31 @@ while (( attempt <= MAX_ATTEMPTS )); do
   break
 done
 
+# 🔴 レンダー待ちでターンを終えた回の救済（2026-09-23 追加）
+#    SKILL.md に「anim は caffeinate -w で同期して待つ」と書いてあっても、AIは
+#    「終わると通知が来るので、そのあと点検と公開に進みます」と書いてターンを終える。
+#    ヘッドレスではそこでセッションが終わり、公開まで届かない（2026-07-11 003／08-25・26 062／09-23 II 002 の3回目）。
+#    文章の指示ではもう防げないので、シェルが拾う：完走の証拠が無く、今日の作品に hero.png がある
+#    （＝制作は済んでいる）なら、anim の終了を待ってから「工程5の残りから」で1回だけ起動し直す。
+resume_prompt() {
+  echo "まず「$SKILL_MD」を読む。今日のMIDDLE STUDIES IIは、前のセッションが工程5（本番レンダー）の途中で終了した。制作・自己レビューはやり直さない。ii/works/ の最新の作品フォルダについて、loop.mp4 を ffprobe で測り nb_frames が尺どおり（24fps×秒）でなければ anim を同期でやり直し（SKILL.md 工程5の caffeinate -w の手順どおり・ターンを終えない）、model.glb が無ければ書き出し、工程6（check.py all が🔴0件→commit & push）→工程7（Notion）→完走の証明 までを完走して。"
+}
+if (( RC == 0 )) && ! tail -8 "$OUT_TMP" | grep -q "MIDDLE_OK"; then
+  LATEST_DIR="$(ls -d "$HOME"/projects/middle-studies/ii/works/[0-9]*_* 2>/dev/null | tail -1)"
+  if [[ -n "$LATEST_DIR" && -f "$LATEST_DIR/hero.png" ]] && ! git -C "$HOME/projects/middle-studies" ls-files --error-unmatch "$LATEST_DIR/hero.png" >/dev/null 2>&1; then
+    echo "[$(date)] 未公開の作品 $(basename "$LATEST_DIR") が残っている — anim の終了を待って工程5の残りから再開" >> "$LOG_FILE"
+    while pgrep -f "script.py -- anim" >/dev/null; do sleep 30; done
+    echo "[$(date)] anim 終了を確認 — 再開セッションを起動" >> "$LOG_FILE"
+    "$CLAUDE_BIN" -p "$(resume_prompt)" --model claude-opus-5-5 --dangerously-skip-permissions > "$OUT_TMP" 2>&1
+    RC=$?
+    cat "$OUT_TMP" >> "$LOG_FILE"
+    if (( RC == 0 )) && tail -8 "$OUT_TMP" | grep -q "MIDDLE_OK"; then
+      echo "[$(date)] 再開セッションで MIDDLE_OK 確認 — 完走" >> "$LOG_FILE"
+      rm -f "$(dirname "$LOG_FILE")/INCOMPLETE-$(TZ=Asia/Tokyo date +%F)"
+    fi
+  fi
+fi
+
 # 無言失敗ガード（スクリプト層）：セッション内のAIが送る通知は、セッションが死ぬと飛ばない。
 # exitが非0のまま終わったら、このシェルから必ず1通出す。
 if (( RC != 0 )); then
