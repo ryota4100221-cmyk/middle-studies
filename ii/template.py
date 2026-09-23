@@ -2,7 +2,7 @@
 # MIDDLE STUDIES II — 雛形（2026-09-23）
 #
 #   Blender --background --factory-startup --python script.py -- <modes>
-#   modes: test / testhero / still / anim / glb / phases   （省略時 test）
+#   modes: test / testhero / still / anim / glb / shots   （省略時 test）
 #
 # 🔴 これは「インフラ」の雛形であって、見た目の雛形ではない。
 #    第1期の雛形（白床・3色・85mm・キャプション・4灯）は**持ち込まない**。
@@ -30,9 +30,8 @@ LOOK = dict(
     exposure=0.0,
     bg=(0.62, 0.60, 0.57),    # 地の色（linear）。無限背景紙・床・空間のどれにするかは下の舞台で決める
 )
-FPS, SECONDS = 24, 6
-N_FRAMES = FPS * SECONDS
-STILL_FRAME = 1
+FPS = 24
+# 尺（N_FRAMES）と静止画のフレーム（STILL_FRAME）は、下の「動画」節の SHOTS から決まる
 
 # 納品寸法：長辺で決める（hero 2560 / loop 1080）
 def res(long_side):
@@ -139,33 +138,106 @@ area("rim", (2.8, 2.2, 2.6), 1.2, 420, (0.9, 0.95, 1.0))
 # ------------------------------------------------------------- カメラ
 cd = bpy.data.cameras.new("cam"); cam = bpy.data.objects.new("cam", cd)
 scene.collection.objects.link(cam)
-cd.lens = LOOK["lens"]
-dist = LOOK["lens"] / 70 * 6.2
-cam.location = (0.0, -dist, 1.35)
-cam.rotation_euler = (Vector((0, 0, 0.9)) - cam.location).to_track_quat('-Z', 'Y').to_euler()
 cd.dof.use_dof = True
-cd.dof.focus_object = body
-cd.dof.aperture_fstop = LOOK["fstop"]
+cd.sensor_width = 36
 scene.camera = cam
 
-# ------------------------------------------------------------- 動き（毎フレームキー＝数学的に閉じる）
-# 🔴 イージングのキーフレーム2点で済ませない。位相 t∈[0,1) で書き、t=1 が t=0 に一致すること
-def pose(t):
-    body.rotation_euler = (0, 0, 2 * math.pi * t)
-    ring.rotation_euler = (math.radians(90) * (0.5 + 0.5 * math.cos(2 * math.pi * t)), 0, 2 * math.pi * t)
+# ------------------------------------------------------------- 動画＝プロダクトフィルム（2026-09-23〜）
+# 🔴 10〜12秒・3〜4カットの CM 型。ループは「最後のカット → 最初のカット」をカットで戻る（継ぎ目なしにしない）。
+#    最後のカットは静止画（hero）と同じ構図で終わり、1秒以上止まる＝ STILL_FRAME はその中に置く。
+# 型（組み合わせて使う。毎回同じ並びにしない）：
+#   マクロ  … 長いレンズ（100〜150mm）で縁・肌理・部品をなめる。浅い被写界深度＋ピント送り
+#   スライド… カメラが横・縦に平行移動して、光や物の前を滑る
+#   回り込み… 被写体を中心に弧を描く（15〜60°）
+#   押し込み… まっすぐ寄る／引く（レンズを変えずに距離で）
+#   光の走り… 面光源を動かして、ハイライトの帯を表面に走らせる（カメラは止めてよい）
+#   物の動き… 回る・開く・持ち上がる・落ちる・並ぶ
+#   決め    … hero の構図。動きながら入ってきて止まる
+# 🔴 カメラの動きは必ず加減速（ease）。等速の直線移動は安いCGに見える。
+# 🔴 カットの切り替えは「動いている途中」で切る（止まってから切ると間延びする）。
+# 🔴 モーションブラーは使わない：毎フレームキーのカメラは、カットの境目で前後のカットの間を補間してブレる。
 
-for f in range(1, N_FRAMES + 2):
-    pose((f - 1) / N_FRAMES)
-    for o in parts:
-        o.keyframe_insert("rotation_euler", frame=f)
-for o in parts:
-    if o.animation_data and o.animation_data.action:
-        try:
-            for fc in o.animation_data.action.fcurves:
-                for k in fc.keyframe_points:
-                    k.interpolation = 'LINEAR'
-        except AttributeError:
-            pass  # Blender 5.x の layered action。毎フレームキーなので補間は効かない
+def ease(t):                  # 加減速（sine in-out）
+    return 0.5 - 0.5 * math.cos(math.pi * max(0.0, min(1.0, t)))
+
+
+def ease_out(t):              # 動きながら入って止まる（決めのカット向き）
+    t = max(0.0, min(1.0, t))
+    return 1 - (1 - t) ** 3
+
+
+def lerp(a, b, t):
+    return Vector(a).lerp(Vector(b), t)
+
+
+def orbit(center, radius, height, deg):   # 被写体まわりの弧（deg=0 が正面 -Y）
+    r = math.radians(deg)
+    return Vector((center[0] + radius * math.sin(r), center[1] - radius * math.cos(r), height))
+
+# 各カット：sec（秒）／cam(t)→(カメラ位置, 注視点, レンズmm, f値, ピント距離 or None=注視点まで)
+#           ／pose(t)→物の動き（任意）。t はそのカットの中で 0→1。
+# 🔴 下は動作確認用の仮置き。**毎回、基準と題材に合わせて組み直す**。
+TGT = Vector((0, 0, 0.9))
+SHOTS = [
+    dict(sec=3.0,   # マクロ：リングの縁をなめる＋ピント送り
+         cam=lambda t: (lerp((0.95, -1.7, 1.25), (0.55, -1.75, 1.05), ease(t)), Vector((0.45, 0, 0.95)),
+                        135, 2.0, 1.75 + 0.35 * ease(t))),
+    dict(sec=3.0,   # 回り込み：側面を弧で
+         cam=lambda t: (orbit(TGT, 4.2, 1.1, -55 + 40 * ease(t)), TGT, 85, 3.5, None)),
+    dict(sec=2.5,   # 光の走り：カメラは寄りで止め、キーを横に走らせる（下の light_path）
+         cam=lambda t: (Vector((0.0, -3.4, 1.55)), Vector((0, 0, 1.25)), 100, 4.0, None)),
+    dict(sec=3.0,   # 決め：引きながら入って hero の構図で止まる
+         cam=lambda t: (lerp((0.4, -7.2, 1.55), (0.0, -6.2, 1.35), ease_out(min(1.0, t / 0.6))), TGT,
+                        LOOK["lens"], LOOK["fstop"], None)),
+]
+shot_start, N_FRAMES = [], 0
+for sh in SHOTS:
+    shot_start.append(N_FRAMES + 1)
+    sh["frames"] = round(sh["sec"] * FPS)
+    N_FRAMES += sh["frames"]
+STILL_FRAME = N_FRAMES        # 最後のフレーム＝決めのカットが止まったところ＝hero
+
+
+def pose(i, t, T):
+    """i＝カット番号・t＝カット内 0→1・T＝全体 0→1。物の動きはここに書く（仮置き：ゆっくり回る）"""
+    body.rotation_euler = (0, 0, math.radians(-20 + 40 * T))
+    ring.rotation_euler = (math.radians(90) * (0.5 + 0.5 * math.cos(math.pi * T)), 0, math.radians(30 * T))
+
+
+key_light = bpy.data.objects.get("key")
+
+
+def light_path(i, t):
+    """光の走り（仮置き：3カット目だけキーを横に走らせる）"""
+    if key_light and i == 2:
+        key_light.location = lerp((-3.2, -3.0, 3.6), (3.2, -3.0, 3.6), ease(t))
+    elif key_light:
+        key_light.location = (-3.2, -3.0, 3.6)
+
+
+for i, sh in enumerate(SHOTS):
+    for k in range(sh["frames"]):
+        f = shot_start[i] + k
+        t = k / max(1, sh["frames"] - 1)
+        T = (f - 1) / max(1, N_FRAMES - 1)
+        loc, tgt, lens, fstop, focus = sh["cam"](t)
+        cam.location = loc
+        cam.rotation_euler = (Vector(tgt) - Vector(loc)).to_track_quat('-Z', 'Y').to_euler()
+        cd.lens = lens
+        cd.dof.aperture_fstop = fstop
+        cd.dof.focus_distance = focus if focus else (Vector(tgt) - Vector(loc)).length
+        for path in ("location", "rotation_euler"):
+            cam.keyframe_insert(path, frame=f)
+        cd.keyframe_insert("lens", frame=f)
+        cd.dof.keyframe_insert("aperture_fstop", frame=f)
+        cd.dof.keyframe_insert("focus_distance", frame=f)
+        pose(i, t, T)
+        for o in parts:
+            o.keyframe_insert("rotation_euler", frame=f)
+            o.keyframe_insert("location", frame=f)
+        light_path(i, t)
+        if key_light:
+            key_light.keyframe_insert("location", frame=f)
 
 # ------------------------------------------------------------- レンダー設定
 scene.render.engine = 'CYCLES'
@@ -208,17 +280,19 @@ if "testhero" in modes:
     still(os.path.join(OUT, "_testhero.png"), 1600, 128)
     print(">> testhero done")
 
-if "phases" in modes:   # 動きの途中を4枚（ループの破綻は hero には出ない）
-    for i, fr in enumerate((1, N_FRAMES // 4 + 1, N_FRAMES // 2 + 1, 3 * N_FRAMES // 4 + 1)):
-        still(os.path.join(OUT, "_phase_%d.png" % i), 600, 32, fr)
-    print(">> phases done")
+if "shots" in modes:    # 各カットの頭・中・終わり（ii/scripts/contact.py で1枚に並べる）
+    for i, sh in enumerate(SHOTS):
+        for j, frac in enumerate((0.0, 0.5, 1.0)):
+            fr = shot_start[i] + round(frac * (sh["frames"] - 1))
+            still(os.path.join(OUT, "_shot_%d_%d.png" % (i, j)), 480, 24, fr)
+    print(">> shots done")
 
 if "still" in modes:
     still(os.path.join(OUT, "hero.png"), 2560, 256)
     print(">> hero done")
 
 if "anim" in modes:
-    scene.render.resolution_x, scene.render.resolution_y = res(1080)
+    scene.render.resolution_x, scene.render.resolution_y = res(int(os.environ.get("II_ANIM_LONG", "1080")))  # II_ANIM_LONG は試験用
     scene.cycles.samples = int(os.environ.get("II_ANIM_SAMPLES", "24"))
     scene.render.image_settings.media_type = 'VIDEO'
     scene.render.image_settings.file_format = 'FFMPEG'

@@ -5,7 +5,8 @@
 #   python3 ii/scripts/check.py hero    <hero.png>              # 露出（白飛び・黒つぶれ）とコントラスト
 #   python3 ii/scripts/check.py variety <hero.png> [--id NNN]   # 直近6作との画像距離
 #   python3 ii/scripts/check.py look    <look.json> [--id NNN]  # 直近3作とルックの軸が重なっていないか
-#   python3 ii/scripts/check.py motion  <loop.mp4>              # 動き量・ループの閉じ・静止率
+#   python3 ii/scripts/check.py motion  <loop.mp4>              # 動き量・ループの閉じ・静止率（〜005）
+#   python3 ii/scripts/check.py film    <loop.mp4> [hero.png]   # 尺・カット数・止まったカット・決めの構図（006〜）
 #   python3 ii/scripts/check.py glb     <model.glb>             # 容量・動き・三角形数
 #   python3 ii/scripts/check.py review  <作品フォルダ>            # 自己レビューの周回・testhero・拡大での確認
 #   python3 ii/scripts/check.py compose <hero.png> <mask.png>    # 四辺の余白と輪郭の分離（mask は ii/scripts/mask.py）
@@ -51,6 +52,12 @@ MOTION_MIN = 0.62
 CLOSE_MAX = 2.2
 STILL_MAX = 0.20
 N_FRAMES = 24
+# プロダクトフィルム（2026-09-23〜・006から）
+FILM_SEC = (9.5, 13.0)    # 尺
+FILM_SHOTS = (3, 6)       # カット数
+SHOT_MIN_SEC = 1.5        # 1カットの最短
+CUT_RATIO, CUT_ABS = 4.0, 8.0   # 隣のフレームとの差が「全体の中央値×4」かつ8以上ならカット
+HERO_MATCH = 0.08         # 最終フレームと hero.png の画像距離。これを超えたら「決めの構図で終わっていない」
 # glb
 SIZE_HI = 8.0          # MB
 # 構図（2026-09-23 追加・試作3本で較正）
@@ -65,7 +72,8 @@ TIME_LIMIT_MIN = 180   # 開始から3時間（SKILL.md 工程4 (b)）
 REVIEW_MIN = 6          # 2026-09-23 3→6（II 001 は1周20秒で、6周が27分で終わった＝3周は歯止めにならない）
 TESTHERO_MIN = 2        # 長辺1600で細部を見た周
 RULES_V2_FROM = "002"
-RULES_V3_FROM = "004"   # 構図（mask.png）と時間の点検は 004 から（001〜003 は試作。遡って🔴にしない）   # 上の2つと「拡大:」は 002 から（001 は旧規則の3周で作って公開済み。遡って🔴にするとダイジェストが毎日鳴る）
+RULES_V3_FROM = "004"
+RULES_FILM_FROM = "006"  # 動画をプロダクトフィルム（10〜12秒・3〜4カット）にしたのは 006 から   # 構図（mask.png）と時間の点検は 004 から（001〜003 は試作。遡って🔴にしない）   # 上の2つと「拡大:」は 002 から（001 は旧規則の3周で作って公開済み。遡って🔴にするとダイジェストが毎日鳴る）
 
 
 def load_works():
@@ -249,6 +257,50 @@ def motion(path):
         ng.append(f"ループの閉じ {close:.2f}（>{CLOSE_MAX}＝継ぎ目で飛ぶ）")
     if still > STILL_MAX:
         ng.append(f"静止率 {still * 100:.0f}%（>{STILL_MAX * 100:.0f}%）")
+    return ng, lines
+
+
+def film(path, hero_path=None):
+    """プロダクトフィルムの点検：尺・カット数・止まったカット・決めの構図（006〜）"""
+    ng, lines = [], []
+    tmp = tempfile.mkdtemp()
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=nb_frames,duration",
+                        "-of", "json", path], capture_output=True, text=True)
+    st = json.loads(r.stdout or "{}").get("streams", [{}])[0]
+    nb, dur = int(st.get("nb_frames", 0) or 0), float(st.get("duration", 0) or 0)
+    if nb < 24:
+        return [f"loop.mp4 が読めない（nb_frames={nb}）"], lines
+    subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-vf", "scale=180:-2", os.path.join(tmp, "f%04d.png")],
+                   capture_output=True)
+    fs = sorted(glob.glob(os.path.join(tmp, "f*.png")))
+    ims = [Image.open(f).convert("L") for f in fs]
+    ds = [diff(ims[i], ims[i + 1]) for i in range(len(ims) - 1)]
+    med = sorted(ds)[len(ds) // 2] or 1e-6
+    cuts = [i + 1 for i, d in enumerate(ds) if d > max(CUT_ABS, med * CUT_RATIO)]
+    bounds = [0] + cuts + [len(ims)]
+    shots = [(bounds[k], bounds[k + 1]) for k in range(len(bounds) - 1)]
+    fps = nb / dur if dur else 24
+    lines.append(f"  film {nb}f/{dur:.1f}s  カット {len(shots)}  "
+                 + "  ".join(f"#{k + 1} {(b - a) / fps:.1f}s" for k, (a, b) in enumerate(shots)))
+    if not (FILM_SEC[0] <= dur <= FILM_SEC[1]):
+        ng.append(f"尺 {dur:.1f}s（{FILM_SEC[0]}〜{FILM_SEC[1]}秒）")
+    if not (FILM_SHOTS[0] <= len(shots) <= FILM_SHOTS[1]):
+        ng.append(f"カット {len(shots)}（{FILM_SHOTS[0]}〜{FILM_SHOTS[1]}）")
+    for k, (a, b) in enumerate(shots):
+        if (b - a) / fps < SHOT_MIN_SEC:
+            ng.append(f"カット{k + 1} が {(b - a) / fps:.1f}秒（<{SHOT_MIN_SEC}秒＝一瞬で読めない）")
+        inner = ds[a:max(a, b - 1)]
+        if k < len(shots) - 1:
+            mv = max(inner) if inner else 0
+        else:   # 決めのカットは最後に止まってよい。前半で動いていればよい
+            mv = max(inner[:max(1, len(inner) // 2)]) if inner else 0
+        if mv < MOTION_MIN:
+            ng.append(f"カット{k + 1} が止まっている（動きの最大 {mv:.2f}<{MOTION_MIN}）")
+    if hero_path and os.path.exists(hero_path):
+        dh = distance(signature(fs[-1]), signature(hero_path))
+        lines.append(f"  最終フレームと hero の距離 {dh:.3f}")
+        if dh > HERO_MATCH:
+            ng.append(f"最後が hero の構図で終わっていない（距離 {dh:.3f}>{HERO_MATCH}）")
     return ng, lines
 
 
@@ -437,6 +489,11 @@ def review(d):
             ng.append(f"「時間切れ」と書いているが、実際は {mins:.0f}分（3時間に届いていない）＝経過時間を数え違えて早く止めた")
     elif wid >= RULES_V3_FROM:
         ng.append("REVIEW.md に `開始: HH:MM` が無い")
+    film_rounds = len(re.findall(r"^##\s*film\s*round\s*\d+", txt, re.M | re.I))
+    if wid >= RULES_FILM_FROM:
+        lines.append(f"  動画のレビュー {film_rounds}周")
+        if film_rounds < 2:
+            ng.append(f"動画のレビュー（## film round）{film_rounds}周（<2）＝カットを並べて見ていない")
     if crop_lines < 2:
         ng.append(f"「拡大:」の行が {crop_lines} 件（<2）＝見劣りしないと書いた箇所を拡大して確かめていない")
     if not has_ref:
@@ -454,10 +511,12 @@ def all_checks(d):
         n, l = fn(*a); ng.extend(n); lines.extend(l)
     for f, fn in (("hero.png", hero), ("loop.mp4", motion), ("model.glb", glb)):
         p = os.path.join(d, f)
-        if os.path.exists(p):
-            run(fn, p)
-        else:
+        if not os.path.exists(p):
             ng.append(f"{f} が無い")
+        elif f == "loop.mp4" and wid >= RULES_FILM_FROM:
+            run(film, p, os.path.join(d, "hero.png"))
+        else:
+            run(fn, p)
     if os.path.exists(os.path.join(d, "hero.png")):
         run(variety, os.path.join(d, "hero.png"), wid)
     if me:
@@ -507,6 +566,8 @@ def main():
     fn = {"hero": hero, "motion": motion, "glb": glb, "review": review, "all": all_checks}.get(cmd)
     if fn:
         return report(*fn(a[1]), cmd)
+    if cmd == "film":
+        return report(*film(a[1], a[2] if len(a) > 2 and not a[2].startswith("--") else None), cmd)
     if cmd == "elapsed":
         return report(*elapsed(a[1]), cmd)
     if cmd == "compose":
