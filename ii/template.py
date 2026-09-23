@@ -129,7 +129,7 @@ ring = bpy.context.object; ring.name = "ring"
 for p in ring.data.polygons:
     p.use_smooth = True
 ring.data.materials.append(principled("ring", hex_to_linear("#C9A45C"), rough=0.22, metal=1.0))
-parts = [body, ring]
+parts = [body, ring]   # 🔴 被写体は全部ここへ（ii/scripts/mask.py がこのリストから構図を測る。床・壁・光は入れない）
 
 # ------------------------------------------------------------- 光（毎回組む）
 # 仮置き：大きいキー＋縁取り。光の組み方は基準の作品から読む（SKILL.md 工程1）

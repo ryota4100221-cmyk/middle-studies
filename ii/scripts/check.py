@@ -8,6 +8,8 @@
 #   python3 ii/scripts/check.py motion  <loop.mp4>              # 動き量・ループの閉じ・静止率
 #   python3 ii/scripts/check.py glb     <model.glb>             # 容量・動き・三角形数
 #   python3 ii/scripts/check.py review  <作品フォルダ>            # 自己レビューの周回・testhero・拡大での確認
+#   python3 ii/scripts/check.py compose <hero.png> <mask.png>    # 四辺の余白と輪郭の分離（mask は ii/scripts/mask.py）
+#   python3 ii/scripts/check.py elapsed <作品フォルダ>            # 開始からの経過分（🔴 自分で数えない）
 #   python3 ii/scripts/check.py all     <作品フォルダ>            # 上を全部（公開前に必ずこれを通す）
 #   python3 ii/scripts/check.py trend                           # 直近の作品の🔴だけを出す（作品ダイジェストが読む）
 #
@@ -51,10 +53,19 @@ STILL_MAX = 0.20
 N_FRAMES = 24
 # glb
 SIZE_HI = 8.0          # MB
+# 構図（2026-09-23 追加・試作3本で較正）
+MARGIN_MIN = 3.0       # %。被写体の外接枠と画面の辺の距離。0.3%未満は「切っている」＝意図した寄りとみなし判定しない
+SEP_DL = 10            # 輪郭の内側と外側の輝度差（0〜255）。これ未満の区間は「地に溶けている」
+SEP_MERGE_MAX = 0.50   # 1辺のうち溶けている区間の割合の上限
+RING_GAP = 4           # 輪郭から帯までの隙間（px・長辺2560換算）
+RING = 16              # 帯の外端（px・長辺2560換算）
+# 時間
+TIME_LIMIT_MIN = 180   # 開始から3時間（SKILL.md 工程4 (b)）
 # 自己レビュー
 REVIEW_MIN = 6          # 2026-09-23 3→6（II 001 は1周20秒で、6周が27分で終わった＝3周は歯止めにならない）
 TESTHERO_MIN = 2        # 長辺1600で細部を見た周
-RULES_V2_FROM = "002"   # 上の2つと「拡大:」は 002 から（001 は旧規則の3周で作って公開済み。遡って🔴にするとダイジェストが毎日鳴る）
+RULES_V2_FROM = "002"
+RULES_V3_FROM = "004"   # 構図（mask.png）と時間の点検は 004 から（001〜003 は試作。遡って🔴にしない）   # 上の2つと「拡大:」は 002 から（001 は旧規則の3周で作って公開済み。遡って🔴にするとダイジェストが毎日鳴る）
 
 
 def load_works():
@@ -258,6 +269,108 @@ def glb(path):
     return ng, lines
 
 
+# ---------------------------------------------------------------- compose
+def compose(hero_path, mask_path, note=None):
+    """被写体マスク（ii/scripts/mask.py）から、四辺の余白と輪郭の分離を測る。
+    note＝works.json の compose_note（{"上": "理由"} など）。理由のある辺は🔴にしない
+    （透明素材・意図して沈めた脇役など。sameish と同じく「必ず分離させろ」の片側ゲートにしない）。"""
+    note = note or {}
+    from PIL import ImageFilter, ImageChops
+    ng, lines = [], []
+    if not os.path.exists(mask_path):
+        return [f"mask.png が無い（Blender で ii/scripts/mask.py を回していない）"], lines
+    hero_im = Image.open(hero_path).convert("L")
+    m = Image.open(mask_path).getchannel("A").point(lambda v: 255 if v >= 128 else 0)
+    if m.size != hero_im.size:
+        return [f"mask {m.size} と hero {hero_im.size} の寸法が違う"], lines
+    W, H = m.size
+    bb = m.getbbox()
+    if not bb:
+        return ["mask が空（parts が画面に写っていない）"], lines
+    x0, y0, x1, y1 = bb
+    mg = {"上": y0 / H * 100, "下": (H - y1) / H * 100, "左": x0 / W * 100, "右": (W - x1) / W * 100}
+    lines.append("  余白 " + "  ".join(f"{k} {v:.1f}%" for k, v in mg.items()))
+    for k, v in mg.items():
+        if 0.3 <= v < MARGIN_MIN and not note.get(k):
+            ng.append(f"{k}の余白 {v:.1f}%（<{MARGIN_MIN}%＝辺に寄りすぎて窮屈。切るなら切る、空けるなら空ける）")
+    # 輪郭の帯：境目から GAP〜RING だけ離した内側・外側の帯（長辺2560換算）。
+    # 🔴 境目に接した帯で測ると、縮小とボケで両側の画素が混ざり明暗差が消える（較正時に001で誤検知した）
+    sc = 1280 / max(W, H)
+    size = (max(1, round(W * sc)), max(1, round(H * sc)))
+    ms = m.resize(size, Image.BILINEAR).point(lambda v: 255 if v >= 128 else 0)
+    g_ = max(1, round(RING_GAP * 1280 / 2560)); r_ = max(g_ + 1, round(RING * 1280 / 2560))
+    er = lambda im, n: im.filter(ImageFilter.MinFilter(2 * n + 1))
+    di = lambda im, n: im.filter(ImageFilter.MaxFilter(2 * n + 1))
+    inner = ImageChops.subtract(er(ms, g_), er(ms, r_))
+    outer = ImageChops.subtract(di(ms, r_), di(ms, g_))
+    L = hero_im.resize(size, Image.BOX).load()
+    I, O = inner.load(), outer.load()
+    cx, cy = (x0 + x1) / 2 * sc, (y0 + y1) / 2 * sc
+    hw, hh = max(1, (x1 - x0) / 2 * sc), max(1, (y1 - y0) / 2 * sc)
+    SEG = 8
+    acc = {s: [[0, 0, 0, 0] for _ in range(SEG)] for s in ("上", "下", "左", "右")}  # [Lin, nin, Lout, nout]
+    for y in range(size[1]):
+        for x in range(size[0]):
+            wi, wo = I[x, y] / 255, O[x, y] / 255
+            if not wi and not wo:
+                continue
+            dx, dy = (x - cx) / hw, (y - cy) / hh
+            if abs(dx) >= abs(dy):
+                side, t = ("右" if dx > 0 else "左"), (dy + 1) / 2
+            else:
+                side, t = ("下" if dy > 0 else "上"), (dx + 1) / 2
+            seg = min(SEG - 1, max(0, int(t * SEG)))
+            a = acc[side][seg]
+            if wi >= 0.2:
+                a[0] += L[x, y] * wi; a[1] += wi
+            if wo >= 0.2:
+                a[2] += L[x, y] * wo; a[3] += wo
+    for side in ("上", "下", "左", "右"):
+        if mg[side] < 0.3:
+            lines.append(f"  輪郭 {side}: 画面の辺で切っている（判定しない）")
+            continue
+        dls = [abs(a[0] / a[1] - a[2] / a[3]) for a in acc[side] if a[1] > 0.5 and a[3] > 0.5]
+        if not dls:
+            continue
+        merged = sum(1 for d in dls if d < SEP_DL) / len(dls)
+        lines.append(f"  輪郭 {side}: 明暗差 中央 {sorted(dls)[len(dls) // 2]:.0f}  溶けた区間 {merged * 100:.0f}%")
+        if merged > SEP_MERGE_MAX and note.get(side):
+            lines.append(f"    └ 理由あり（compose_note）：{note[side]}")
+        elif merged > SEP_MERGE_MAX:
+            ng.append(f"輪郭の{side}辺が地に溶けている（{merged * 100:.0f}%の区間で明暗差<{SEP_DL}）＝被写体がどこまでか読めない")
+    return ng, lines
+
+
+# ---------------------------------------------------------------- elapsed
+def started_at(d):
+    """REVIEW.md の `開始: HH:MM` と作品の日付から開始時刻（JST）を返す。"""
+    import datetime as dt
+    p = os.path.join(d, "REVIEW.md")
+    if not os.path.exists(p):
+        return None
+    m = re.search(r"^開始[:：]\s*(\d{1,2}):(\d{2})", open(p, encoding="utf-8").read(), re.M)
+    if not m:
+        return None
+    jst = dt.timezone(dt.timedelta(hours=9))
+    base = dt.datetime.fromtimestamp(os.path.getctime(p), jst)
+    st = base.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0)
+    if st > base:            # 日付をまたいだ（23:50 開始 → 00:10 作成 など）
+        st -= dt.timedelta(days=1)
+    return st
+
+
+def elapsed(d):
+    """🔴 経過時間は自分で数えない。これで測る（II 003 が54分を「約2時間」と書いた）。"""
+    import datetime as dt
+    st = started_at(d)
+    if not st:
+        return ["REVIEW.md に `開始: HH:MM` が無い"], []
+    now = dt.datetime.now(st.tzinfo)
+    mins = (now - st).total_seconds() / 60
+    left = TIME_LIMIT_MIN - mins
+    return [], [f"  開始 {st:%H:%M}  経過 {mins:.0f}分  3時間の枠まで残り {left:.0f}分" + ("（枠を過ぎた＝工程4 (b)）" if left <= 0 else "")]
+
+
 # ---------------------------------------------------------------- review
 def review(d):
     ng, lines = [], []
@@ -284,6 +397,17 @@ def review(d):
         ng.append(f"testhero の周 {hero_rounds}（<{TESTHERO_MIN}）＝細部を見ずに止めている")
     if heads and "testhero" not in heads[-1].lower():
         ng.append("最後の周が testhero ではない（最終判定は長辺1600で見る）")
+    # 時間切れの申告が本当か（REVIEW.md を最後に書いた時刻で測る）
+    st = started_at(d)
+    if st:
+        import datetime as dt
+        last = dt.datetime.fromtimestamp(os.path.getmtime(p), st.tzinfo)
+        mins = (last - st).total_seconds() / 60
+        lines.append(f"  レビューにかけた時間 {mins:.0f}分（開始 {st:%H:%M} → 最終記入 {last:%H:%M}）")
+        if re.search(r"時間切れ", txt) and mins < TIME_LIMIT_MIN - 10:
+            ng.append(f"「時間切れ」と書いているが、実際は {mins:.0f}分（3時間に届いていない）＝経過時間を数え違えて早く止めた")
+    elif wid >= RULES_V3_FROM:
+        ng.append("REVIEW.md に `開始: HH:MM` が無い")
     if crop_lines < 2:
         ng.append(f"「拡大:」の行が {crop_lines} 件（<2）＝見劣りしないと書いた箇所を拡大して確かめていない")
     if not has_ref:
@@ -312,6 +436,11 @@ def all_checks(d):
     else:
         ng.append(f"works.json に {wid} の行が無い（look を照合できない）")
     run(review, d)
+    mp = os.path.join(d, "mask.png")
+    if os.path.exists(mp):
+        run(compose, os.path.join(d, "hero.png"), mp, (me or {}).get("compose_note"))
+    elif wid >= RULES_V3_FROM:
+        ng.append("mask.png が無い（Blender --python ii/scripts/mask.py -- script.py mask.png を回していない）")
     return ng, lines
 
 
@@ -349,6 +478,10 @@ def main():
     fn = {"hero": hero, "motion": motion, "glb": glb, "review": review, "all": all_checks}.get(cmd)
     if fn:
         return report(*fn(a[1]), cmd)
+    if cmd == "elapsed":
+        return report(*elapsed(a[1]), cmd)
+    if cmd == "compose":
+        return report(*compose(a[1], a[2]), cmd)
     if cmd == "variety":
         return report(*variety(a[1], wid), cmd)
     if cmd == "look":

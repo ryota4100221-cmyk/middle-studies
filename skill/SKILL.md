@@ -81,7 +81,7 @@ description: >
    ```
    撮れた画像を **Read で必ず見る**（真っ白・Cookie バナー・ログイン壁なら別の URL で撮り直す）。
    見たうえで、基準から読み取った **光・素材・構図・色** を4行で `REVIEW.md` の冒頭に書く（`基準: <URL>` の行を必ず入れる）。
-   🔴 **同じく冒頭に `開始: HH:MM`（JST）を書く。** 工程4の時間の枠はここから数える。
+   🔴 **同じく冒頭に `開始: HH:MM`（JST・`TZ=Asia/Tokyo date +%H:%M` で取った値）を書く。** 工程4の時間の枠はここから数える。
 2. **ルックと題材を決める**：`ii/template.py` を `ii/works/NNN_slug/script.py` にコピーし、`LOOK` と舞台・光・カメラを書き換える。
    同じ値を `works.json` に入れる行の下書き（`look`）を作り、**造形に入る前に照合する**：
    ```bash
@@ -110,6 +110,9 @@ description: >
    🔴 **周回に上限は無い。止めてよい条件は次の2つだけ**（2026-09-23 改定・Ryota指示）：
    - **(a) 基準と並べて、劣るところを具体的に1つも言えなくなった**（「まだ少し薄い」のような程度の話が残るなら、それを直す周を回す）
    - **(b) `開始:` から3時間を過ぎた**（残りを本番レンダーと公開に回す。このとき REVIEW.md に「時間切れで止めた・残っている差」を書く）
+   - 🔴 **経過時間は自分で数えない。`python3 ii/scripts/check.py elapsed ii/works/NNN_slug` で測る。**
+     II 003 は実際54分のところを「開始から約2時間」と書いた。逆向きにずれると、まだ枠があるのに「時間切れ」で止める。
+     点検は「時間切れ」と書いてあるのに3時間に届いていなければ🔴を出す。
    > **なぜ上限を外したか**：II 001 は「上限6周」のとおり6周で止め、**27分で完走した**（1周20秒〜1分）。
    > 4時間の枠を使い切らずに、接地の影の薄さと天板の質感という「言葉にできている差」を残したまま出した。
    > 上限は歯止めではなく**天井**として働いていた。
@@ -126,6 +129,19 @@ description: >
      > しかも同じ全体図を見た人間側（セッションのレビュー）は逆に「ボケが弱い」と誤診した——拡大するとボケは効いていた。
      > **縮小した全体図では、ボケ・質感・接地の影・面取りのハイライトの差は、どちら向きにも見誤る。**
      拡大して差が見つかったら、それは (a) を満たしていない＝もう1周回す。
+   - 🔴 **最終判定の前に、構図を機械で測る**（拡大は細部を見る道具で、画面全体の組み方は見ない）：
+     ```bash
+     /Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup \
+       --python ii/scripts/mask.py -- ii/works/NNN_slug/script.py ii/works/NNN_slug/mask.png   # 被写体だけを白く抜く（十数秒）
+     python3 ii/scripts/check.py compose ii/works/NNN_slug/_testhero.png ii/works/NNN_slug/mask.png
+     ```
+     見るのは **四辺の余白**（3%未満は窮屈＝切るなら切る、空けるなら空ける）と、**輪郭の辺ごとの明暗差**
+     （半分以上の区間で地との差が10未満なら、被写体がどこまでか読めない）。
+     > **なぜ**：試作3本の構図の弱点——002 球が右端で窮屈（余白2.4%）／003 本体の下半分が闇に溶ける（下辺100%）——は、
+     > 23〜24周の自己レビューでも「拡大:」21件でも拾えなかった。この点検は2つとも拾う。
+     🔴なら構図を直す周を回す。**意図して沈めた・透明素材で透けるのが正しい**ときだけ、works.json の
+     `compose_note` に辺ごとの理由を書けば通る（`{"上": "ガラスの天端は背景が透けるのが正しい"}`）。
+     ⚠️ 被写体は script.py の `parts` から取る。**被写体のオブジェクトは全部 `parts` に入れておく**（雛形どおり）。
 5. **本番**：`-- still glb` → `-- anim` の順。🔴 **レンダーは同期で待つ**（バックグラウンドにしてターンを終えると
    ヘッドレスではセッションごと死ぬ＝#5・#73）。anim が10分を超えるときの待ち方：
    ```bash
@@ -145,7 +161,7 @@ description: >
    python3 ii/scripts/check.py all ii/works/NNN_slug     # 🔴 0件になるまで公開しない
    ```
    🔴が出たら直してから出す。画像距離が 0.06〜0.14 のときは意図があれば `sameish` に理由を書けば通る。
-   作品フォルダに置くのは `hero.png` `loop.mp4` `model.glb` `script.py` `REVIEW.md` だけ（`_test*.png` `_sbs.png` `_crop*.png` は消す）。
+   作品フォルダに置くのは `hero.png` `loop.mp4` `model.glb` `script.py` `REVIEW.md` `mask.png`（本番の hero に対して描き直す）だけ（`_test*.png` `_sbs.png` `_crop*.png` は消す）。
    `ii/SOURCES.md` に行を足し、**commit & push だけで公開完了**（GitHub Pages が `/ii/` を配信）。`netlify deploy` はしない。
 7. **記録**：Notion「デザインインプット（自動収集）」DBに1ページ作成
    - data_source: `collection://e7229880-2f1c-456f-873e-f8fe3d6cb36d`
@@ -169,6 +185,7 @@ description: >
   "look": {"track": "OBJECT", "palette_family": "warm-neutral", "background": "sweep",
            "lighting": "softbox", "lens": "tele", "aspect": "4:5", "material": "ceramic"},
   "review_rounds": 4, "loop_seconds": 6,
+  "compose_note": {"右": "（任意）構図の点検で🔴の辺を意図として残す理由"},
   "use": "案件でどう使えるか1行（OBJECTのみ・FORMは任意）"
 }
 ```
@@ -178,7 +195,8 @@ description: >
 機械で見るもの（`check.py all`）：白飛び≤2%・黒つぶれ≤25%・コントラスト≥0.10・hero長辺≥2400／
 直近6作との画像距離≥0.06（0.06〜0.14は理由が要る）／直近3作とルック5軸以上一致しない・track交互／
 動き量≥0.62・ループの閉じ≤2.2・静止率≤20%・尺5〜8秒／glb 8MB以下・動きあり／
-自己レビュー6周以上・testhero 2周以上・最後の周が testhero・「拡大:」2行以上・基準の記載あり。
+自己レビュー6周以上・testhero 2周以上・最後の周が testhero・「拡大:」2行以上・基準の記載あり／
+「時間切れ」の申告が実時間と合う／四辺の余白≥3%・輪郭の各辺で溶けた区間≤50%（理由は compose_note）。
 
 目で見るもの（`_sbs.png` で基準と並べて）：
 - [ ] **並べて見劣りしないか**。劣るなら、どこが劣るかを1つに絞って言葉にできるか（言えないうちは直せない）
@@ -204,7 +222,7 @@ description: >
   第2期では前提が違うので読み飛ばしてよい。**API・レンダー・書き出し・待ち方の罠は全部そのまま効く。**
   新しく踏んだ罠は PITFALLS.md に追記する（見出しに `[II]` を付ける）。
 - 雛形: `ii/template.py`（2026-09-23 に Blender 5.1.1 で test/glb の完走を確認済み）
-- 道具: `ii/scripts/check.py`（点検）／`ref.mjs`（基準を撮る）／`sidebyside.py`（並べる）
+- 道具: `ii/scripts/check.py`（点検）／`ref.mjs`（基準を撮る）／`sidebyside.py`（並べる）／`mask.py`（被写体マスク）
 - リポ: `~/projects/middle-studies`（GitHub: ryota4100221-cmyk/middle-studies・public・Pages有効）
 
 ## 人間（Ryota）との分担
