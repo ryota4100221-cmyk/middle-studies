@@ -56,7 +56,9 @@ N_FRAMES = 24
 FILM_SEC = (9.5, 13.0)    # 尺
 FILM_SHOTS = (3, 6)       # カット数
 SHOT_MIN_SEC = 1.5        # 1カットの最短
-CUT_RATIO, CUT_ABS = 4.0, 8.0   # 隣のフレームとの差が「全体の中央値×4」かつ8以上ならカット
+CUT_RATIO, CUT_ABS = 4.0, 8.0   # 隣のフレームとの差が「全体の中央値×4」かつ8以上で、
+CUT_PEAK = 2.5                  # かつ前後のフレームの差の2.5倍以上に飛び抜けていればカット
+SHOT_CHANGE_MIN = 0.10    # カットの最初と最後の変化÷コントラスト。6作24カットは 0.17〜2.50、止まったカットはノイズ並み（≲0.05）
 HERO_MATCH = 0.08         # 最終フレームと hero.png の画像距離。これを超えたら「決めの構図で終わっていない」
 # glb
 SIZE_HI = 8.0          # MB
@@ -276,7 +278,13 @@ def film(path, hero_path=None):
     ims = [Image.open(f).convert("L") for f in fs]
     ds = [diff(ims[i], ims[i + 1]) for i in range(len(ims) - 1)]
     med = sorted(ds)[len(ds) // 2] or 1e-6
-    cuts = [i + 1 for i, d in enumerate(ds) if d > max(CUT_ABS, med * CUT_RATIO)]
+    # カット＝前後のフレームより「1フレームだけ飛び抜けた」差。
+    # 🔴 閾値だけで数えると、速いカメラの動き（差が連続して高い）を1フレームごとにカットと数える
+    #    （2026-09-24 005：1カット目の速いスライドを38カットと誤検知した）
+    def peak(i):
+        nb = max(ds[i - 1] if i > 0 else 0, ds[i + 1] if i + 1 < len(ds) else 0)
+        return ds[i] > max(CUT_ABS, med * CUT_RATIO) and ds[i] > CUT_PEAK * nb
+    cuts = [i + 1 for i in range(len(ds)) if peak(i)]
     bounds = [0] + cuts + [len(ims)]
     shots = [(bounds[k], bounds[k + 1]) for k in range(len(bounds) - 1)]
     fps = nb / dur if dur else 24
@@ -289,13 +297,15 @@ def film(path, hero_path=None):
     for k, (a, b) in enumerate(shots):
         if (b - a) / fps < SHOT_MIN_SEC:
             ng.append(f"カット{k + 1} が {(b - a) / fps:.1f}秒（<{SHOT_MIN_SEC}秒＝一瞬で読めない）")
-        inner = ds[a:max(a, b - 1)]
-        if k < len(shots) - 1:
-            mv = max(inner) if inner else 0
-        else:   # 決めのカットは最後に止まってよい。前半で動いていればよい
-            mv = max(inner[:max(1, len(inner) // 2)]) if inner else 0
-        if mv < MOTION_MIN:
-            ng.append(f"カット{k + 1} が止まっている（動きの最大 {mv:.2f}<{MOTION_MIN}）")
+        # 動き＝カットの最初と最後の画の変化 ÷ 画のコントラスト。
+        # 🔴 隣のフレームとの差の最大値で見ると、暗い画・平らな壁の画ではカメラが動いても数字が小さく、
+        #    003 の押し込み（被写体が1.3倍）と 001 の回り込み（2本の重なりが離れる）を「止まっている」と誤判定した（2026-09-24）
+        e = b - 1 if k < len(shots) - 1 else a + (b - 1 - a) // 2   # 決めのカットは後半で止まってよい
+        from PIL import ImageStat
+        sd = max(8.0, ImageStat.Stat(ims[a]).stddev[0])
+        mv = diff(ims[a], ims[max(a, e)]) / sd
+        if mv < SHOT_CHANGE_MIN:
+            ng.append(f"カット{k + 1} が止まっている（最初と最後の変化 {mv:.2f}<{SHOT_CHANGE_MIN}）")
     if hero_path and os.path.exists(hero_path):
         dh = distance(signature(fs[-1]), signature(hero_path))
         lines.append(f"  最終フレームと hero の距離 {dh:.3f}")
