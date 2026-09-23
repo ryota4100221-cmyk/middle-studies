@@ -59,7 +59,7 @@ SHOT_MIN_SEC = 1.5        # 1カットの最短
 CUT_RATIO, CUT_ABS = 4.0, 8.0   # 隣のフレームとの差が「全体の中央値×4」かつ8以上で、
 CUT_PEAK = 2.5                  # かつ前後のフレームの差の2.5倍以上に飛び抜けていればカット
 SHOT_CHANGE_MIN = 0.10    # カットの最初と最後の変化÷コントラスト。6作24カットは 0.17〜2.50、止まったカットはノイズ並み（≲0.05）
-HERO_MATCH = 0.08         # 最終フレームと hero.png の画像距離。これを超えたら「決めの構図で終わっていない」
+HERO_MATCH = 0.025        # 最終フレームと hero.png の縮小画素差。これを超えたら「決めの構図で終わっていない」
 # glb
 SIZE_HI = 8.0          # MB
 # 構図（2026-09-23 追加・試作3本で較正）
@@ -307,7 +307,15 @@ def film(path, hero_path=None):
         if mv < SHOT_CHANGE_MIN:
             ng.append(f"カット{k + 1} が止まっている（最初と最後の変化 {mv:.2f}<{SHOT_CHANGE_MIN}）")
     if hero_path and os.path.exists(hero_path):
-        dh = distance(signature(fs[-1]), signature(hero_path))
+        # 🔴 signature（輝度ヒストグラム込み）で比べると、一色の地がヒストグラムの区切りに乗った作品で、
+        #    動画の圧縮による2〜3段の暗化だけで距離が跳ねた（2026-09-24 007：構図は一致なのに 0.384）。
+        #    縮小した画像どうしの画素の差で比べる（7作で 最終フレーム 0.003〜0.010／他のカット 0.049〜）
+        from PIL import ImageChops, ImageStat
+        hi = Image.open(hero_path).convert("RGB")
+        size = (64, round(64 * hi.height / hi.width))
+        a_ = Image.open(fs[-1]).convert("RGB").resize(size, Image.BOX)
+        b_ = hi.resize(size, Image.BOX)
+        dh = sum(ImageStat.Stat(ImageChops.difference(a_, b_)).mean) / 3 / 255
         lines.append(f"  最終フレームと hero の距離 {dh:.3f}")
         if dh > HERO_MATCH:
             ng.append(f"最後が hero の構図で終わっていない（距離 {dh:.3f}>{HERO_MATCH}）")

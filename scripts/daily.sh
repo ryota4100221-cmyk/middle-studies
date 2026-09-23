@@ -43,6 +43,14 @@ notify() {
   curl -sS -m 15 -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK" >/dev/null 2>&1
 }
 
+
+# 🔴 合図の判定は「最後の空でない行が、ちょうどその語だけ」（2026-09-24 追加）。
+#    末尾8行に文字列があるかで見ていたら、公開セッションが止まって「…して `MIDDLE_OK` で終わる」という
+#    選択肢の説明を書いただけで完走と判定した（007：未公開のまま MIDDLE_OK 確認・完走と記録）。
+last_is() {
+  local word="$1" f="$2"
+  [[ "$(grep -v '^[[:space:]]*$' "$f" | tail -1 | tr -d '[:space:]*`')" == "$word" ]]
+}
 CEO_DIR="/Users/shitoryota/Library/CloudStorage/GoogleDrive-ryota4100221@gmail.com/マイドライブ/monaka design./CEO"
 SKILL_MD="$HOME/projects/middle-studies/skill/SKILL.md"
 LOG_DIR="$HOME/projects/middle-studies/logs"
@@ -116,11 +124,11 @@ while (( attempt <= MAX_ATTEMPTS )); do
   #    本文中の「12:38 の catch-up は session limit に当たって中断」を掴んで「usage limit hit」と誤判定し、
   #    60分寝てから4回目を起動した＝**同じ日に2作目を作らせかけた**。
   #    成功の判定を失敗の判定より先に置くのが唯一の直し方（順序が仕様）。
-  if (( RC == 0 )) && tail -8 "$OUT_TMP" | grep -q "MIDDLE_OK"; then
+  if (( RC == 0 )) && last_is MIDDLE_OK "$OUT_TMP"; then
     echo "[$(date)] MIDDLE_OK 確認 — 完走（以降の再試行判定はしない）" >> "$LOG_FILE"
     break
   fi
-  if (( RC == 0 )) && tail -8 "$OUT_TMP" | grep -q "MIDDLE_ANIM_READY"; then
+  if (( RC == 0 )) && last_is MIDDLE_ANIM_READY "$OUT_TMP"; then
     echo "[$(date)] MIDDLE_ANIM_READY 確認 — 制作は完了。anim はこのシェルが描く" >> "$LOG_FILE"
     break
   fi
@@ -153,7 +161,7 @@ while (( attempt <= MAX_ATTEMPTS )); do
   #    「終わったつもりで終わっていない」は最も気づけない壊れ方なので、完走の証拠を要求する。
   #    ⚠️ **制御フローは変えない**（RCもリトライも触らない）。動いているものを壊さないため。
   #    証拠が無ければ印を置くだけにし、**毎朝10:00のローカル日次点検がその印を拾って通知する**。
-  if (( RC == 0 )) && ! tail -8 "$OUT_TMP" | grep -qE "MIDDLE_OK|MIDDLE_ANIM_READY"; then
+  if (( RC == 0 )) && ! { last_is MIDDLE_OK "$OUT_TMP" || last_is MIDDLE_ANIM_READY "$OUT_TMP"; }; then
     echo "[$(date)] exit 0 だが完走の証拠（MIDDLE_OK）が無い" >> "$LOG_FILE"
     touch "$(dirname "$LOG_FILE")/INCOMPLETE-$(TZ=Asia/Tokyo date +%F)"
   fi
@@ -166,9 +174,9 @@ done
 #    シェルは時間の制限なくレンダーを待てるので、ここで描いてフレーム数を確かめ、公開だけを次のセッションに渡す。
 BLENDER="/Applications/Blender.app/Contents/MacOS/Blender"
 publish_prompt() {
-  echo "まず「$SKILL_MD」を読む。今日のMIDDLE STUDIES IIは、制作（工程1〜5）と anim のレンダーまで終わっている。制作・自己レビュー・レンダーはやり直さない。ii/works/ の最新の作品フォルダ（$(basename "$1")）について、工程6（check.py all が🔴0件→commit & push）→工程7（Notion）→完走の証明 までを完走して。🔴が出たら、直せるもの（works.json の記入漏れ・compose_note・不要ファイル）は直す。anim の描き直しが要る🔴なら直さずに、止まった理由を書いて終わる。"
+  echo "まず「$SKILL_MD」を読む。今日のMIDDLE STUDIES IIは、制作（工程1〜5）と anim のレンダーまで終わっている。制作・自己レビュー・レンダーはやり直さない。ii/works/ の最新の作品フォルダ（$(basename "$1")）について、工程6（check.py all が🔴0件→commit & push）→工程7（Notion）→完走の証明 までを完走して。🔴が出たら、直せるもの（works.json の記入漏れ・compose_note・不要ファイル）は直す。anim の描き直しが要る🔴なら直さずに、止まった理由を書いて終わる。🔴 これは無人の夜間実行で、人は見ていない。途中で止めるときは SKILL.md 工程8のとおり Slack（$SLACK_WEBHOOK）へ失敗の通知を送ってから終わる。完走したときだけ、最後の行に MIDDLE_OK とだけ書く（説明文の中に MIDDLE_OK と書かない）。"
 }
-if (( RC == 0 )) && tail -8 "$OUT_TMP" | grep -q "MIDDLE_ANIM_READY"; then
+if (( RC == 0 )) && last_is MIDDLE_ANIM_READY "$OUT_TMP"; then
   REQ="$(ls -t "$HOME"/projects/middle-studies/ii/works/*/ANIM_REQUEST 2>/dev/null | head -1)"
   if [[ -z "$REQ" ]]; then
     echo "[$(date)] 🔴 MIDDLE_ANIM_READY なのに ANIM_REQUEST が無い" >> "$LOG_FILE"
@@ -189,7 +197,7 @@ if (( RC == 0 )) && tail -8 "$OUT_TMP" | grep -q "MIDDLE_ANIM_READY"; then
       "$CLAUDE_BIN" -p "$(publish_prompt "$ADIR")" --model claude-opus-5-5 --dangerously-skip-permissions > "$OUT_TMP" 2>&1
       RC=$?
       cat "$OUT_TMP" >> "$LOG_FILE"
-      if (( RC == 0 )) && tail -8 "$OUT_TMP" | grep -q "MIDDLE_OK"; then
+      if (( RC == 0 )) && last_is MIDDLE_OK "$OUT_TMP"; then
         echo "[$(date)] 公開セッションで MIDDLE_OK 確認 — 完走" >> "$LOG_FILE"
       else
         touch "$(dirname "$LOG_FILE")/INCOMPLETE-$(TZ=Asia/Tokyo date +%F)"
@@ -209,9 +217,9 @@ fi
 #    文章の指示ではもう防げないので、シェルが拾う：完走の証拠が無く、今日の作品に hero.png がある
 #    （＝制作は済んでいる）なら、anim の終了を待ってから「工程5の残りから」で1回だけ起動し直す。
 resume_prompt() {
-  echo "まず「$SKILL_MD」を読む。今日のMIDDLE STUDIES IIは、前のセッションが工程5（本番レンダー）の途中で終了した。制作・自己レビューはやり直さない。ii/works/ の最新の作品フォルダについて、loop.mp4 を ffprobe で測り nb_frames が尺どおり（24fps×秒）でなければ anim を同期でやり直し（SKILL.md 工程5の caffeinate -w の手順どおり・ターンを終えない）、model.glb が無ければ書き出し、工程6（check.py all が🔴0件→commit & push）→工程7（Notion）→完走の証明 までを完走して。"
+  echo "まず「$SKILL_MD」を読む。今日のMIDDLE STUDIES IIは、前のセッションが工程5（本番レンダー）の途中で終了した。制作・自己レビューはやり直さない。ii/works/ の最新の作品フォルダについて、loop.mp4 を ffprobe で測り nb_frames が尺どおり（24fps×秒）でなければ anim を同期でやり直し（SKILL.md 工程5の caffeinate -w の手順どおり・ターンを終えない）、model.glb が無ければ書き出し、工程6（check.py all が🔴0件→commit & push）→工程7（Notion）→完走の証明 までを完走して。🔴 これは無人の夜間実行で、人は見ていない。途中で止めるときは SKILL.md 工程8のとおり Slack（$SLACK_WEBHOOK）へ失敗の通知を送ってから終わる。完走したときだけ、最後の行に MIDDLE_OK とだけ書く（説明文の中に MIDDLE_OK と書かない）。"
 }
-if (( RC == 0 )) && ! tail -8 "$OUT_TMP" | grep -q "MIDDLE_OK"; then
+if (( RC == 0 )) && ! last_is MIDDLE_OK "$OUT_TMP"; then
   LATEST_DIR="$(ls -d "$HOME"/projects/middle-studies/ii/works/[0-9]*_* 2>/dev/null | tail -1)"
   if [[ -n "$LATEST_DIR" && -f "$LATEST_DIR/hero.png" ]] && ! git -C "$HOME/projects/middle-studies" ls-files --error-unmatch "$LATEST_DIR/hero.png" >/dev/null 2>&1; then
     echo "[$(date)] 未公開の作品 $(basename "$LATEST_DIR") が残っている — anim の終了を待って工程5の残りから再開" >> "$LOG_FILE"
@@ -220,7 +228,7 @@ if (( RC == 0 )) && ! tail -8 "$OUT_TMP" | grep -q "MIDDLE_OK"; then
     "$CLAUDE_BIN" -p "$(resume_prompt)" --model claude-opus-5-5 --dangerously-skip-permissions > "$OUT_TMP" 2>&1
     RC=$?
     cat "$OUT_TMP" >> "$LOG_FILE"
-    if (( RC == 0 )) && tail -8 "$OUT_TMP" | grep -q "MIDDLE_OK"; then
+    if (( RC == 0 )) && last_is MIDDLE_OK "$OUT_TMP"; then
       echo "[$(date)] 再開セッションで MIDDLE_OK 確認 — 完走" >> "$LOG_FILE"
       rm -f "$(dirname "$LOG_FILE")/INCOMPLETE-$(TZ=Asia/Tokyo date +%F)"
     fi
