@@ -2,7 +2,7 @@
 # MIDDLE STUDIES II 003 — DIAL（OBJECT）
 #
 #   Blender --background --factory-startup --python script.py -- <modes>
-#   modes: test / testhero / still / anim / glb / phases   （省略時 test）
+#   modes: test / testhero / still / anim / glb / shots   （省略時 test）
 #
 # 黒アルマイトの卓上スピーカー。天面に削り出しのアルミのダイヤル1つ。
 # 真上やや奥からの絞ったスポット1灯で、天面と稜線だけが起き、正面は闇に沈む。
@@ -25,9 +25,8 @@ LOOK = dict(
     look="AgX - Base Contrast",
     exposure=0.0,
 )
-FPS, SECONDS = 24, 8
-N_FRAMES = FPS * SECONDS
-STILL_FRAME = int(os.environ.get("II_STILL_FRAME", "1"))
+FPS = 24
+# 尺（N_FRAMES）と静止画のフレーム（STILL_FRAME）は、下の「動画」節の SHOTS から決まる
 
 
 def res(long_side):
@@ -388,16 +387,110 @@ cd.dof.focus_distance = (Vector((0, -BD / 2, 0.11)) - cam.location).length
 cd.dof.aperture_fstop = LOOK["fstop"]
 scene.camera = cam
 
-# ------------------------------------------------------------- 動き（ターンテーブル1周＋ダイヤルが逆に1/4戻る）
-def pose(t):
-    rig.rotation_euler = (0, 0, 2 * math.pi * t)
-    dial.rotation_euler = (0, 0, -2 * math.pi * t * 2)
+# ------------------------------------------------------------- 動画＝プロダクトフィルム（2026-09-24 作り直し）
+# 旧版は8秒のターンテーブル1周のループ。hero・ルック・造形はそのままに、カメラを4カットに割り直す。
+# 物の動き：台はわずかに振れて正面へ戻り、つまみは逆向きに回って指標が hero の位置で止まる（SETTLE で止まる）
+HERO_CAM, HERO_AIM = cam.location.copy(), AIM.copy()
+HERO_FOCUS = Vector((0, -BD / 2, 0.11))
+DIAL_TOP = DIAL_H + 0.004 + BH          # つまみの天面の高さ（足の2mm込み）
 
 
-for f in range(1, N_FRAMES + 2):
-    pose((f - 1) / N_FRAMES)
-    for o in (rig, dial):
-        o.keyframe_insert("rotation_euler", frame=f)
+def ease(t):                  # 加減速（sine in-out）
+    return 0.5 - 0.5 * math.cos(math.pi * max(0.0, min(1.0, t)))
+
+
+def ease_out(t):              # 動きながら入って止まる（決めのカット向き）
+    t = max(0.0, min(1.0, t))
+    return 1 - (1 - t) ** 3
+
+
+def lerp(a, b, t):
+    return Vector(a).lerp(Vector(b), t)
+
+
+def orbit(center, radius, height, deg):   # 被写体まわりの弧（deg=0 が正面 -Y）
+    r = math.radians(deg)
+    return Vector((center[0] + radius * math.sin(r), center[1] - radius * math.cos(r), height))
+
+
+def dial_at(T, dz=0.0):
+    """全体の進み T でのつまみの中心（天面の高さ＋dz）。台が振れるのでカメラはこれを追う"""
+    r = rig_angle(T)
+    return Vector((DIAL_X * math.cos(r), DIAL_X * math.sin(r), DIAL_TOP + dz))
+
+
+# 各カット：cam(t, T)→(カメラ位置, 注視点, レンズmm, f値, ピント距離 or None=注視点まで / "hero")
+SHOTS = [
+    dict(sec=3.0, kind="押し込み",   # 引き：右前の高みから、闇の中の光だまりと本体へまっすぐ寄る
+         cam=lambda t, T: (lerp(orbit(AIM, 1.55, 0.78, 38), orbit(AIM, 1.20, 0.62, 38), ease(t)),
+                           AIM + Vector((0, 0.02, -0.02)), 85, 11.0, None)),
+    dict(sec=3.0, kind="マクロ",     # 寄り：回るつまみを左前の低めからなめ、ピントを天面の旋盤目からローレットの縁へ送る
+         cam=lambda t, T: (dial_at(T) + lerp((-0.17, -0.30, 0.075), (-0.12, -0.32, 0.06), ease(t)),
+                           dial_at(T, -0.010), 135, 3.5,
+                           (1 - ease(t)) * (dial_at(T) - dial_at(T) - lerp((-0.17, -0.30, 0.075), (-0.12, -0.32, 0.06), ease(t))).length
+                           + ease(t) * (dial_at(T, -0.010) + Vector((0, -DIAL_R, 0)) - dial_at(T) - lerp((-0.17, -0.30, 0.075), (-0.12, -0.32, 0.06), ease(t))).length)),
+    dict(sec=2.5, kind="光の走り",   # 中：左の側面に回って止め、キーを左から中央へ送る＝光だまりと稜線の光が横へ走る
+         cam=lambda t, T: (lerp(orbit(AIM, 0.95, 0.56, -58), orbit(AIM, 0.95, 0.52, -52), ease(t)),
+                           AIM + Vector((0, 0, 0.0)), 85, 9.0, None)),
+    dict(sec=3.0, kind="決め",       # 右上から寄りながら入り、hero の構図で止まる
+         cam=lambda t, T: (lerp(HERO_CAM + Vector((0.16, 0.05, 0.10)), HERO_CAM, ease_out(min(1.0, t / 0.6))),
+                           lerp(HERO_AIM + Vector((0.02, 0, 0.0)), HERO_AIM, ease_out(min(1.0, t / 0.6))),
+                           LOOK["lens"], LOOK["fstop"], "hero")),
+]
+shot_start, N_FRAMES = [], 0
+for sh in SHOTS:
+    shot_start.append(N_FRAMES + 1)
+    sh["frames"] = round(sh["sec"] * FPS)
+    N_FRAMES += sh["frames"]
+SECONDS = N_FRAMES / FPS
+STILL_FRAME = N_FRAMES        # 最後のフレーム＝決めのカットが止まったところ＝hero
+SETTLE = (shot_start[-1] + round(SHOTS[-1]["frames"] * 0.6) - 1) / (N_FRAMES - 1)   # この T で動きが hero の位相に戻って止まる
+
+
+def rig_angle(T):
+    return math.radians(-24) * (1 - ease(min(1.0, T / SETTLE)))
+
+
+def pose(T):
+    """台は -24°→0°、つまみは逆向きに 3/4 周戻って指標が hero の位置で止まる"""
+    rig.rotation_euler = (0, 0, rig_angle(T))
+    dial.rotation_euler = (0, 0, math.radians(270) * (1 - ease(min(1.0, T / SETTLE))))
+
+
+KEY_LOC, KEY_TGT = key.location.copy(), Vector((0.0, 0.12, 0.0))
+
+
+def light_path(i, t):
+    """光の走り：3カット目だけキーを左から元の位置へ送る（向きは平行移動＝光だまりが床と本体を横へ滑る）"""
+    d = Vector((-0.75 * (1 - ease(t)), 0, 0)) if i == 2 else Vector((0, 0, 0))
+    key.location = KEY_LOC + d
+    key.rotation_euler = (KEY_TGT + d - key.location).to_track_quat('-Z', 'Y').to_euler()
+
+
+for i, sh in enumerate(SHOTS):
+    for k in range(sh["frames"]):
+        f = shot_start[i] + k
+        t = k / max(1, sh["frames"] - 1)
+        T = (f - 1) / max(1, N_FRAMES - 1)
+        pose(T)
+        loc, tgt, lens, fstop, focus = sh["cam"](t, T)
+        cam.location = loc
+        cam.rotation_euler = (Vector(tgt) - Vector(loc)).to_track_quat('-Z', 'Y').to_euler()
+        cd.lens = lens
+        cd.dof.aperture_fstop = fstop
+        if focus == "hero":
+            focus = (HERO_FOCUS - Vector(loc)).length
+        cd.dof.focus_distance = focus if focus else (Vector(tgt) - Vector(loc)).length
+        for path in ("location", "rotation_euler"):
+            cam.keyframe_insert(path, frame=f)
+        cd.keyframe_insert("lens", frame=f)
+        cd.dof.keyframe_insert("aperture_fstop", frame=f)
+        cd.dof.keyframe_insert("focus_distance", frame=f)
+        for o in (rig, dial):
+            o.keyframe_insert("rotation_euler", frame=f)
+        light_path(i, t)
+        key.keyframe_insert("location", frame=f)
+        key.keyframe_insert("rotation_euler", frame=f)
 
 # ------------------------------------------------------------- ライトリンク（#56：起こしと縁は床に当てない）
 lit = bpy.data.collections.new("lit_obj")
@@ -472,17 +565,19 @@ if "testhero" in modes:
     still(os.path.join(OUT, "_testhero.png"), 1600, 128)
     print(">> testhero done")
 
-if "phases" in modes:
-    for i, fr in enumerate((1, N_FRAMES // 4 + 1, N_FRAMES // 2 + 1, 3 * N_FRAMES // 4 + 1)):
-        still(os.path.join(OUT, "_phase_%d.png" % i), 600, 32, fr)
-    print(">> phases done")
+if "shots" in modes:    # 各カットの頭・中・終わり（ii/scripts/contact.py で1枚に並べる）
+    for i, sh in enumerate(SHOTS):
+        for j, frac in enumerate((0.0, 0.5, 1.0)):
+            fr = shot_start[i] + round(frac * (sh["frames"] - 1))
+            still(os.path.join(OUT, "_shot_%d_%d.png" % (i, j)), 480, 24, fr)
+    print(">> shots done")
 
 if "still" in modes:
     still(os.path.join(OUT, "hero.png"), 2560, 256)
     print(">> hero done")
 
 if "anim" in modes:
-    scene.render.resolution_x, scene.render.resolution_y = res(1080)
+    scene.render.resolution_x, scene.render.resolution_y = res(int(os.environ.get("II_ANIM_LONG", "1080")))  # II_ANIM_LONG は試験用
     scene.cycles.samples = int(os.environ.get("II_ANIM_SAMPLES", "24"))
     scene.render.image_settings.media_type = 'VIDEO'
     scene.render.image_settings.file_format = 'FFMPEG'
