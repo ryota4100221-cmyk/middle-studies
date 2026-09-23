@@ -163,7 +163,9 @@ description: >
    Blender --background --factory-startup --python script.py -- shots      # 各カット3枚（長辺480・十数秒×カット数）
    python3 ii/scripts/contact.py ii/works/NNN_slug                      # → _contact.png
    ```
-   REVIEW.md に `## film round N` で記録する（**最低2周**・点検が数える）。見ること：
+   REVIEW.md に `## film round N` で記録する（**最低2周**・点検が数える）。
+   🔴 **最後の film round には「直すこと」を残さない**＝直したら、もう一度 `shots`→`contact.py` で描き直して確かめる周を挟む
+   （006 は film round 2 で2カット目の向きを直したまま、描き直さずに anim へ進んだ。点検が🔴を出す・007〜）。見ること：
    カットごとに何を見せているかが1秒で分かるか／前のカットと画が違うか（距離・向き・光）／決めが hero と一致しているか／
    マクロで肌理や部品が「見せ場」になっているか（ぼけて何も写っていないマクロは失敗）。
 5. **本番**：🔴 **daily（launchd・`claude -p`）では、AI は動画（anim）を描かない。** 描くのは `daily.sh`。

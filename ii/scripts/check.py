@@ -494,6 +494,12 @@ def review(d):
         lines.append(f"  動画のレビュー {film_rounds}周")
         if film_rounds < 2:
             ng.append(f"動画のレビュー（## film round）{film_rounds}周（<2）＝カットを並べて見ていない")
+        # 🔴 最後の動画レビューに「直すこと」が残っていたら、直した画を誰も見ていない（2026-09-23 006：
+        #    film round 2 で2カット目の向きを直したが、描き直さずに anim へ進んだ）。確かめる周を1つ挟ませる
+        last_film = re.split(r"^##\s*film\s*round\s*\d+.*$", txt, flags=re.M | re.I)[-1] if film_rounds else ""
+        last_film = re.split(r"^##\s", last_film, flags=re.M)[0]
+        if film_rounds and re.search(r"直すこと[:：]", last_film) and wid > "006":
+            ng.append("最後の動画レビューに「直すこと」が残っている＝直したカットを描き直して見ていない（もう1周 shots→contact を回す）")
     if crop_lines < 2:
         ng.append(f"「拡大:」の行が {crop_lines} 件（<2）＝見劣りしないと書いた箇所を拡大して確かめていない")
     if not has_ref:
