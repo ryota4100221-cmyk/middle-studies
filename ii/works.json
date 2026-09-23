@@ -48,5 +48,30 @@
     "review_rounds": 23,
     "loop_seconds": 6,
     "use": "FVの背景・区切りビジュアルに。右下の空いた床にコピーを置ける。ガラス・透明感・光を扱う美容/建築/テック系に"
+  },
+  {
+    "id": "003",
+    "slug": "dial",
+    "title": "DIAL",
+    "title_ja": "つまみ",
+    "date": "2026-09-23",
+    "track": "OBJECT",
+    "concept": "黒アルマイトの卓上スピーカーと、天面に削り出しのアルミのつまみ1つ。闇の中、奥から差す絞った1灯が天面と稜線だけを起こし、正面は濃紺の闇に沈む。見どころは、つまみのローレットと旋盤の帯、1.4mmの面取りに通る細い光の線。台の上でゆっくり1周し、つまみだけが逆に回り続ける。",
+    "source": {
+      "url": "https://assets.teenage.engineering/_img/5f7489900ac0440004e5b8a0_1024.png",
+      "took": "光：真上やや奥からの絞ったスポット1灯＝天面と稜線だけが起き、正面は沈む / 素材：黒アルマイトの細かいマット＋金属の部品だけが光を拾う / 構図：やや見下ろしの中望遠・中央・上1/4が空く闇 / 色：青みの黒の単色（灰青止まり）"
+    },
+    "look": {
+      "track": "OBJECT",
+      "palette_family": "dark-mono",
+      "background": "void",
+      "lighting": "top-spot",
+      "lens": "tele",
+      "aspect": "1:1",
+      "material": "anodized-metal"
+    },
+    "review_rounds": 24,
+    "loop_seconds": 8,
+    "use": "オーディオ・家電・ガジェット・テック系のFVに。上1/4の闇にコピーを白抜きで置ける。ダーク基調のプロダクトLPの商品カット代わりに"
   }
 ]

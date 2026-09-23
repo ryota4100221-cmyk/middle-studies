@@ -8,3 +8,4 @@
 |---|---|---|---|---|---|
 | 001 | 2026-09-23 | OBJECT | https://www.balmuda.com/jp/pot/img/og/index.jpg | balmuda.com | 左奥の窓1灯＋片側を落とす／粉体塗装のマット／天板すれすれの望遠・主役左・脇役を右奥にボカす／中性グレー＋濃色＋金の差し色 |
 | 002 | 2026-09-23 | FORM | https://mir-s3-cdn-cf.behance.net/project_modules/1400/7bb04e110661009.5ff3430ba1437.png | behance.net | 奥から差す硬い光1灯＝集光が影の代わり／透明ガラス・縁の分散／段差を斜めに見下ろす縦長／灰みの青の単色グラデ＋白い集光（作品ページ https://www.behance.net/gallery/110661009/Glass-Caustics） |
+| 003 | 2026-09-23 | OBJECT | https://assets.teenage.engineering/_img/5f7489900ac0440004e5b8a0_1024.png | teenage.engineering | 真上やや奥の絞ったスポット1灯＝天面と稜線だけ起きる／黒アルマイトのマット・金属部品だけ光る／やや見下ろしの中望遠・上1/4の闇／青みの黒の単色（製品ページ https://teenage.engineering/products/ob-4 の og:image） |
