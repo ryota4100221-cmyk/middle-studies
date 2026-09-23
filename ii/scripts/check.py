@@ -282,7 +282,11 @@ def compose(hero_path, mask_path, note=None):
     hero_im = Image.open(hero_path).convert("L")
     m = Image.open(mask_path).getchannel("A").point(lambda v: 255 if v >= 128 else 0)
     if m.size != hero_im.size:
-        return [f"mask {m.size} と hero {hero_im.size} の寸法が違う"], lines
+        # 🔴 手順どおり testhero（長辺1600）に対して回すと、mask（長辺2560）と寸法が必ず違う（2026-09-23 004で発覚）。
+        #    縦横比が同じなら mask を合わせる。違うなら判型を変えた後の古い mask なので描き直させる
+        if abs(m.size[0] / m.size[1] - hero_im.size[0] / hero_im.size[1]) > 0.01:
+            return [f"mask {m.size} と hero {hero_im.size} の縦横比が違う（判型を変えたなら mask を描き直す）"], lines
+        m = m.resize(hero_im.size, Image.BILINEAR).point(lambda v: 255 if v >= 128 else 0)
     W, H = m.size
     bb = m.getbbox()
     if not bb:
