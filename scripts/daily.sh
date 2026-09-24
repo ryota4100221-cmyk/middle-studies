@@ -176,7 +176,9 @@ BLENDER="/Applications/Blender.app/Contents/MacOS/Blender"
 publish_prompt() {
   echo "まず「$SKILL_MD」を読む。今日のMIDDLE STUDIES IIは、制作（工程1〜5）と anim のレンダーまで終わっている。制作・自己レビュー・レンダーはやり直さない。ii/works/ の最新の作品フォルダ（$(basename "$1")）について、工程6（check.py all が🔴0件→commit & push）→工程7（Notion）→完走の証明 までを完走して。🔴が出たら、直せるもの（works.json の記入漏れ・compose_note・不要ファイル）は直す。anim の描き直しが要る🔴なら直さずに、止まった理由を書いて終わる。🔴 これは無人の夜間実行で、人は見ていない。途中で止めるときは SKILL.md 工程8のとおり Slack（$SLACK_WEBHOOK）へ失敗の通知を送ってから終わる。完走したときだけ、最後の行に MIDDLE_OK とだけ書く（説明文の中に MIDDLE_OK と書かない）。"
 }
+PUBLISH_TRIED=""
 if (( RC == 0 )) && last_is MIDDLE_ANIM_READY "$OUT_TMP"; then
+  PUBLISH_TRIED=1
   REQ="$(ls -t "$HOME"/projects/middle-studies/ii/works/*/ANIM_REQUEST 2>/dev/null | head -1)"
   if [[ -z "$REQ" ]]; then
     echo "[$(date)] 🔴 MIDDLE_ANIM_READY なのに ANIM_REQUEST が無い" >> "$LOG_FILE"
@@ -219,7 +221,10 @@ fi
 resume_prompt() {
   echo "まず「$SKILL_MD」を読む。今日のMIDDLE STUDIES IIは、前のセッションが工程5（本番レンダー）の途中で終了した。制作・自己レビューはやり直さない。ii/works/ の最新の作品フォルダについて、loop.mp4 を ffprobe で測り nb_frames が尺どおり（24fps×秒）でなければ anim を同期でやり直し（SKILL.md 工程5の caffeinate -w の手順どおり・ターンを終えない）、model.glb が無ければ書き出し、工程6（check.py all が🔴0件→commit & push）→工程7（Notion）→完走の証明 までを完走して。🔴 これは無人の夜間実行で、人は見ていない。途中で止めるときは SKILL.md 工程8のとおり Slack（$SLACK_WEBHOOK）へ失敗の通知を送ってから終わる。完走したときだけ、最後の行に MIDDLE_OK とだけ書く（説明文の中に MIDDLE_OK と書かない）。"
 }
-if (( RC == 0 )) && ! last_is MIDDLE_OK "$OUT_TMP"; then
+# 🔴 公開セッションが意図して止めた（点検の🔴など）ときは救済しない（2026-09-24 008）。
+#    救済は「AI がレンダー待ちでターンを終えた」ためのもの。止めた判断を覆して、範囲外の修正（hero だけ描き直し、
+#    動画は古い色のまま）で公開してしまった。止まった作品は Slack の通知で人が見る。
+if (( RC == 0 )) && [[ -z "$PUBLISH_TRIED" ]] && ! last_is MIDDLE_OK "$OUT_TMP"; then
   LATEST_DIR="$(ls -d "$HOME"/projects/middle-studies/ii/works/[0-9]*_* 2>/dev/null | tail -1)"
   if [[ -n "$LATEST_DIR" && -f "$LATEST_DIR/hero.png" ]] && ! git -C "$HOME/projects/middle-studies" ls-files --error-unmatch "$LATEST_DIR/hero.png" >/dev/null 2>&1; then
     echo "[$(date)] 未公開の作品 $(basename "$LATEST_DIR") が残っている — anim の終了を待って工程5の残りから再開" >> "$LOG_FILE"
