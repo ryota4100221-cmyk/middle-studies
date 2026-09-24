@@ -271,5 +271,38 @@
       ]
     },
     "use": "FORMだが、サービス一覧・カテゴリ索引のFV背景に使える。セルの図形をサービスごとのアイコンに差し替えれば、1枚で「多様な手札」を見せられる"
+  },
+  {
+    "id": "009",
+    "slug": "hour",
+    "title": "HOUR",
+    "title_ja": "時",
+    "date": "2026-09-25",
+    "track": "OBJECT",
+    "concept": "ブレスレットを輪にして紙に置いた腕時計を、真上からの窓光で撮った。白と明るい灰だけで組んだ画面に、橙の秒針1本だけを差す。見どころは平らなコマと細い目地、ラグから細るケース、紙から浮いた高さが分かる柔らかい影",
+    "source": {
+      "url": "https://braun-clocks.com/cdn/shop/files/Watches-main-slider-desktop-BN0265.png?v=1737983861",
+      "took": "光：画面の奥やや左からの大きく柔らかい窓光1灯・影は右下へずれて柔らかく伸びる / 素材：ヘアラインのステンレスと砂目の灰の文字盤・黒は針と目盛りだけ / 構図：横長バナーの右2/3に真上から置き、左6割を余白に / 色：白〜明るい灰の単色に差し色1点"
+    },
+    "look": {
+      "track": "OBJECT",
+      "palette_family": "white-mono",
+      "background": "tabletop",
+      "lighting": "window-graze",
+      "lens": "tele",
+      "aspect": "21:9",
+      "material": "brushed-steel"
+    },
+    "review_rounds": 19,
+    "film": {
+      "sec": 11.5,
+      "shots": [
+        "スライド",
+        "マクロ",
+        "光の走り",
+        "決め"
+      ]
+    },
+    "use": "時計・文具・家電など小物プロダクトのFVバナー。左6割が紙の無地なので、コピーを載せる余白としてそのまま使える"
   }
 ]
