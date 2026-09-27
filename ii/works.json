@@ -304,5 +304,37 @@
       ]
     },
     "use": "時計・文具・家電など小物プロダクトのFVバナー。左6割が紙の無地なので、コピーを載せる余白としてそのまま使える"
+  },
+  {
+    "id": "010",
+    "slug": "fold",
+    "title": "FOLD",
+    "title_ja": "折",
+    "date": "2026-09-28",
+    "track": "FORM",
+    "concept": "鏡のように磨いた大きな面が S 字の谷をはさんで折れ重なり、谷の中を桃寄りの珊瑚の舌が入れ子の層を従えて這う。光源は写さず、方向で色が変わる環境を面の向きだけで拾わせ、稜に沿って細い虹色の縁取りを走らせた。",
+    "source": {
+      "url": "https://cdn.myportfolio.com/984a50fb4ed0c07e17fa2123cad05ff0/6d7ed828-d6e2-40ab-8fb0-fd52257a6a2b.jpg?h=12166daec330584ad4d5189100e49ee3",
+      "took": "光：光源は写さず、右上の桃〜クリームと広い深い青緑のグラデーションを艶の面に映し込む・谷と重なりの奥は黒へ落とす / 素材：荒さほぼ0の鏡面の塗膜・折れの縁にだけ細い虹色の縁取り / 構図：16:9 に地を見せない全面・左上から右下へ落ちる稜の対角と、上を横切る面、その間の S 字の谷 / 色：深い青緑を主に、珊瑚〜桃を上の面と谷の舌に集め、黒とクリームの細い帯で締める"
+    },
+    "look": {
+      "track": "FORM",
+      "palette_family": "teal-coral-gradient",
+      "background": "none-fullbleed",
+      "lighting": "gradient-environment",
+      "lens": "normal",
+      "aspect": "16:9",
+      "material": "gloss-lacquer"
+    },
+    "review_rounds": 61,
+    "film": {
+      "sec": 11.5,
+      "shots": [
+        "マクロ",
+        "光の走り",
+        "押し込み",
+        "決め"
+      ]
+    }
   }
 ]
