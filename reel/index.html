@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MIDDLE STUDIES REEL — monaka design.</title>
-<meta name="description" content="A fifteen-second motion graphics showreel, made every night by Claude Code from the same one-line brief.">
+<meta name="description" content="Fifteen-second motion studies.">
 <style>
   :root {
     --bg: #111110;
@@ -35,9 +35,7 @@
   header {
     padding: 12vh 40px 8vh;
     display: grid;
-    grid-template-columns: 1fr minmax(0, 460px);
-    gap: 40px;
-    align-items: end;
+    grid-template-columns: 1fr;
   }
   .kicker { font-size: 11px; letter-spacing: 0.3em; color: var(--mute); margin-bottom: 24px; }
   h1 {
@@ -46,16 +44,6 @@
     letter-spacing: -0.035em;
     line-height: 0.92;
   }
-  .sub { font-size: 14px; color: var(--mute); line-height: 1.9; letter-spacing: 0.03em; }
-  .brief {
-    margin-top: 24px;
-    padding: 20px 0 0;
-    border-top: 1px solid var(--line);
-    font-size: 15px;
-    line-height: 1.9;
-    color: var(--fg);
-  }
-  .brief small { display: block; font-size: 11px; letter-spacing: 0.22em; color: var(--mute); margin-bottom: 8px; }
   .feature { padding: 0 40px 12vh; }
   .feature video, .card video {
     width: 100%;
@@ -66,10 +54,6 @@
   }
   .meta { margin-top: 18px; display: flex; justify-content: space-between; gap: 16px; font-size: 11px; letter-spacing: 0.22em; color: var(--mute); }
   .feature h2 { margin-top: 14px; font-size: clamp(28px, 3.4vw, 48px); font-weight: 700; letter-spacing: -0.02em; }
-  .feature .row { display: grid; grid-template-columns: 1fr minmax(0, 460px); gap: 40px; margin-top: 16px; }
-  .concept { font-size: 14px; line-height: 1.9; color: var(--mute); }
-  .tags { display: flex; flex-wrap: wrap; gap: 8px; align-content: start; }
-  .tags span { font-size: 11px; letter-spacing: 0.08em; padding: 5px 10px; border: 1px solid var(--line); color: var(--mute); }
   .archive-head {
     padding: 0 40px 24px;
     font-size: 11px;
@@ -86,7 +70,6 @@
   }
   .card { text-decoration: none; display: block; }
   .card h3 { margin-top: 10px; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
-  .card p { margin-top: 10px; font-size: 13px; line-height: 1.8; color: var(--mute); }
   .empty { padding: 0 40px 10vh; font-size: 14px; color: var(--mute); }
   footer { padding: 10vh 40px; border-top: 1px solid var(--line); font-size: 12px; color: var(--mute); line-height: 2; }
   footer strong { color: var(--fg); }
@@ -94,7 +77,6 @@
     nav { padding: 20px 16px; gap: 20px; }
     header { grid-template-columns: 1fr; padding: 8vh 16px 6vh; gap: 28px; }
     .feature { padding: 0 16px 10vh; }
-    .feature .row { grid-template-columns: 1fr; gap: 20px; }
     .archive-head { padding: 32px 16px 20px; }
     .grid { padding: 0 16px 24px; }
     .empty { padding: 0 16px 8vh; }
@@ -113,29 +95,16 @@
     <div class="kicker">MIDDLE STUDIES REEL</div>
     <h1>Fifteen<br>seconds,<br>every day.</h1>
   </div>
-  <div>
-    <p class="sub">
-      毎晩、Claude Code に同じ1行だけを渡して、15秒のモーショングラフィックスを1本作らせています。
-      絵コンテも素材もなく、すべてコードで組み、1フレームずつ書き出しています。
-      題材の選定から自己レビュー、公開まで自動で回している企画です。
-    </p>
-    <p class="brief">
-      <small>THE BRIEF — 毎回これだけ</small>
-      君がどれだけすごいモーションデザイナーかを見せる、ダイナミックな15秒のモーショングラフィックス動画を作って。履歴書に添えるショーリールのつもりで。全力でやって。
-    </p>
-  </div>
 </header>
 <section class="feature" id="feature"></section>
 <div class="archive-head" id="archive-head" hidden>ARCHIVE</div>
 <main class="grid" id="grid"></main>
 <footer>
   <strong>monaka design.</strong><br>
-  1920 × 1080 · 60 fps · 15 s — no audio. Every frame is computed from code.<br>
   We wrap your vision in design.
 </footer>
 <script>
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const tags = w => (w.techniques || []).map(t => `<span>${esc(t)}</span>`).join('');
 fetch('works.json')
   .then(r => r.json())
   .then(works => {
@@ -149,8 +118,7 @@ fetch('works.json')
     feature.innerHTML = `
       <video src="${esc(w.video)}" poster="${dir}/poster.jpg" autoplay loop muted playsinline controls preload="auto"></video>
       <div class="meta"><span>REEL / ${esc(w.id)} — LATEST</span><span>${esc(w.date)}</span></div>
-      <h2>${esc(w.title)}</h2>
-      <div class="row"><p class="concept">${esc(w.concept)}</p><div class="tags">${tags(w)}</div></div>`;
+      <h2>${esc(w.title)}</h2>`;
     const rest = list.slice(1);
     if (!rest.length) return;
     document.getElementById('archive-head').hidden = false;
@@ -166,8 +134,7 @@ fetch('works.json')
       a.innerHTML = `
         <video data-src="${esc(w.video)}" poster="${dir}/poster.jpg" loop muted playsinline controls preload="none"></video>
         <div class="meta"><span>REEL / ${esc(w.id)}</span><span>${esc(w.date)}</span></div>
-        <h3>${esc(w.title)}</h3>
-        <p>${esc(w.concept)}</p>`;
+        <h3>${esc(w.title)}</h3>`;
       grid.appendChild(a);
       const v = a.querySelector('video');
       if (io) io.observe(v); else v.src = v.dataset.src;
