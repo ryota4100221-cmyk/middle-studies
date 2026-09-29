@@ -1,0 +1,39 @@
+[
+  {
+    "id": "001",
+    "slug": "function-of-time",
+    "title": "Function of time",
+    "date": "2026-09-29",
+    "concept": "点が線になり、紙が開いて始まる8章。文字は1字ずつ別のイージングで入り、6種のイージングを同じ距離・同じ尺で並べて手の内を見せ、丸→四角→三角→星のモーフから、中心から広がるグリッドの波、144点の球体へと、前の場面の最後の形が次の場面の最初の形になるようにつないだ。最後は線から点へ戻り、0秒目に継ぎ目なく戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/001_function-of-time.mp4",
+    "techniques": [
+      "kinetic-type",
+      "easing-study",
+      "shape-morph",
+      "grid-wave",
+      "3d-projection",
+      "match-cut",
+      "wipe",
+      "counter",
+      "motion-blur",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#0f0f0d",
+        "#ecebe6",
+        "#ff4a1c",
+        "#2f4bff"
+      ],
+      "type": [
+        "Helvetica Neue",
+        "Didot",
+        "Menlo"
+      ],
+      "structure": "8 chapters / match cuts",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：HUDをdifference合成で載せたら赤地で文字が千切れた→地の明るさを1画素測って色を切り替え／DEPTHの注記が球に重なった→球を右へ180px寄せ、注記を左に3行で。2周目：冒頭1.13秒がほぼ真っ黒（点が1つだけ）で、リールの最初の1秒としても弱く点検でも🔴→点を0.3秒で灯し、2重の波紋を足し、線→紙の展開を0.3秒前倒し。3周目：つなぎ8か所を拡大で確認、赤帯のワイプで一瞬全面が赤になるのは意図どおり。許容した差：GRIDの章ではHUDが黒い四角に隠れる（全面を覆う場面なので残した）。"
+  }
+]

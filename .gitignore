@@ -10,3 +10,9 @@ scripts/.measure_cache.json
 ii/refs/
 ii/works/*/_*
 ii/works/*/ANIM_REQUEST
+
+# MIDDLE STUDIES REEL（2026-09-29）
+# 🔴 動画本体はこのリポに入れない（Pages 1GB 上限）。配信は middle-studies-reel リポ
+reel/works/*/reel.mp4
+reel/node_modules/
+reel/logs/

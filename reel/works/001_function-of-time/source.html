@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>REEL 001 — Function of time</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0f0f0d; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; object-fit: contain; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+/*
+ * MIDDLE STUDIES REEL 001 — "Function of time"
+ * 15秒・1920×1080。全フレームが時刻 t の純関数（draw(t)）。キーフレームなし。
+ * 契約：window.__duration と window.__seek(t)。?render が無ければ自走で再生する。
+ */
+const W = 1920, H = 1080, DUR = 15, FPS = 60;
+const INK = '#0f0f0d', PAPER = '#ecebe6', RED = '#ff4a1c', BLUE = '#2f4bff', MUTE = '#85837c';
+const SANS = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+const SERIF = 'Didot, "Bodoni 72", "New York", serif';
+const MONO = 'Menlo, Monaco, monospace';
+
+const cv = document.getElementById('c');
+const out = cv.getContext('2d');
+const buf = document.createElement('canvas'); buf.width = W; buf.height = H;
+const ctx = buf.getContext('2d');
+
+// ---------- math ----------
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const P = (t, a, b) => clamp((t - a) / (b - a));
+const lerp = (a, b, k) => a + (b - a) * k;
+const TAU = Math.PI * 2;
+const E = {
+  linear: x => x,
+  inOutCubic: x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2,
+  outExpo: x => x === 1 ? 1 : 1 - Math.pow(2, -10 * x),
+  inExpo: x => x === 0 ? 0 : Math.pow(2, 10 * x - 10),
+  inOutExpo: x => x === 0 ? 0 : x === 1 ? 1 : x < .5 ? Math.pow(2, 20 * x - 10) / 2 : (2 - Math.pow(2, -20 * x + 10)) / 2,
+  outBack: x => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); },
+  inBack: x => { const c1 = 1.70158, c3 = c1 + 1; return c3 * x * x * x - c1 * x * x; },
+  outElastic: x => x === 0 ? 0 : x === 1 ? 1 : Math.pow(2, -10 * x) * Math.sin((x * 10 - .75) * (TAU / 3)) + 1,
+  outBounce: x => {
+    const n = 7.5625, d = 2.75;
+    if (x < 1 / d) return n * x * x;
+    if (x < 2 / d) return n * (x -= 1.5 / d) * x + .75;
+    if (x < 2.5 / d) return n * (x -= 2.25 / d) * x + .9375;
+    return n * (x -= 2.625 / d) * x + .984375;
+  },
+  outQuint: x => 1 - Math.pow(1 - x, 5),
+  inOutQuint: x => x < .5 ? 16 * x ** 5 : 1 - Math.pow(-2 * x + 2, 5) / 2,
+};
+const ease = (t, a, b, e = E.inOutCubic) => e(P(t, a, b));
+
+function rect(c, x, y, w, h, col) { ctx.fillStyle = col; ctx.fillRect(x, y, w, h); }
+function dot(x, y, r, col) { if (r <= 0) return; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); }
+function font(w, px, fam = SANS, style = '') { ctx.font = `${style} ${w} ${px}px ${fam}`; }
+
+// 文字を1字ずつ置く（トラッキングを自前で持つ）。返り値＝各字の x と幅
+function layout(str, px, track, w = 700, fam = SANS, style = '') {
+  font(w, px, fam, style);
+  const xs = []; let x = 0;
+  for (const ch of str) { const cw = ctx.measureText(ch).width; xs.push({ ch, x, w: cw }); x += cw + track * px; }
+  return { chars: xs, width: x - track * px };
+}
+
+// ---------- scene 1: IGNITION 0.0–1.6 ----------
+function s1(t) {
+  rect(ctx, 0, 0, W, H, INK);
+  const r = 14 * E.outBack(P(t, 0.04, 0.3));
+  // 点が灯った瞬間の波紋（2重）
+  for (let j = 0; j < 2; j++) {
+    const q = P(t, 0.1 + j * 0.12, 0.7 + j * 0.12);
+    if (q > 0 && q < 1) { ctx.strokeStyle = `rgba(236,235,230,${(1 - q) * 0.8})`; ctx.lineWidth = 3 * (1 - q) + 1; ctx.beginPath(); ctx.arc(W / 2, H / 2, 14 + E.outExpo(q) * 420, 0, TAU); ctx.stroke(); }
+  }
+  const k = ease(t, 0.34, 0.74, E.inOutExpo);          // 点 → 線
+  const lw = lerp(r * 2, W + 40, k), lh = lerp(r * 2, 4, k);
+  const open = ease(t, 0.72, 1.3, E.inOutExpo);        // 線 → 紙が上下に開く
+  if (open > 0) rect(ctx, 0, H / 2 - open * H / 2, W, open * H, PAPER);
+  ctx.fillStyle = PAPER;
+  if (k <= 0) dot(W / 2, H / 2, r, PAPER);
+  else {
+    const rr = lh / 2;
+    ctx.beginPath(); ctx.roundRect(W / 2 - lw / 2, H / 2 - lh / 2, lw, lh, rr); ctx.fill();
+  }
+}
+
+// ---------- scene 2: KINETIC TYPE 1.6–3.9 ----------
+function s2(t) {
+  const u = t - 1.6;
+  rect(ctx, 0, 0, W, H, PAPER);
+  // MOTION — マスクの下から1字ずつ。2.35で1拍のスクワッシュ。退場は下へ
+  const px = 360, L = layout('MOTION', px, -0.045);
+  const x0 = (W - L.width) / 2, base = 640, capH = px * 0.74;
+  L.chars.forEach((c, i) => {
+    const inn = ease(u, 0.02 + i * 0.045, 0.55 + i * 0.045, E.outExpo);
+    const outk = ease(u, 1.05 + i * 0.035, 1.45 + i * 0.035, E.inExpo);
+    const squash = Math.sin(P(u, 0.72 + i * 0.03, 1.0 + i * 0.03) * Math.PI) * 0.18;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x0 + c.x - 20, base - capH - 30, c.w + 40, capH + 40); ctx.clip();
+    ctx.translate(x0 + c.x + c.w / 2, base + (1 - inn) * (capH + 40) + outk * (capH + 40));
+    ctx.scale(1 - squash * 0.35, 1 + squash);
+    font(700, px); ctx.fillStyle = INK; ctx.fillText(c.ch, -c.w / 2, 0);
+    ctx.restore();
+  });
+  // IS TIMING. — "is" はイタリックのセリフ、TIMING は1字ずつ別のイージングで
+  const eases = [E.outExpo, E.outBack, E.outElastic, E.outBounce, E.inOutCubic, E.outQuint, E.outExpo];
+  const px2 = 250, L2 = layout('TIMING.', px2, -0.04);
+  font(400, 150, SERIF, 'italic'); const isW = ctx.measureText('is').width;
+  const tot = isW + 40 + L2.width, xs = (W - tot) / 2, b2 = 650;
+  const isk = ease(u, 1.2, 1.65, E.outExpo);
+  ctx.save(); ctx.globalAlpha = isk; font(400, 150, SERIF, 'italic'); ctx.fillStyle = RED;
+  ctx.fillText('is', xs - (1 - isk) * 60, b2); ctx.restore();
+  L2.chars.forEach((c, i) => {
+    const k = eases[i](P(u, 1.25 + i * 0.045, 1.8 + i * 0.045));
+    ctx.save();
+    ctx.beginPath(); ctx.rect(xs + isW + 40 + c.x - 10, b2 - px2 * 0.8, c.w + 20, px2 * 0.84); ctx.clip();
+    font(700, px2); ctx.fillStyle = INK;
+    ctx.fillText(c.ch, xs + isW + 40 + c.x, b2 + (1 - k) * px2 * 0.9);
+    ctx.restore();
+  });
+  // 下線：左から走る
+  const ul = ease(u, 1.6, 1.95, E.inOutExpo);
+  rect(ctx, xs + isW + 40, b2 + 34, L2.width * ul, 10, RED);
+}
+
+// ---------- scene 3: EASING LAB 3.9–6.2 ----------
+const LAB = [['linear', E.linear], ['inOutCubic', E.inOutCubic], ['outExpo', E.outExpo],
+             ['outBack', E.outBack], ['outElastic', E.outElastic], ['outBounce', E.outBounce]];
+function s3(t) {
+  const u = t - 3.9;
+  rect(ctx, 0, 0, W, H, INK);
+  const collapse = ease(u, 1.7, 2.3, E.inOutExpo);  // 全行が中央の1点に集まる → 次の形へ
+  const rowH = 128, top = H / 2 - rowH * 2.5, xa = 420, xb = 1380;
+  LAB.forEach(([name, fn], i) => {
+    const y0 = top + i * rowH, y = lerp(y0, H / 2, collapse);
+    const appear = ease(u, 0.0 + i * 0.05, 0.4 + i * 0.05, E.outExpo);
+    const hl = i === 4;
+    ctx.save(); ctx.globalAlpha = appear * (1 - collapse);
+    font(400, 22, MONO); ctx.fillStyle = hl ? RED : MUTE; ctx.fillText(name, 160, y + 8);
+    // track
+    rect(ctx, xa, y - 1, (xb - xa) * appear, 2, '#2a2926');
+    // curve box
+    const bx = 1520, bw = 240, bh = 96, by = y - bh / 2;
+    ctx.strokeStyle = '#2a2926'; ctx.lineWidth = 2; ctx.strokeRect(bx, by, bw, bh);
+    const k = P(u, 0.35 + i * 0.04, 1.45 + i * 0.04);
+    ctx.strokeStyle = hl ? RED : PAPER; ctx.lineWidth = 3; ctx.beginPath();
+    const n = 60;
+    for (let j = 0; j <= n * k; j++) { const x = j / n; const v = fn(x); const px = bx + x * bw, py = by + bh - v * bh * 0.8 - bh * 0.1; j ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
+    ctx.stroke();
+    ctx.restore();
+    // dot（行が畳まれるときは中央の点に合流）
+    const v = fn(k);
+    const xd = lerp(lerp(xa, xb, v), W / 2, collapse);
+    ctx.save(); ctx.globalAlpha = Math.max(appear, collapse);
+    dot(xd, y, lerp(16, 14, collapse), hl && collapse < .5 ? RED : PAPER);
+    ctx.restore();
+  });
+  // 見出し
+  const hk = ease(u, 0.1, 0.6, E.outExpo) * (1 - collapse);
+  ctx.save(); ctx.globalAlpha = hk; font(400, 22, MONO); ctx.fillStyle = MUTE;
+  ctx.fillText('SAME DISTANCE. SAME DURATION. SIX DIFFERENT FEELINGS.', 160, top - 90); ctx.restore();
+}
+
+// ---------- scene 4: MORPH 6.2–8.4 ----------
+function polyVerts(n, R, rot, inner = null) {
+  const v = [], m = inner ? n * 2 : n;
+  for (let i = 0; i < m; i++) { const a = rot + i / m * TAU; const r = inner && i % 2 ? inner : R; v.push([Math.cos(a) * r, Math.sin(a) * r]); }
+  return v;
+}
+function rayPoly(verts, a) {
+  const dx = Math.cos(a), dy = Math.sin(a); let best = 0;
+  for (let i = 0; i < verts.length; i++) {
+    const [x1, y1] = verts[i], [x2, y2] = verts[(i + 1) % verts.length];
+    const ex = x2 - x1, ey = y2 - y1, den = dx * ey - dy * ex;
+    if (Math.abs(den) < 1e-9) continue;
+    const s = (x1 * ey - y1 * ex) / den, q = (x1 * dy - y1 * dx) / den;
+    if (s > 0 && q >= 0 && q <= 1) best = Math.max(best, s);
+  }
+  return best;
+}
+const SHAPES = [
+  a => 250,
+  a => rayPoly(polyVerts(4, 300, Math.PI / 4), a),
+  a => rayPoly(polyVerts(3, 330, -Math.PI / 2), a),
+  a => rayPoly(polyVerts(5, 340, -Math.PI / 2, 150), a),
+];
+function s4(t) {
+  const u = t - 6.2;
+  rect(ctx, 0, 0, W, H, INK);
+  // 背景の青い面：回転しながら半分を占める
+  const bk = ease(u, 0.15, 0.7, E.inOutExpo);
+  ctx.save(); ctx.translate(W / 2, H / 2); ctx.rotate(lerp(-0.6, 0.18, ease(u, 0.15, 2.2, E.inOutCubic)));
+  rect(ctx, -W * 1.5, 0, W * 3, H * 1.5 * bk, BLUE); ctx.restore();
+  const grow = E.outBack(P(u, 0.0, 0.45));
+  const kf = [0.45, 0.85, 1.25, 1.6];  // 丸 → 四角 → 三角 → 星
+  let from = 0, to = 0, k = 0;
+  for (let i = 0; i < 3; i++) { if (u >= kf[i]) { from = i; to = i + 1; k = E.inOutExpo(P(u, kf[i] + 0.05, kf[i + 1] - 0.02)); } }
+  const rot = lerp(0, TAU * 0.75, ease(u, 0.45, 1.7, E.inOutCubic)) + ease(u, 1.7, 2.2, E.inExpo) * TAU * 1.2;
+  const blow = ease(u, 1.75, 2.2, E.inExpo);          // 最後に星が画面を覆って赤地へ
+  const scale = lerp(14 / 250, 1, grow) * (1 + blow * 11);
+  const n = 240;
+  ctx.save(); ctx.translate(W / 2, H / 2); ctx.rotate(rot); ctx.scale(scale, scale);
+  ctx.beginPath();
+  for (let i = 0; i <= n; i++) { const a = i / n * TAU; const r = lerp(SHAPES[from](a), SHAPES[to](a), k); const x = Math.cos(a) * r, y = Math.sin(a) * r; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+  ctx.closePath(); ctx.fillStyle = u > 1.45 ? RED : PAPER; ctx.fill();
+  ctx.restore();
+  // 衛星：残像つきで周回
+  const sat = ease(u, 0.3, 0.6, E.outExpo) * (1 - blow);
+  for (let s = 0; s < 3; s++) for (let j = 0; j < 14; j++) {
+    const tt = u - j * 0.012, a = tt * (2.4 + s * 0.7) + s * TAU / 3, R = 400 + s * 55;
+    dot(W / 2 + Math.cos(a) * R, H / 2 + Math.sin(a) * R * 0.42, (9 - s * 2) * (1 - j / 14) * sat, j ? `rgba(236,235,230,${0.5 * (1 - j / 14)})` : PAPER);
+  }
+}
+
+// ---------- scene 5: GRID 8.4–10.4 ----------
+const COLS = 16, ROWS = 9, CELL = 120;
+function gridCell(i) { const c = i % COLS, r = Math.floor(i / COLS); return [c * CELL + CELL / 2, r * CELL + CELL / 2, c, r]; }
+function s5(t) {
+  const u = t - 8.4;
+  rect(ctx, 0, 0, W, H, RED);
+  for (let i = 0; i < COLS * ROWS; i++) {
+    const [x, y, c, r] = gridCell(i);
+    const d = Math.hypot(c - 7.5, (r - 4) * 1.0);
+    const a = ease(u, 0.05 + d * 0.035, 0.5 + d * 0.035, E.outBack);        // 出現
+    const spin = ease(u, 0.55 + d * 0.03, 0.95 + d * 0.03, E.inOutCubic);   // 90°
+    const fill = ease(u, 1.05 + d * 0.028, 1.4 + d * 0.028, E.inOutExpo);   // 覆う（地がINKへ）
+    const shrink = ease(u, 1.7 + d * 0.005, 1.95 + d * 0.005, E.inOutExpo); // 点へ
+    const s = lerp(lerp(a * 64, CELL + 2, fill), 12, shrink);
+    const rr = lerp(lerp(0, s / 2 * 0.2, spin), s / 2, shrink);
+    ctx.save(); ctx.translate(x, y); ctx.rotate(spin * Math.PI / 2 * (1 - fill));
+    ctx.fillStyle = shrink > 0 ? (shrink > .5 ? PAPER : INK) : INK;
+    ctx.beginPath(); ctx.roundRect(-s / 2, -s / 2, s, s, rr); ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ---------- scene 6: DEPTH 10.4–12.6 ----------
+const N6 = COLS * ROWS;
+const SPH = Array.from({ length: N6 }, (_, i) => {
+  const y = 1 - (i + 0.5) / N6 * 2, r = Math.sqrt(1 - y * y), a = i * 2.39996323;
+  return [Math.cos(a) * r, y, Math.sin(a) * r];
+});
+function project([x, y, z], ry, rx, R, cam, cx = W / 2) {
+  let X = x * Math.cos(ry) + z * Math.sin(ry), Z = -x * Math.sin(ry) + z * Math.cos(ry);
+  let Y = y * Math.cos(rx) - Z * Math.sin(rx); Z = y * Math.sin(rx) + Z * Math.cos(rx);
+  X *= R; Y *= R; Z *= R;
+  const f = cam / (cam + Z);
+  return [cx + X * f, H / 2 + Y * f, f, Z];
+}
+function s6(t) {
+  const u = t - 10.4;
+  rect(ctx, 0, 0, W, H, INK);
+  const ry = u * 1.6, rx = 0.45 + Math.sin(u * 1.1) * 0.15;
+  const pts = SPH.map((p, i) => {
+    const [gx, gy] = gridCell(i);
+    const m = ease(u, 0.0 + (i % 12) * 0.012, 0.75 + (i % 12) * 0.012, E.inOutExpo);
+    const flat = ease(u, 1.45 + (i / N6) * 0.25, 2.05 + (i / N6) * 0.1, E.inOutExpo);
+    const breathe = 1 + Math.sin(u * 5 + p[1] * 4) * 0.06 * m * (1 - flat);
+    const [sx, sy, f, z] = project(p, ry, rx, 380 * breathe, 1400, W / 2 + 180);
+    const lx = 260 + i * (1400 / (N6 - 1)), ly = H / 2;
+    const x = lerp(lerp(gx, sx, m), lx, flat), y = lerp(lerp(gy, sy, m), ly, flat);
+    const r = lerp(lerp(6, 3 + f * 6, m), 3, flat);
+    return { x, y, r, z: lerp(0, z, m * (1 - flat)), i };
+  });
+  // 近い点どうしの線（奥ほど薄く）
+  const lk = ease(u, 0.6, 1.0, E.outExpo) * (1 - ease(u, 1.3, 1.6));
+  if (lk > 0) {
+    ctx.lineWidth = 1;
+    for (let i = 0; i < N6; i++) for (let j = i + 1; j < Math.min(N6, i + 22); j++) {
+      const a = pts[i], b = pts[j], d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (d < 95) { ctx.strokeStyle = `rgba(236,235,230,${(1 - d / 95) * 0.35 * lk})`; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+    }
+  }
+  pts.sort((a, b) => b.z - a.z).forEach(p => dot(p.x, p.y, p.r, p.i === 72 ? RED : PAPER));
+  // 奥行きの注記
+  const nk = ease(u, 0.5, 0.9, E.outExpo) * (1 - ease(u, 1.3, 1.5));
+  ctx.save(); ctx.globalAlpha = nk; font(400, 22, MONO); ctx.fillStyle = MUTE;
+  ['144 POINTS', `ry = ${(ry % TAU).toFixed(2)} rad`, 'f = 1400 / (1400 + z)'].forEach((s, i) => ctx.fillText(s, 160, H / 2 - 30 + i * 36));
+  ctx.restore();
+}
+
+// ---------- scene 7: STATEMENT 12.6–13.9 ----------
+function counter(v) { return String(Math.round(v)); }
+function lineRise(txt, x, base, px, k, col, w = 700, fam = SANS, style = '') {
+  ctx.save(); ctx.beginPath(); ctx.rect(x - 10, base - px * 0.82, W, px * 0.98); ctx.clip();
+  font(w, px, fam, style); ctx.fillStyle = col; ctx.fillText(txt, x, base + (1 - k) * px); ctx.restore();
+}
+function s7(t, collapse = 0) {
+  const u = t - 12.6;
+  rect(ctx, 0, 0, W, H, INK);
+  // 前の場面の点の列が縮んで消える
+  const dk = 1 - ease(u, 0.0, 0.25, E.inExpo);
+  if (dk > 0) for (let i = 0; i < N6; i++) dot(260 + i * (1400 / (N6 - 1)), H / 2, 3 * dk, i === 72 ? RED : PAPER);
+  const x = 160, px = 150;
+  const k1 = ease(u, 0.08, 0.5, E.outExpo), k2 = ease(u, 0.16, 0.58, E.outExpo), k3 = ease(u, 0.24, 0.66, E.outExpo), k4 = ease(u, 0.45, 0.9, E.outExpo);
+  const c1 = counter(15 * ease(u, 0.08, 0.6, E.outExpo)), c2 = counter(900 * ease(u, 0.16, 0.8, E.outExpo));
+  const sy = 1 - collapse;
+  const row = (fn, base, i) => { const ck = E.inExpo(clamp(collapse * 1.6 - i * 0.2)); ctx.save(); ctx.translate(0, base); ctx.scale(1, Math.max(0.001, 1 - ck)); ctx.translate(0, -base); fn(); ctx.restore(); };
+  row(() => lineRise(`${c1.padStart(2, ' ')} SECONDS`, x, 330, px, k1, PAPER), 330 - px * 0.36, 0);
+  row(() => lineRise(`${c2.padStart(3, ' ')} FRAMES`, x, 500, px, k2, PAPER), 500 - px * 0.36, 1);
+  row(() => {
+    // "0" に赤い箱
+    font(700, px); const zw = ctx.measureText('0').width;
+    const bk = ease(u, 0.5, 0.8, E.inOutExpo);
+    rect(ctx, x - 16, 670 - px * 0.78, (zw + 32) * bk, px * 0.86, RED);
+    lineRise('0 KEYFRAMES.', x, 670, px, k3, PAPER);
+  }, 670 - px * 0.36, 2);
+  row(() => lineRise('Every frame is a function of time.', x + 4, 800, 50, k4, MUTE, 400, SERIF, 'italic'), 785, 3);
+}
+
+// ---------- scene 8: RESOLVE 13.9–15.0 ----------
+function s8(t) {
+  const u = t - 13.9;
+  s7(t, ease(u, 0.0, 0.4, E.linear));
+  const lg = ease(u, 0.2, 0.45, E.outExpo);          // 中央に線
+  const sh = ease(u, 0.45, 0.8, E.inOutExpo);        // 線 → 点
+  const gone = ease(u, 0.88, 1.08, E.inBack);        // 点が消える＝0秒目の真っ黒に戻る（ループ）
+  const lw = lerp(lerp(0, W - 320, lg), 28, sh), lh = lerp(4, 28, sh);
+  if (lg > 0 && gone < 1) {
+    const s = 1 - gone;
+    ctx.fillStyle = PAPER; ctx.beginPath(); ctx.roundRect(W / 2 - lw * s / 2, H / 2 - lh * s / 2, lw * s, lh * s, lh * s / 2); ctx.fill();
+  }
+  // エンドカード
+  const ek = ease(u, 0.55, 0.8, E.outExpo) * (1 - ease(u, 0.85, 1.0));
+  ctx.save(); ctx.globalAlpha = ek;
+  font(700, 44); ctx.fillStyle = PAPER; ctx.fillText('Claude', 160, H - 200);
+  font(400, 22, MONO); ctx.fillStyle = MUTE; ctx.fillText('MOTION REEL No.001 — 15s, 900 frames, all code', 160, H - 160);
+  ctx.restore();
+}
+
+// ---------- transitions ----------
+// 赤い帯が右から左へ走り、帯の後ろに次の場面が現れる
+function wipe(t, a, b, prev, next, col = RED) {
+  const lead = W * (1 - ease(t, a, a + (b - a) * 0.6, E.inOutExpo));
+  const trail = W * (1 - ease(t, a + (b - a) * 0.3, b, E.inOutExpo));
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, lead, H); ctx.clip(); prev(t); ctx.restore();
+  ctx.save(); ctx.beginPath(); ctx.rect(trail, 0, W - trail, H); ctx.clip(); next(t); ctx.restore();
+  rect(ctx, lead, 0, Math.max(0, trail - lead), H, col);
+}
+
+function scene(t) {
+  if (t < 1.6) return s1(t);
+  if (t < 3.7) return s2(t);
+  if (t < 4.25) return wipe(t, 3.7, 4.25, s2, s3);
+  if (t < 6.2) return s3(t);
+  if (t < 8.4) return s4(t);
+  if (t < 10.4) { const u = t - 8.4; if (u > 1.66) rect(ctx, 0, 0, W, H, INK); return s5(t); }
+  if (t < 12.6) return s6(t);
+  if (t < 13.9) return s7(t);
+  return s8(t);
+}
+
+const CHAPTERS = [[0, 'IGNITION'], [1.6, 'TYPE'], [3.9, 'EASING'], [6.2, 'MORPH'], [8.4, 'GRID'], [10.4, 'DEPTH'], [12.6, 'STATEMENT'], [13.9, 'RESOLVE']];
+function hud(t) {
+  // 地の明るさを左上の1画素で測り、HUDの色を決める（difference合成は赤地で千切れたので廃止）
+  const [r, g, b] = ctx.getImageData(8, 8, 1, 1).data;
+  const light = (0.2126 * r + 0.7152 * g + 0.0722 * b) > 140 || (r > 200 && g < 120);
+  ctx.save(); ctx.fillStyle = light ? INK : PAPER;
+  font(400, 18, MONO);
+  const f = Math.min(Math.round(t * FPS), DUR * FPS - 1), ss = Math.floor(f / FPS), ff = f % FPS;
+  ctx.fillText('MIDDLE STUDIES REEL — 001', 48, 58);
+  const tc = `00:00:${String(ss).padStart(2, '0')}:${String(ff).padStart(2, '0')}`;
+  ctx.fillText(tc, W - 48 - ctx.measureText(tc).width, 58);
+  let ci = 0; CHAPTERS.forEach((c, i) => { if (t >= c[0]) ci = i; });
+  ctx.fillText(`${String(ci + 1).padStart(2, '0')} / 08  ${CHAPTERS[ci][1]}`, 48, H - 44);
+  ctx.fillRect(W - 48 - 240, H - 50, 240 * (t / DUR), 2);
+  ctx.globalAlpha = 0.3; ctx.fillRect(W - 48 - 240, H - 50, 240, 2);
+  ctx.restore();
+}
+
+// モーションブラー：シャッター180°を5サンプルで平均
+const SAMPLES = 5, SHUTTER = 0.5 / FPS;
+const acc = document.createElement('canvas'); acc.width = W; acc.height = H;
+const actx = acc.getContext('2d');
+function draw(t) {
+  t = ((t % DUR) + DUR) % DUR;
+  for (let i = 0; i < SAMPLES; i++) {
+    const ts = Math.min(DUR - 1e-4, t + (i / SAMPLES) * SHUTTER);
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    scene(ts);
+    actx.globalAlpha = 1 / (i + 1); actx.drawImage(buf, 0, 0);
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, W, H); ctx.drawImage(acc, 0, 0); hud(t); out.drawImage(buf, 0, 0);
+}
+
+window.__duration = DUR;
+window.__poster = 9.3;
+window.__seek = t => draw(t);
+if (!/[?&]render/.test(location.search)) {
+  const t0 = performance.now();
+  const loop = () => { draw((performance.now() - t0) / 1000); requestAnimationFrame(loop); };
+  document.fonts.ready.then(loop);
+} else draw(0);
+</script>
+</body>
+</html>
