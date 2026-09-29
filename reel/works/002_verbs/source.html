@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 002 · Verbs</title>
+<style>
+  html, body { margin: 0; background: #000; overflow: hidden; }
+  #stage { position: relative; width: 1920px; height: 1080px; }
+  canvas { display: block; width: 1920px; height: 1080px; }
+  .hud { position: absolute; font: 600 18px/1 "Avenir Next", "Helvetica Neue", sans-serif;
+         letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; }
+  #tl { left: 56px; top: 50px; } #tr { right: 56px; top: 50px; }
+  #bl { left: 56px; bottom: 50px; } #br { right: 56px; bottom: 50px; letter-spacing: .04em; text-transform: none; font-weight: 500; font-size: 20px; }
+  #bl b { font-weight: 800; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="c" width="1920" height="1080"></canvas>
+  <div class="hud" id="tl">MIDDLE STUDIES REEL — 002</div>
+  <div class="hud" id="tr">VERBS</div>
+  <div class="hud" id="bl"><b id="num">01</b> / 06 &nbsp;&nbsp;<span id="verb">BEND</span></div>
+  <div class="hud" id="br">Claude</div>
+</div>
+<script>
+(() => {
+const W = 1920, H = 1080, DUR = 15, SEG = 2.5, WIPE = 0.32;
+window.__duration = DUR;
+window.__poster = 8.9;
+
+const WORDS = ['BEND', 'SLICE', 'MELT', 'TWIST', 'SCATTER', 'ECHO'];
+const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
+// [bg, fg, accent1, accent2]
+const PAL = [
+  ['#1b0f3a', '#d7ff3c', '#ff3d8b', '#38e1ff'],
+  ['#d7ff3c', '#1b0f3a', '#ff3d8b', '#2d6bff'],
+  ['#ff3d8b', '#fff4e8', '#1b0f3a', '#d7ff3c'],
+  ['#0b0a14', '#ff3d8b', '#38e1ff', '#d7ff3c'],
+  ['#f3eee4', '#1b0f3a', '#ff3d8b', '#2d6bff'],
+  ['#3a1cff', '#d7ff3c', '#ff3d8b', '#fff4e8'],
+];
+// 各つなぎで新しい色が湧き出す点（アスペクト空間）
+const ORIGIN = [[0, 0], [-1.05, 0.1], [0.2, 0.62], [0, 0], [0.95, -0.55], [-0.3, -0.2]];
+
+// ---------- 文字のテクスチャ（語ごとに1枚・一度だけ描く） ----------
+function wordCanvas(w) {
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  let size = 640;
+  const font = s => `900 ${s}px "Avenir Next Condensed", "Helvetica Neue", sans-serif`;
+  x.font = font(size);
+  const m = x.measureText(w).width;
+  size = Math.min(size, size * 1480 / m);
+  x.font = font(size);
+  x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'alphabetic';
+  const mm = x.measureText(w);
+  const asc = mm.actualBoundingBoxAscent, desc = mm.actualBoundingBoxDescent;
+  x.fillText(w, W / 2, H / 2 + (asc - desc) / 2);
+  return c;
+}
+
+// ---------- WebGL ----------
+const cv = document.getElementById('c');
+const gl = cv.getContext('webgl2', { preserveDrawingBuffer: true, antialias: false });
+const VS = `#version 300 es
+in vec2 a; void main(){ gl_Position = vec4(a,0.,1.); }`;
+const FS = `#version 300 es
+precision highp float;
+uniform vec2 uRes; uniform float uT;
+uniform sampler2D uTexA, uTexB;
+uniform float uFxA[6], uFxB[6];
+uniform float uZA, uZB, uSA, uSB, uDotA, uDotB;
+uniform vec3 uPalA[4], uPalB[4];
+uniform float uWipe; uniform vec2 uWO;
+out vec4 o;
+#define TAU 6.28318530718
+float h1(float n){ return fract(sin(n*127.1)*43758.5453); }
+float h2(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+float vn(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
+  return mix(mix(h2(i),h2(i+vec2(1,0)),f.x), mix(h2(i+vec2(0,1)),h2(i+vec2(1,1)),f.x), f.y); }
+float fbm(vec2 p){ float s=0., a=.5; for(int i=0;i<4;i++){ s+=a*vn(p); p=p*2.03+vec2(1.7,9.2); a*=.5; } return s; }
+mat2 rot(float a){ float c=cos(a), s=sin(a); return mat2(c,-s,s,c); }
+float aspect;
+
+float tex(sampler2D t, vec2 q){ // q: アスペクト空間（y上向き）
+  vec2 uv = vec2(q.x/aspect, q.y) + .5;
+  if (uv.x<0.||uv.x>1.||uv.y<0.||uv.y>1.) return 0.;
+  return texture(t, uv).a;
+}
+// 動詞ごとの座標のゆがみ
+vec2 warpQ(vec2 p, float fx[6], float z, float s){
+  vec2 q = p / z;
+  float r = length(q);
+  q = rot(fx[3]*7.0*exp(-r*1.8) + fx[3]*0.4 + step(0.001,fx[3])*0.16*sin(s*1.4)) * q;                 // TWIST
+  q.y += fx[0]*0.20*sin(q.x*3.6 + s*3.1);                         // BEND
+  q.x += fx[0]*0.07*sin(q.y*8.0 - s*2.3);
+  float n = 16.;
+  float band = floor((q.y+.5)*n);
+  float sd = floor(s*5.);
+  q.x += (h1(band+3.+sd*step(fx[1],0.5)*7.)*2.-1.) * fx[1] * 0.62 * (mod(band,2.)*2.-1.);   // SLICE
+  q.y += (h1(band+9.)-.5) * fx[1] * 0.02;
+  return q;
+}
+// 文字の被覆率（MELT の垂れ・SCATTER の網点を含む）
+float cov(sampler2D t, vec2 q, float fx[6], float dotm){
+  float a;
+  if (fx[2] > 0.001) {                                             // MELT
+    float drip = fx[2]*0.46*(0.12 + 0.88*pow(vn(vec2(q.x*24.,0.)),2.6));
+    a = 0.;
+    for (int k=0;k<8;k++){ float f=float(k)/7.; a = max(a, tex(t, q + vec2(0., f*drip)) * (1.-f*0.08)); }
+  } else a = tex(t, q);
+  if (dotm > 0.001) {                                              // SCATTER（網点）
+    float cs = 0.024;
+    vec2 off = (vec2(vn(q*2.1+11.), vn(q*2.1+37.))-.5)*fx[4]*0.9 + normalize(q+1e-4)*fx[4]*0.55*length(q);
+    vec2 qq = q - off;
+    vec2 id = floor(qq/cs), c = (id+.5)*cs;
+    float cc = tex(t, c);
+    float rr = sqrt(cc)*cs*0.62*(1.-0.35*fx[4]*h2(id))*(0.78+0.22*sin(uT*5.0 - (id.x+id.y)*0.35));
+    float d = length(qq-c);
+    float dt = smoothstep(rr+0.0012, rr-0.0012, d);
+    a = mix(a, dt, dotm);
+  }
+  return a;
+}
+vec3 field(vec2 p, vec3 pal[4], float e){
+  vec2 ph = vec2(cos(TAU*uT/15.), sin(TAU*uT/15.))*1.4;
+  vec2 w = vec2(fbm(p*1.1-ph), fbm(p*1.1+ph+3.1));
+  float f = fbm(p*1.25 + ph*.6 + (0.7+0.6*e)*w);
+  float k = f*15.;
+  float d = abs(fract(k)-.5)/max(fwidth(k),1e-4);
+  float line = 1.-clamp(d-0.5,0.,1.);
+  vec3 bg = pal[0]*(0.92+0.16*f);
+  return mix(bg, mix(pal[0], pal[1], 0.22), line*0.8);
+}
+vec3 shade(vec2 p, sampler2D t, float fx[6], float z, float s, float dotm, vec3 pal[4]){
+  float e = fx[0]+fx[1]+fx[2]+fx[3]+fx[4]+fx[5];
+  vec3 col = field(p, pal, min(e,1.5));
+  vec2 q = warpQ(p, fx, z, s);
+  // ECHO：拡大した写しを奥から重ねる
+  if (fx[5] > 0.001) {
+    for (int k=5;k>=1;k--){
+      float fk = float(k);
+      float fl = fk - fract(s*0.9);
+      float sc = 1. + fl*(0.09 + 0.55*fx[5]);
+      vec2 qe = rot(fk*0.05*fx[5]*sin(s*1.3))*q/sc;
+      float ae = tex(t, qe);
+      float edge = ae*(1.-tex(t, qe*1.035));
+      vec3 ec = mod(fk,2.)<1. ? pal[2] : pal[3];
+      col = mix(col, ec, clamp(ae*0.18 + edge*1.2, 0., 1.) * (1.-fl/6.) * smoothstep(0.,0.6,fl) * min(1., fx[5]*3.));
+    }
+  }
+  float ca = 0.003 + 0.02*min(e,1.4);
+  vec2 cd = vec2(ca, ca*0.35);
+  float aR = cov(t, q+cd, fx, dotm), aB = cov(t, q-cd, fx, dotm), a = cov(t, q, fx, dotm);
+  col = mix(col, pal[2], aR);
+  col = mix(col, pal[3], aB);
+  col = mix(col, pal[1], a);
+  return col;
+}
+void main(){
+  aspect = uRes.x/uRes.y;
+  vec2 uv = gl_FragCoord.xy/uRes;
+  vec2 p = (uv-.5)*vec2(aspect,1.);
+  vec3 col;
+  if (uWipe < 0.) {
+    col = shade(p, uTexB, uFxB, uZB, uSB, uDotB, uPalB);
+  } else {
+    float d = length(p-uWO) + 0.32*(fbm(p*2.4+uWO*3.)-.5) + 0.06*sin(atan(p.y-uWO.y,p.x-uWO.x)*7.+uT*4.);
+    float R = uWipe*2.35 - 0.2;
+    float m = smoothstep(R+0.004, R-0.004, d);
+    float rim = smoothstep(0.022, 0.0, abs(d-R)) * step(0.001,uWipe) * step(uWipe,0.999);
+    vec3 cA = m < 0.999 ? shade(p, uTexA, uFxA, uZA, uSA, uDotA, uPalA) : vec3(0);
+    vec3 cB = m > 0.001 ? shade(p, uTexB, uFxB, uZB, uSB, uDotB, uPalB) : vec3(0);
+    col = mix(cA, cB, m);
+    col = mix(col, uPalB[2], rim);
+  }
+  float g = h2(gl_FragCoord.xy + floor(uT*60.)*vec2(17.3, 41.7)) - .5;
+  col += g*0.016;
+  vec2 v = uv-.5; col *= 1. - dot(v,v)*0.35;
+  o = vec4(col, 1.);
+}`;
+function sh(type, src) {
+  const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+const pr = gl.createProgram();
+gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS));
+gl.linkProgram(pr);
+if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+gl.useProgram(pr);
+const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+const al = gl.getAttribLocation(pr, 'a'); gl.enableVertexAttribArray(al); gl.vertexAttribPointer(al, 2, gl.FLOAT, false, 0, 0);
+const U = n => gl.getUniformLocation(pr, n);
+
+gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+const TEX = WORDS.map(w => {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, wordCanvas(w));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+});
+gl.uniform1i(U('uTexA'), 0); gl.uniform1i(U('uTexB'), 1);
+gl.uniform2f(U('uRes'), W, H);
+
+// ---------- 時間の関数 ----------
+const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ss = (a, b, x) => { const t = cl((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+const ioc = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const mod = (a, n) => ((a % n) + n) % n;
+// 章 k の中での経過秒（-0.32 .. 2.82 を想定。ループをまたぐ）
+function local(k, t) { let s = mod(t - k * SEG, DUR); if (s > DUR - 2) s -= DUR; return s; }
+// 動詞 k の効きの強さ：入ってきた瞬間が最大→読める休み→次のつなぎへ向けて再び最大
+function amount(k, s) {
+  const rel = s <= 0 ? 1 : Math.pow(1 - ss(0, 0.85, s), 1.5);
+  const att = Math.pow(ss(1.95, 2.5 + WIPE, s), 2);
+  const rest = [0.12 + 0.05 * Math.sin(s * 2.4), 0.04 + 0.26 * Math.pow(Math.max(0, Math.sin(s * 6.5)), 10),
+    0.18 + 0.45 * ss(0.4, 2.3, s), 0.14 + 0.06 * Math.sin(s * 1.7), 0.0, 0.16][k];
+  return Math.max(rel, att, rest);
+}
+function zoom(s) {
+  const sp = s <= 0 ? 1 : Math.exp(-5 * s) * Math.cos(9 * s);
+  return 1 + 0.32 * sp + 0.08 * ss(0, 2.5, s) + 0.22 * Math.pow(ss(2.1, 2.5 + WIPE, s), 2);
+}
+function setSide(side, k, t) {
+  const s = local(k, t);
+  const fx = [0, 0, 0, 0, 0, 0]; fx[k] = amount(k, s);
+  gl.uniform1fv(U('uFx' + side), fx);
+  gl.uniform1f(U('uZ' + side), zoom(s));
+  gl.uniform1f(U('uS' + side), s);
+  gl.uniform1f(U('uDot' + side), k === 4 ? 1 : 0);
+  gl.uniform3fv(U('uPal' + side), PAL[k].flatMap(hex));
+  gl.activeTexture(side === 'A' ? gl.TEXTURE0 : gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, TEX[k]);
+}
+const CORNER = [[-0.8, 0.45], [0.8, 0.45], [-0.75, -0.45], [0.8, -0.45]];
+const hud = ['tl', 'tr', 'bl', 'br'].map(id => document.getElementById(id));
+const num = document.getElementById('num'), verb = document.getElementById('verb');
+
+window.__seek = t => {
+  t = mod(t, DUR);
+  gl.uniform1f(U('uT'), t);
+  const b = Math.round(t / SEG), d = t - b * SEG;
+  let cur;
+  if (Math.abs(d) < WIPE) {
+    const nk = mod(b, 6), ok = mod(b - 1, 6);
+    setSide('A', ok, t); setSide('B', nk, t);
+    const w = ioc((d + WIPE) / (2 * WIPE));
+    gl.uniform1f(U('uWipe'), w);
+    gl.uniform2fv(U('uWO'), ORIGIN[nk]);
+    cur = w > 0.5 ? nk : ok;
+  } else {
+    cur = mod(Math.floor(t / SEG), 6);
+    setSide('B', cur, t); setSide('A', cur, t);
+    gl.uniform1f(U('uWipe'), -1);
+  }
+  gl.viewport(0, 0, W, H);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.finish();
+  // 四隅の文字は、その場所がどちらの色に居るかで色を決める（ワイプの途中で地に溶けない）
+  hud.forEach((e, i) => {
+    let k = cur;
+    if (Math.abs(d) < WIPE) {
+      const nk = mod(b, 6), ok = mod(b - 1, 6), w = ioc((d + WIPE) / (2 * WIPE));
+      const o = ORIGIN[nk], c = CORNER[i];
+      k = Math.hypot(c[0] - o[0], c[1] - o[1]) < w * 2.35 - 0.2 ? nk : ok;
+    }
+    e.style.color = PAL[k][1];
+    if (i === 2) cur = k;
+  });
+  num.textContent = String(cur + 1).padStart(2, '0');
+  verb.textContent = WORDS[cur];
+};
+
+if (!location.search.includes('render')) {
+  const t0 = performance.now();
+  const loop = () => { window.__seek(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+} else window.__seek(0);
+})();
+</script>
+</body>
+</html>

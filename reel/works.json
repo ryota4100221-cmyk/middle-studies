@@ -35,5 +35,43 @@
     },
     "review_rounds": 3,
     "review": "1周目：HUDをdifference合成で載せたら赤地で文字が千切れた→地の明るさを1画素測って色を切り替え／DEPTHの注記が球に重なった→球を右へ180px寄せ、注記を左に3行で。2周目：冒頭1.13秒がほぼ真っ黒（点が1つだけ）で、リールの最初の1秒としても弱く点検でも🔴→点を0.3秒で灯し、2重の波紋を足し、線→紙の展開を0.3秒前倒し。3周目：つなぎ8か所を拡大で確認、赤帯のワイプで一瞬全面が赤になるのは意図どおり。許容した差：GRIDの章ではHUDが黒い四角に隠れる（全面を覆う場面なので残した）。"
+  },
+  {
+    "id": "002",
+    "slug": "verbs",
+    "title": "Verbs",
+    "date": "2026-09-29",
+    "concept": "BEND・SLICE・MELT・TWIST・SCATTER・ECHO の6語が、それぞれ自分の意味どおりに動く。語はどれも一番ゆがんだ状態で入ってきて、読める形に落ち着き、次のつなぎに向けてまたゆがむ。ゆがみが最大になった瞬間に、次の語が液体のように縁取りながら画面に広がって入れ替わる。見せ場は7.5秒のTWISTで、渦に巻かれた MELT の中から TWIST が湧き出す。最後は ECHO の中から BEND が湧き出して0秒目に戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/002_verbs.mp4",
+    "techniques": [
+      "fragment-shader",
+      "domain-warp",
+      "text-as-texture",
+      "liquid-wipe",
+      "slit-scan-drip",
+      "halftone",
+      "polar-twist",
+      "chromatic-aberration",
+      "slice-glitch",
+      "echo-zoom"
+    ],
+    "look": {
+      "palette": [
+        "#1b0f3a",
+        "#d7ff3c",
+        "#ff3d8b",
+        "#38e1ff",
+        "#3a1cff",
+        "#f3eee4"
+      ],
+      "type": [
+        "Avenir Next Condensed Heavy",
+        "Avenir Next"
+      ],
+      "structure": "6 verbs / continuous liquid wipes (no cuts)",
+      "renderer": "webgl"
+    },
+    "review_rounds": 3,
+    "review": "1周目：各語の読める区間が止まって見え、コンタクトシートで SLICE・SLICE／ECHO・ECHO がほぼ同じ絵だった→SLICE に不規則なグリッチの一撃、ECHO の写しを外へ流し続ける、SCATTER の網点に波、TWIST に揺れ、全語にゆっくり寄るズームを足した／MELT の垂れが影に見えた→垂れを細く長く、明るさの減衰を弱く。2周目：粒子ノイズが強すぎて8MBに収まらず crf29 まで落ちた→粒子を半分に／ワイプ中に四隅の文字が同じ色の地に溶けて読めなかった→四隅ごとに、そこがどちらの色の側かで文字の色と語名を決めるようにした。3周目：つなぎ6か所と SCATTER の網点を等倍で確認し、直すことが見つからなかった。許容した差：容量上限のため crf29 のまま（網点も等倍で崩れていない）／ECHO の写しは画面端で切れる（奥から流れてくる表現として残した）。"
   }
 ]
