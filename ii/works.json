@@ -336,5 +336,38 @@
         "決め"
       ]
     }
+  },
+  {
+    "id": "011",
+    "slug": "tread",
+    "title": "TREAD",
+    "title_ja": "踏面",
+    "date": "2026-09-30",
+    "track": "OBJECT",
+    "concept": "板目の型枠が残る打放しの階段に、硬い日差しが斜めに差す。段の上に焼付け塗装の卓上ランプを3台（焼けた橙・クリーム・沈んだ紺）置き、壁に長く伸びる影と、段の鼻先の下の濃い帯、右上の斜めの影の楔で画面を組んだ。",
+    "source": {
+      "url": "https://wp.andtradition.com/wp-content/uploads/2025/11/ATD_Retail_2026_Flowerpot-VP9_04-1200x1200.jpg",
+      "took": "光：右手前・高めからの硬い日差し1灯・影は空の青みで少し持ち上がる・ランプの影を壁へ長く / 素材：板目の型枠の打放し（斑・継ぎ目のあばた・木目の写し）と艶の強い焼付け塗装 / 構図：1:1・階段の小口が左下から斜めに登る・ランプは画面の中ほど・上は壁の余白 / 色：画面の9割は中灰、差し色は橙・クリーム・紺の3点を数%"
+    },
+    "look": {
+      "track": "OBJECT",
+      "palette_family": "concrete-triad",
+      "background": "architecture-steps",
+      "lighting": "hard-sun",
+      "lens": "normal",
+      "aspect": "1:1",
+      "material": "gloss-lacquer"
+    },
+    "review_rounds": 26,
+    "film": {
+      "sec": 11.5,
+      "shots": [
+        "光の走り",
+        "マクロ",
+        "スライド",
+        "決め"
+      ]
+    },
+    "use": "インテリア・照明・家具のFVや季節キャンペーン。上3割の壁にコピーを載せられ、差し色3点を商品のカラバリに差し替えて使える"
   }
 ]
