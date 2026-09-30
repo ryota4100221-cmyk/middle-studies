@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 003 One Take</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@300;500;700&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #06171b; overflow: hidden; }
+  #stage { position: relative; width: 1920px; height: 1080px; transform-origin: 0 0; }
+  canvas { display: block; }
+  .hud { position: absolute; font: 400 18px/1.2 "JetBrains Mono", Menlo, monospace; color: #f2efe9;
+         letter-spacing: .06em; text-transform: uppercase; white-space: pre; text-shadow: 0 0 12px rgba(6,23,27,.85), 0 0 3px rgba(6,23,27,.9); }
+  #tl { left: 56px; top: 48px; } #tr { right: 56px; top: 48px; text-align: right; }
+  #bl { left: 56px; bottom: 48px; } #br { right: 56px; bottom: 48px; text-transform: none; font-weight: 600; font-size: 20px; }
+  #bl b, #tr b { color: #ffb000; font-weight: 600; }
+  #bar { position: absolute; left: 56px; right: 56px; bottom: 30px; height: 2px; background: rgba(242,239,233,.18); }
+  #bar i { position: absolute; left: 0; top: 0; bottom: 0; background: #ffb000; }
+  #bar s { position: absolute; top: -4px; width: 2px; height: 10px; background: rgba(242,239,233,.55); }
+  #word { position: absolute; left: 48px; top: 96px; font: 700 220px/1 "Space Grotesk", sans-serif; color: #f2efe9;
+          letter-spacing: -.02em; white-space: pre; text-shadow: 0 0 40px rgba(6,23,27,.45); }
+  #word span { display: inline-block; will-change: transform; }
+  #shade { position: absolute; inset: 0; pointer-events: none;
+           background: linear-gradient(rgba(6,23,27,.55), rgba(6,23,27,0) 150px, rgba(6,23,27,0) calc(100% - 170px), rgba(6,23,27,.6)); }
+  #sub { position: absolute; left: 60px; top: 330px; font: 400 20px/1.3 "JetBrains Mono", monospace; color: #f2efe9;
+         letter-spacing: .08em; text-transform: uppercase; white-space: pre; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="stage">
+  <div id="shade"></div>
+  <div id="word"></div>
+  <div id="sub"></div>
+  <div class="hud" id="tl">MIDDLE STUDIES REEL — 003
+ONE TAKE · NO CUTS</div>
+  <div class="hud" id="tr"></div>
+  <div class="hud" id="bl"></div>
+  <div class="hud" id="br">Claude</div>
+  <div id="bar"><i></i></div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const W = 1920, H = 1080, D = 15, N = 4096, G = 64, TAU = Math.PI * 2;
+const RENDER = location.search.includes('render');
+
+// ---------- seeded randomness ----------
+function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const rng = mulberry32(3003);
+const R1 = new Float32Array(N), R2 = new Float32Array(N), R3 = new Float32Array(N), R4 = new Float32Array(N);
+const AX = [];
+for (let i = 0; i < N; i++) { R1[i] = rng(); R2[i] = rng(); R3[i] = rng(); R4[i] = rng();
+  AX.push(new THREE.Vector3(rng() - .5, rng() - .5, rng() - .5).normalize()); }
+const BLK = []; for (let i = 0; i < 64; i++) BLK.push(rng());
+
+// ---------- easing / helpers ----------
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const eio = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const eoq = t => 1 - Math.pow(1 - t, 4);
+const eiq = t => t * t * t * t;
+const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+
+// ---------- renderer ----------
+const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(1); renderer.setSize(W, H);
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+document.getElementById('stage').prepend(renderer.domElement);
+
+const BG = new THREE.Color('#06171b');
+const scene = new THREE.Scene();
+scene.background = BG; scene.fog = new THREE.FogExp2(BG, 0.0125);
+const camera = new THREE.PerspectiveCamera(38, W / H, 0.5, 400);
+
+scene.add(new THREE.HemisphereLight('#cfe7e4', '#0a2328', 0.75));
+const key = new THREE.DirectionalLight('#fff4e6', 1.7);
+key.position.set(-40, 70, 30); key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+Object.assign(key.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, near: 1, far: 220 });
+key.shadow.bias = -0.0004; key.shadow.normalBias = 0.03;
+scene.add(key); scene.add(key.target);
+const rim = new THREE.DirectionalLight('#6fd3d0', 0.8); rim.position.set(50, 20, -60); scene.add(rim);
+
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshStandardMaterial({ color: '#0b252a', roughness: .95 }));
+floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+
+const geo = new THREE.BoxGeometry(1, 1, 1);
+const cold = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color: '#f2efe9', roughness: .42, metalness: .05 }), N);
+const hot = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffb000').multiplyScalar(5.0) }), N);
+for (const m of [cold, hot]) { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
+  m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(m); }
+hot.receiveShadow = false;
+
+// ---------- post ----------
+const rt = new THREE.WebGLRenderTarget(W, H, { samples: 4, type: THREE.HalfFloatType });
+const composer = new EffectComposer(renderer, rt);
+composer.setPixelRatio(1); composer.setSize(W, H);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(W / 2, H / 2), 0.55, 0.35, 2.2);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+// ---------- formations ----------
+// each returns into out: {p, q, s, h}  (position, quaternion, scale, hot 0/1)
+const UP = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1), QI = new THREE.Quaternion();
+const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _m = new THREE.Matrix4(), _q = new THREE.Quaternion();
+const _T = new THREE.Vector3(), _N = new THREE.Vector3(), _B = new THREE.Vector3();
+const mk = () => ({ p: new THREE.Vector3(), q: new THREE.Quaternion(), s: new THREE.Vector3(), h: 0 });
+
+const OMEGA = TAU * 3 / 15, OMEGA2 = TAU * 2 / 15;
+function field(i, t, o) {
+  const gx = i % G, gz = (i / G) | 0;
+  const x = (gx - 31.5) * 1.2, z = (gz - 31.5) * 1.2, r = Math.hypot(x, z);
+  const w1 = .5 + .5 * Math.sin(r * .30 - OMEGA * t);
+  const w2 = .5 + .5 * Math.sin(x * .13 + z * .09 + OMEGA2 * t);
+  const ring = ((t / 5 + .3) % 1) * 62;                 // 3 pulses per loop
+  const bump = Math.exp(-Math.pow((r - ring) / 1.6, 2));
+  const h = .35 + 3.6 * w1 * w1 * w1 + 1.2 * w2 * w2 + bump * 2.4;
+  o.p.set(x, h / 2, z); o.q.copy(QI); o.s.set(1, h, 1);
+  o.h = (Math.abs(r - ring) < 1.1 && R2[i] < .35) ? 1 : 0;
+}
+function city(i, t, o) {
+  const gx = i % G, gz = (i / G) | 0;
+  const x = (gx - 31.5) * 1.05, z = (gz - 31.5) * 1.05, r = Math.hypot(x, z);
+  const street = gx % 8 === 0 || gz % 8 === 0 || gx === 31;
+  let h;
+  if (street) h = .12;
+  else {
+    const b = BLK[((gx >> 3) + (gz >> 3) * 8) & 63];
+    const fall = clamp(1 - r / 44);
+    h = .6 + (Math.pow(R1[i], 3) * 11 + b * 4) * (.25 + .75 * fall) + fall * fall * 4 * R3[i];
+    h = Math.round(h * 2) / 2;
+  }
+  o.p.set(x, h / 2, z); o.q.copy(QI); o.s.set(street ? 1.02 : .96, h, street ? 1.02 : .96);
+  if (street) o.h = ((gx % 8 === 0 ? gz : gx) + Math.floor(t * 14) + (gx % 8 === 0 ? gx : gz) * 3) % 11 === 0 ? 1 : 0;
+  else o.h = (h > 7 && R2[i] < .10 && Math.abs(x) > 3.2) ? 1 : 0;
+}
+const SC = new THREE.Vector3(0, 24, 0);
+function orbit(i, t, o) {
+  const y = 1 - 2 * (i + .5) / N, rr = Math.sqrt(1 - y * y), ph = i * 2.399963 + t * .45;
+  _v.set(Math.cos(ph) * rr, y, Math.sin(ph) * rr);
+  _v.applyAxisAngle(Z, .35);
+  const lon = Math.atan2(_v.z, _v.x);
+  const band = Math.sin(_v.y * 7 - t * 4.2 + Math.sin(lon * 3 + t) * 1.4);
+  const spike = Math.pow(clamp(band * .5 + .5), 6);
+  o.p.copy(_v).multiplyScalar(19 + spike * 3.5).add(SC);
+  o.q.setFromUnitVectors(Z, _v);
+  o.s.set(.72, .72, .5 + spike * 6.5);
+  o.h = (spike > .8 && R2[i] < .45) ? 1 : 0;
+}
+const KC = new THREE.Vector3(0, 23, 0);
+function knotPt(u, out) {
+  const r = Math.cos(3 * u) + 2.2;
+  return out.set(r * Math.cos(2 * u), -Math.sin(3 * u) * 1.1, r * Math.sin(2 * u)).multiplyScalar(6.2);
+}
+function knot(i, t, o) {
+  const a = (i / 16) | 0, b = i % 16;
+  const u = (a / 256 + t * .018) * TAU;
+  knotPt(u, o.p); knotPt(u + .004, _T); _T.sub(o.p).normalize();
+  _N.crossVectors(_T, UP).normalize(); _B.crossVectors(_N, _T).normalize();
+  const v = b / 16 * TAU + u * 3;
+  const tube = 2.7;
+  _v.copy(_N).multiplyScalar(Math.cos(v) * tube).addScaledVector(_B, Math.sin(v) * tube);
+  o.p.add(_v);
+  _m.makeBasis(_T, _N, _B); o.q.setFromRotationMatrix(_m);
+  _v2.set(0, 1, 0); o.p.applyAxisAngle(_v2, t * .22); _q.setFromAxisAngle(_v2, t * .22); o.q.premultiply(_q);
+  o.p.add(KC);
+  o.s.set(1.35, .62, .62);
+  o.h = ((a + Math.floor(t * 30)) % 32 < 2) ? 1 : 0;
+}
+const FORMS = [field, city, orbit, knot, field];
+const NAMES = ['FIELD', 'CITY', 'ORBIT', 'KNOT', 'FIELD'];
+const SUBS = ['4,096 bodies · one wave', 'blocks of 8 · streets of 1', 'fibonacci shell · 4,096 pts', '(2,3) torus knot · 256 × 16', '4,096 bodies · one wave'];
+// transitions [start, end]
+const TR = [[2.3, 3.9], [5.3, 7.0], [8.5, 10.1], [11.7, 13.5]];
+
+// stagger delays per transition (0..1)
+const DL = TR.map(() => new Float32Array(N));
+{
+  for (let i = 0; i < N; i++) {
+    const gx = i % G, gz = (i / G) | 0, r = Math.hypot(gx - 31.5, gz - 31.5) / 45;
+    DL[0][i] = clamp(r) * .85 + R1[i] * .15;                           // city rises from centre out
+    DL[1][i] = clamp((gz / 63) * .8 + R3[i] * .2);                     // sweep lifts the city row by row
+    const y = 1 - 2 * (i + .5) / N; DL[2][i] = clamp((1 - y) / 2 * .85 + R4[i] * .15); // shell peels top-down
+    DL[3][i] = clamp(((i / 16) | 0) / 255 * .9 + R2[i] * .1);         // knot unspools along its length
+  }
+}
+const SPREAD = .5;
+function flight(k, t, i) {
+  const [a, b] = TR[k]; const P = (t - a) / (b - a);
+  return clamp((P - DL[k][i] * SPREAD) / (1 - SPREAD));
+}
+function stageAt(t) { // which pair we are in
+  for (let k = 0; k < TR.length; k++) { if (t < TR[k][0]) return { k, mode: 'hold' }; if (t < TR[k][1]) return { k, mode: 'fly' }; }
+  return { k: 4, mode: 'hold' };
+}
+
+const A = mk(), B = mk(), _s = new THREE.Vector3(), _p = new THREE.Vector3(), _qq = new THREE.Quaternion(), _spin = new THREE.Quaternion();
+const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+let inFlight = 0;
+function layout(t) {
+  const st = stageAt(t);
+  inFlight = 0;
+  for (let i = 0; i < N; i++) {
+    let hotv = 0;
+    if (st.mode === 'hold') {
+      FORMS[st.k](i, t, A); _p.copy(A.p); _qq.copy(A.q); _s.copy(A.s); hotv = A.h;
+    } else {
+      const k = st.k, f = flight(k, t, i);
+      if (f <= 0) { FORMS[k](i, t, A); _p.copy(A.p); _qq.copy(A.q); _s.copy(A.s); hotv = A.h; }
+      else if (f >= 1) { FORMS[k + 1](i, t, B); _p.copy(B.p); _qq.copy(B.q); _s.copy(B.s); hotv = B.h; }
+      else {
+        inFlight++;
+        FORMS[k](i, t, A); FORMS[k + 1](i, t, B);
+        const e = eio(f), arc = Math.sin(Math.PI * f);
+        _p.lerpVectors(A.p, B.p, e);
+        // lift + outward swirl while travelling
+        _v.copy(_p).setY(0); const d = _v.length() || 1; _v.multiplyScalar(1 / d);
+        _p.y += arc * (5 + R3[i] * 10);
+        _p.addScaledVector(_v, arc * (2 + R4[i] * 6));
+        _v2.set(-_v.z, 0, _v.x); _p.addScaledVector(_v2, arc * (R1[i] - .5) * 10);
+        _qq.slerpQuaternions(A.q, B.q, e);
+        _spin.setFromAxisAngle(AX[i], TAU * (1 + (R2[i] > .5 ? 1 : 0)) * e); _qq.multiply(_spin);
+        _s.lerpVectors(A.s, B.s, e);
+        const shrink = 1 - arc * .45; _s.x *= shrink; _s.z *= shrink; _s.y = lerp(_s.y, Math.min(_s.y, 1.1), arc);
+        hotv = (arc > .55 && R4[i] < .05) ? 1 : (e < .5 ? A.h : B.h);
+      }
+    }
+    _m.compose(_p, _qq, _s);
+    if (hotv) { hot.setMatrixAt(i, _m); cold.setMatrixAt(i, ZERO); }
+    else { cold.setMatrixAt(i, _m); hot.setMatrixAt(i, ZERO); }
+  }
+  cold.instanceMatrix.needsUpdate = true; hot.instanceMatrix.needsUpdate = true;
+}
+
+// ---------- camera: periodic Catmull-Rom through timed keys ----------
+const KEYS = [
+  // t,   position,           target
+  [0.0,  [-22, 8.5, 25], [4, 1.5, -5]],
+  [2.2,  [ -2, 16, 44],  [0, 0, 0]],
+  [4.0,  [0, 3.2, 24],   [0, 4, -20]],
+  [5.4,  [0, 9, 6],      [0, 15, -30]],
+  [6.5,  [10, 30, 30],   [0, 24, 0]],
+  [7.4,  [ 34, 26, 38],  [0, 24, 0]],
+  [9.0,  [  8, 46, 46],  [0, 23, 0]],
+  [10.8, [-38, 24, 22],  [0, 23, 0]],
+  [12.4, [-50, 34, -6],  [0, 6, 0]],
+  [13.8, [-36, 9, 28],   [3, 1, -2]],
+];
+function cr(p0, p1, p2, p3, u) {
+  const u2 = u * u, u3 = u2 * u;
+  return .5 * ((2 * p1) + (-p0 + p2) * u + (2 * p0 - 5 * p1 + 4 * p2 - p3) * u2 + (-p0 + 3 * p1 - 3 * p2 + p3) * u3);
+}
+function camAt(t, which) {
+  const n = KEYS.length; let j = n - 1;
+  for (let k = 0; k < n; k++) if (KEYS[k][0] <= t) j = k;
+  const tA = KEYS[j][0], tB = j + 1 < n ? KEYS[j + 1][0] : D;
+  const u = eio(clamp((t - tA) / (tB - tA))) * .6 + clamp((t - tA) / (tB - tA)) * .4;
+  const g = k => KEYS[((k % n) + n) % n][which];
+  const a = g(j - 1), b = g(j), c = g(j + 1), d = g(j + 2);
+  return [0, 1, 2].map(x => cr(a[x], b[x], c[x], d[x], u));
+}
+
+// ---------- HUD ----------
+const $ = id => document.getElementById(id);
+const bar = $('bar').querySelector('i');
+for (const [a] of TR) { const s = document.createElement('s'); s.style.left = (a / D * 100) + '%'; $('bar').appendChild(s); }
+const wordEl = $('word'), subEl = $('sub');
+let wordShown = -1;
+function setWord(k) {
+  if (wordShown === k) return; wordShown = k;
+  wordEl.innerHTML = ''; for (const ch of NAMES[k]) { const s = document.createElement('span'); s.textContent = ch; wordEl.appendChild(s); }
+  subEl.textContent = SUBS[k];
+}
+// word windows: [formation index, in, out]
+const WORDS = [[0, -1.2, 2.2], [1, 3.6, 5.2], [2, 6.8, 8.4], [3, 9.9, 11.6], [4, 13.4, 16.6]];
+function hud(t) {
+  const f = Math.floor(t * 60), s = Math.floor(f / 60);
+  $('tr').innerHTML = `00:00:${String(s).padStart(2, '0')}:${String(f % 60).padStart(2, '0')}\n<b>${String(inFlight).padStart(4, '0')}</b> IN FLIGHT / 4096`;
+  const st = stageAt(t), k = st.mode === 'fly' ? st.k + 1 : st.k, kk = k % 4;
+  $('bl').innerHTML = `<b>0${kk + 1}</b> / 04  ${NAMES[k]}` + (st.mode === 'fly' ? `  ←  ${NAMES[st.k]}` : '');
+  bar.style.width = (t / D * 100) + '%';
+
+  // big word: the one whose window contains t (also the wrap-around one)
+  let shown = null;
+  for (const w of WORDS) { for (const tt of [t, t + D, t - D]) if (tt >= w[1] && tt <= w[2]) shown = [w, tt]; }
+  if (!shown) { wordEl.style.visibility = 'hidden'; subEl.style.visibility = 'hidden'; return; }
+  const [[k2, a, b], tt] = shown; setWord(k2);
+  wordEl.style.visibility = subEl.style.visibility = 'visible';
+  [...wordEl.children].forEach((sp, j) => {
+    const pin = eoq(clamp((tt - a - j * .05) / .55)), pout = eiq(clamp((tt - (b - .5) - j * .04) / .5));
+    const y = (1 - pin) * 110 - pout * 130, rot = (1 - pin) * 14 - pout * 10;
+    sp.style.transform = `translateY(${y}%) rotate(${rot}deg)`;
+    sp.style.opacity = Math.min(pin * 1.4, 1 - pout);
+  });
+  const sin = eoq(clamp((tt - a - .25) / .5)), sout = eiq(clamp((tt - (b - .45)) / .4));
+  subEl.style.opacity = sin * (1 - sout);
+  subEl.style.transform = `translateX(${(1 - sin) * -40 + sout * 40}px)`;
+}
+
+// ---------- seek ----------
+function seek(t) {
+  t = ((t % D) + D) % D;
+  layout(t);
+  const p = camAt(t, 1), q = camAt(t, 2);
+  camera.position.set(...p);
+  // roll a little when the camera banks
+  const p2 = camAt((t + .05) % D, 1);
+  const vx = (p2[0] - p[0]), vz = (p2[2] - p[2]);
+  camera.up.set(Math.sin(clamp((vx - vz) * .004, -.08, .08)), 1, 0).normalize();
+  camera.lookAt(...q);
+  composer.render();
+  hud(t);
+}
+window.__duration = D;
+window.__poster = 7.9;
+window.__seek = t => seek(t);
+
+if (!RENDER) {
+  const fit = () => { const s = Math.min(innerWidth / W, innerHeight / H); $('stage').style.transform = `scale(${s})`; };
+  addEventListener('resize', fit); fit();
+  const t0 = performance.now();
+  const loop = () => { seek(((performance.now() - t0) / 1000) % D); requestAnimationFrame(loop); };
+  loop();
+}
+</script>
+</body>
+</html>

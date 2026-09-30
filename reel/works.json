@@ -73,5 +73,41 @@
     },
     "review_rounds": 3,
     "review": "1周目：各語の読める区間が止まって見え、コンタクトシートで SLICE・SLICE／ECHO・ECHO がほぼ同じ絵だった→SLICE に不規則なグリッチの一撃、ECHO の写しを外へ流し続ける、SCATTER の網点に波、TWIST に揺れ、全語にゆっくり寄るズームを足した／MELT の垂れが影に見えた→垂れを細く長く、明るさの減衰を弱く。2周目：粒子ノイズが強すぎて8MBに収まらず crf29 まで落ちた→粒子を半分に／ワイプ中に四隅の文字が同じ色の地に溶けて読めなかった→四隅ごとに、そこがどちらの色の側かで文字の色と語名を決めるようにした。3周目：つなぎ6か所と SCATTER の網点を等倍で確認し、直すことが見つからなかった。許容した差：容量上限のため crf29 のまま（網点も等倍で崩れていない）／ECHO の写しは画面端で切れる（奥から流れてくる表現として残した）。"
+  },
+  {
+    "id": "003",
+    "slug": "one-take",
+    "title": "One Take",
+    "date": "2026-09-30",
+    "concept": "4,096個の白い箱が、カット無しの1本のカメラの前で FIELD（波打つ床）→ CITY（街区と通り）→ ORBIT（フィボナッチ球殻）→ KNOT（(2,3)トーラス結び目）→ FIELD と並び替わる。移り変わりは一斉ではなく、街は中心から立ち上がり、球は上から剥がれ、結び目は端からほどけて床に戻る（12.8秒）。見せ場は4秒からの、立ち上がったばかりの街の大通りを低く抜ける飛行。右上の IN FLIGHT は、その瞬間に移動中の箱の数を実数で数えている。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/003_one-take.mp4",
+    "techniques": [
+      "instanced-mesh",
+      "formation-morph",
+      "staggered-transition",
+      "one-take-camera",
+      "catmull-rom-camera-path",
+      "bloom",
+      "shadow-mapping",
+      "torus-knot",
+      "fibonacci-sphere",
+      "live-data-hud"
+    ],
+    "look": {
+      "palette": [
+        "#06171b",
+        "#f2efe9",
+        "#ffb000",
+        "#6fd3d0"
+      ],
+      "type": [
+        "Space Grotesk",
+        "JetBrains Mono"
+      ],
+      "structure": "one continuous take / 4 formations / staggered morphs",
+      "renderer": "three"
+    },
+    "review_rounds": 3,
+    "review": "1周目：冒頭1秒が遠景の灰色の台地で弱い→カメラを近く低く、琥珀の波紋が0秒でカメラの手前を通るよう位相をずらし、波紋の上の箱を持ち上げた／5.2秒で塔の壁が画面の半分を覆った→大通りを2マス幅にしてカメラをその中心へ／白い床の上で左下のHUDが消えた→上下に薄い暗いグラデーション／crf29でも17MB→render.mjs にPNGからの2パス（7.6MB狙い）を足した。2周目：0秒の波紋と5〜6秒の光る塔が近すぎて白飛び、4Mbpsでブロックノイズ→波紋の発光を半分、大通り沿いの塔は光らせない、移動中の火花を9%→5%、6.5秒のカメラを球の外へ引いた、2パスを veryslow に。3周目：つなぎ4か所とループの継ぎ目（14.95→0秒）を確認、6.4秒の破片の中を等倍で見てブロックノイズが許容内に。許容した差：ORBIT の小見出しは明るい球殻に重なって読みにくい瞬間がある／容量の上限のため2パス約4Mbps。"
   }
 ]

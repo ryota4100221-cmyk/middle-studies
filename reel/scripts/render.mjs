@@ -47,6 +47,15 @@ for (const crf of [20, 23, 26, 29]) {
   console.log(`  crf ${crf}: ${mb.toFixed(2)} MB`);
   if (mb <= 8) break;
 }
+// crf 29 でも 8MB を超える（細かい動きが多い）ときは、PNG から2パスで 7.6MB 狙いに書き直す
+if (statSync(out).size / 1e6 > 8) {
+  const kbps = Math.floor(7.6e6 * 8 / dur / 1000) - 20;
+  const common = ['-framerate', String(FPS), '-i', path.join(FR, '%05d.png'), '-c:v', 'libx264', '-preset', 'veryslow', '-b:v', kbps + 'k', '-pix_fmt', 'yuv420p'];
+  const plog = path.join(FR, 'x264pass');
+  execFileSync('ffmpeg', ['-y', '-v', 'error', ...common, '-pass', '1', '-passlogfile', plog, '-f', 'mp4', '/dev/null']);
+  execFileSync('ffmpeg', ['-y', '-v', 'error', ...common, '-pass', '2', '-passlogfile', plog, '-movflags', '+faststart', out]);
+  console.log(`  2-pass ${kbps}k: ${(statSync(out).size / 1e6).toFixed(2)} MB`);
+}
 // ポスター＝一番「その作品らしい」1枚を HTML 側が window.__poster で指定（無ければ 40%地点）
 execFileSync('ffmpeg', ['-y', '-v', 'error', '-ss', String(await posterTime()), '-i', out, '-frames:v', '1', '-q:v', '3', path.join(dir, 'poster.jpg')]);
 // コンタクトシート（1秒ごと15枚・点検と自己レビュー用）
