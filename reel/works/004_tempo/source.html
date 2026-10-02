@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 004 Tempo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,800&family=IBM+Plex+Mono:wght@500&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #000; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; object-fit: contain; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// REEL — 004 TEMPO：1つの球が120BPMの拍の上で、つぶれ・伸び・予備動作・追従を見せながら6場面を渡る。
+// すべて t の関数（物理は解析解か、読み込み時に一度だけ作る表）。Math.random は使わない。
+const W = 1920, H = 1080, DUR = 15, R0 = 56, GROUND = 760;
+const C = { paper: '#f3ead8', ink: '#161513', forest: '#0f3d2e', yellow: '#ffc914', pink: '#ff6f9f' };
+const MONO = '500 20px "IBM Plex Mono", Menlo, monospace';
+const DISPLAY = '800 330px "Bricolage Grotesque", "Helvetica Neue", sans-serif';
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, u) => a + (b - a) * u;
+const sat = (t, a, b) => clamp((t - a) / (b - a));
+const eIn2 = u => u * u, eIn3 = u => u * u * u;
+const eOut3 = u => 1 - Math.pow(1 - u, 3), eOut4 = u => 1 - Math.pow(1 - u, 4);
+const eIO3 = u => u < .5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+const eOutBack = (u, s = 1.70158) => 1 + (s + 1) * Math.pow(u - 1, 3) + s * Math.pow(u - 1, 2);
+const eInBack = (u, s = 1.70158) => (s + 1) * u * u * u - s * u * u;
+const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const mix = (a, b, u) => { const A = hex(a), B = hex(b); return `rgb(${A.map((v, i) => Math.round(lerp(v, B[i], u))).join(',')})`; };
+
+// 拍：接地は 0.25 + 0.5k 秒（30拍）
+const BEATS = Array.from({ length: 30 }, (_, k) => 0.25 + 0.5 * k);
+
+// ---------- 球 ----------
+function ball(x, y, r, o = {}) {
+  if (r <= 0.2) return;
+  const ang = o.ang || 0;
+  ctx.save();
+  ctx.globalAlpha = o.alpha == null ? 1 : o.alpha;
+  ctx.translate(x, y); ctx.rotate(ang); ctx.scale(o.sx || 1, o.sy || 1); ctx.rotate(-ang);
+  ctx.fillStyle = o.color || C.pink;
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+  if (o.stripe) {
+    ctx.save(); ctx.clip();
+    ctx.rotate(o.rot || 0);
+    ctx.globalAlpha *= o.stripeA == null ? 1 : o.stripeA;
+    ctx.fillStyle = o.stripe;
+    ctx.fillRect(-r, -r * 0.13, r * 2, r * 0.26);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// 周期 P・高さ h の弾み。tt＝直近の接地からの時間
+function bounce(tt, P, h) {
+  const u = ((tt / P) % 1 + 1) % 1;
+  const lift = h * 4 * u * (1 - u);
+  const d = Math.min(u, 1 - u) * P;
+  const sq = Math.exp(-Math.pow(d / 0.042, 2));
+  const sp = Math.pow(Math.abs(1 - 2 * u), 2) * (1 - sq);
+  return { lift, sq, sy: (1 - 0.42 * sq) * (1 + 0.24 * sp), sx: (1 + 0.36 * sq) * (1 - 0.13 * sp) };
+}
+
+// 衝撃の放射線（漫画の「ドン」）
+function impact(x, y, dt, col, scale = 1, lw = 6) {
+  if (dt < 0 || dt > 0.34) return;
+  const u = dt / 0.34;
+  ctx.save(); ctx.strokeStyle = col; ctx.lineCap = 'round'; ctx.lineWidth = lw * scale * (1 - u * 0.6);
+  ctx.globalAlpha = 1 - eIn2(u);
+  for (let i = 0; i < 7; i++) {
+    const a = Math.PI + (i + 0.5) / 7 * Math.PI;
+    const d0 = (R0 + 18 + 150 * eOut3(u)) * scale, d1 = d0 + 46 * scale * (1 - u);
+    ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * d0, y + Math.sin(a) * d0 * 0.8);
+    ctx.lineTo(x + Math.cos(a) * d1, y + Math.sin(a) * d1 * 0.8); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// 画面の揺れ（衝撃のあと減衰）
+const SHAKES = [[0.25, 16], [4.75, 9], [12.75, 8], [14.75, 6], [15.25, 16]];
+function shake(T) {
+  let x = 0, y = 0;
+  for (const [ti, a] of SHAKES) {
+    const d = T - ti; if (d < 0 || d > 0.4) continue;
+    const e = a * Math.exp(-d * 14);
+    x += e * Math.sin(d * 83 + ti); y += e * Math.cos(d * 97 + ti * 2);
+  }
+  return { x, y };
+}
+
+// ---------- 06 TEMPO（文字）と 01 DROP（その続き） ----------
+let LAY = null;
+function layout() {
+  ctx.save(); ctx.font = DISPLAY;
+  const chars = 'TEMPO'.split(''), gap = 12;
+  const ws = chars.map(ch => ctx.measureText(ch).width);
+  const total = ws.reduce((a, b) => a + b, 0) + gap * (chars.length - 1);
+  let x = 960 - total / 2; const out = [];
+  const hitX = [0.5, 0.5, 0.17, 0.36, 0.5];
+  chars.forEach((ch, i) => {
+    const m = ctx.measureText(ch);
+    out.push({ ch, x, w: ws[i], hx: x + ws[i] * hitX[i], top: GROUND - m.actualBoundingBoxAscent });
+    x += ws[i] + gap;
+  });
+  ctx.restore();
+  return out;
+}
+const HIT = [12.75, 13.25, 13.75, 14.25, 14.75];
+function letterSquash(i, T) {
+  const d = T - HIT[i]; if (d < 0) return 0;
+  return Math.exp(-d * 9) * Math.cos(d * 36);
+}
+function mergePoint() { return { x: LAY[0].hx, y: LAY[0].top - 300 }; }
+
+// 06場面の主役の球（T は 12.5〜15.25）
+function ballS6(T) {
+  const M = mergePoint();
+  const r = R0 * eOutBack(sat(T, 12.54, 12.7));
+  if (T < HIT[0]) {
+    const u = sat(T, 12.6, 12.75);
+    const bottom = lerp(M.y + R0, LAY[0].top, eIn2(u));
+    const d = HIT[0] - T, sq = Math.exp(-Math.pow(d / 0.042, 2));
+    const sy = (1 - 0.42 * sq) * (1 + 0.25 * u * (1 - sq)), sx = (1 + 0.36 * sq) * (1 - 0.12 * u * (1 - sq));
+    return { x: M.x, y: bottom - r * sy, r, sx, sy };
+  }
+  const pts = LAY.map((L, i) => ({ x: L.hx, y: L.top + (GROUND - L.top) * 0.16 * Math.max(0, letterSquash(i, T)), t: HIT[i] }));
+  pts.push({ x: 960, y: GROUND, t: 15.25 });
+  let i = 0; while (i < pts.length - 2 && T >= pts[i + 1].t) i++;
+  const a = pts[i], b = pts[i + 1], u = clamp((T - a.t) / (b.t - a.t));
+  const apex = i === pts.length - 2 ? 190 : 170;
+  const bottom = lerp(a.y, b.y, u) - apex * 4 * u * (1 - u);
+  const d = Math.min(Math.abs(T - a.t), Math.abs(b.t - T));
+  const sq = Math.exp(-Math.pow(d / 0.042, 2));
+  const sp = Math.pow(Math.abs(1 - 2 * u), 2) * (1 - sq);
+  const sy = (1 - 0.42 * sq) * (1 + 0.24 * sp), sx = (1 + 0.36 * sq) * (1 - 0.13 * sp);
+  return { x: lerp(a.x, b.x, u), y: bottom - r * sy, r, sx, sy };
+}
+
+function drawS6(T, full = true) {
+  ctx.fillStyle = C.paper; ctx.fillRect(-60, -60, W + 120, H + 120);
+  // 地面（中央から引かれる）
+  const g = eOut3(sat(T, 12.45, 12.85));
+  ctx.strokeStyle = C.ink; ctx.lineWidth = 4; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(960 - 1100 * g, GROUND + 2); ctx.lineTo(960 + 1100 * g, GROUND + 2); ctx.stroke();
+  // 文字（地面から生え、跳ねられてつぶれ、最後は地面に沈む）
+  ctx.save(); ctx.beginPath(); ctx.rect(-60, -60, W + 120, GROUND + 60); ctx.clip();
+  ctx.font = DISPLAY; ctx.textBaseline = 'alphabetic';
+  LAY.forEach((L, i) => {
+    const up = eOutBack(sat(T, 12.48 + i * 0.05, 12.86 + i * 0.05), 1.3);
+    const down = eIn3(sat(T, 14.7 + i * 0.02, 14.9 + i * 0.02));
+    const off = 400 * (1 - up) + 420 * down;
+    if (off >= 399) return;
+    const k = letterSquash(i, T);
+    const cx = L.x + L.w / 2;
+    ctx.save(); ctx.translate(cx, GROUND + off); ctx.scale(1 + 0.1 * k, 1 - 0.16 * k);
+    const flash = T >= HIT[i] && T < HIT[i] + 0.14;
+    ctx.fillStyle = flash ? C.forest : C.ink;
+    ctx.fillText(L.ch, -L.w / 2, 0);
+    ctx.restore();
+  });
+  ctx.restore();
+  // 文字の下のクレジット（1字ずつ打たれる）
+  const line = 'REEL — 004  ·  120 BPM  ·  30 BEATS  ·  900 FRAMES  ·  0 KEYFRAMES';
+  const n = Math.floor(line.length * sat(T, 12.95, 13.55));
+  const fade = 1 - sat(T, 14.45, 14.7);
+  if (n > 0 && fade > 0) {
+    ctx.save(); ctx.globalAlpha = fade; ctx.font = '500 24px "IBM Plex Mono", Menlo, monospace'; ctx.fillStyle = C.ink;
+    ctx.textAlign = 'center'; ctx.fillText(line.slice(0, n), 960, GROUND + 74); ctx.restore();
+  }
+  // 衝撃
+  LAY.forEach((L, i) => impact(L.hx, L.top, T - HIT[i], C.ink, 0.8, 5));
+  impact(960, GROUND, T - 15.25, C.ink, 1.15, 7);
+  if (!full) return;
+  if (T >= 12.54) {
+    for (let j = 6; j >= 1; j--) {
+      const p = ballS6(T - j * 0.011);
+      if (T - j * 0.011 >= 12.6) ball(p.x, p.y, p.r, { sx: p.sx, sy: p.sy, color: C.pink, alpha: 0.12 * (7 - j) / 6 });
+    }
+    const b = ballS6(T);
+    ball(b.x, b.y, b.r, { sx: b.sx, sy: b.sy, color: C.pink });
+  }
+}
+
+// ---------- 02 DIVIDE（拍ごとに画面が割れる） ----------
+const LV = [
+  { c: 1, r: 1, t: -1 }, { c: 2, r: 1, t: 0.75 }, { c: 2, r: 2, t: 1.25 },
+  { c: 4, r: 3, t: 1.75 }, { c: 8, r: 5, t: 2.25 }, { c: 16, r: 9, t: 2.75 },
+];
+const BG4 = [C.paper, C.forest, C.yellow, C.pink];
+const FG4 = [C.pink, C.yellow, C.forest, C.paper];
+function cellInfo(li, i, j) {
+  const L = LV[li], cw = W / L.c, ch = H / L.r;
+  const idx = (i + 2 * j + li) % 4;
+  const s = li === 0 ? 1 : Math.min(cw / 900, ch / 620);
+  const fy = li === 0 ? 540 : 520;
+  let off = 0;
+  if (li === 3 || li === 4) off = ((i + j) % 2) * 0.25;
+  const cx = (i + 0.5) * cw, cy = (j + 0.5) * ch;
+  if (li === 5) off = Math.hypot(cx - 960, cy - 540) / 1100 * 0.5;
+  return { cw, ch, cx, cy, s, fy, idx, off };
+}
+function cellBall(li, info, t, damp = 1) {
+  const b = bounce(t - 0.25 - info.off, 0.5, 380 * damp);
+  const sy = lerp(1, b.sy, damp), sx = lerp(1, b.sx, damp);
+  const stageY = GROUND - R0 * sy - b.lift;
+  return { x: info.cx, y: info.cy + (stageY - info.fy) * info.s, r: R0 * info.s, sx, sy, sq: b.sq };
+}
+function drawLevel(li, t, conv) {
+  const L = LV[li];
+  for (let j = 0; j < L.r; j++) for (let i = 0; i < L.c; i++) {
+    const f = cellInfo(li, i, j);
+    let k = 1;
+    if (conv) {
+      const dl = Math.hypot(f.cx - 960, f.cy - 540) / 1100 * 0.15;
+      k = 1 - eIn3(sat(t, 3.75 + dl, 4.2 + dl));
+      if (k <= 0.001) continue;
+    }
+    const w = f.cw * k, h = f.ch * k, rad = Math.min(w, h) / 2 * Math.sqrt(1 - k);
+    ctx.save();
+    ctx.beginPath(); ctx.roundRect(f.cx - w / 2, f.cy - h / 2, w, h, rad); ctx.clip();
+    ctx.fillStyle = BG4[f.idx]; ctx.fillRect(f.cx - w / 2 - 1, f.cy - h / 2 - 1, w + 2, h + 2);
+    // 地面
+    const gy = f.cy + (GROUND - f.fy) * f.s;
+    ctx.strokeStyle = f.idx === 1 ? 'rgba(243,234,216,.35)' : 'rgba(22,21,19,.3)';
+    ctx.lineWidth = Math.max(1.5, 4 * f.s);
+    if (li === 0) {
+      // 最初の着地：地面が波打ち、輪が広がる
+      const dt = t - 0.25;
+      ctx.beginPath();
+      for (let x = -40; x <= W + 40; x += 8) {
+        const dx = Math.abs(x - 960);
+        const y = gy + 2 + (dt > 0 ? 34 * Math.exp(-dt * 6) * Math.sin(dx / 55 - dt * 32) * Math.exp(-dx / 650) * clamp(dt * 30 - dx / 400 * 0) : 0);
+        x === -40 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = C.ink; ctx.lineWidth = 4; ctx.stroke();
+      if (dt > 0 && dt < 0.5) {
+        const u = dt / 0.5;
+        ctx.save(); ctx.strokeStyle = C.pink; ctx.lineWidth = 26 * (1 - u); ctx.globalAlpha = 1 - u;
+        ctx.beginPath(); ctx.ellipse(960, gy, 80 + 900 * eOut3(u), (80 + 900 * eOut3(u)) * 0.32, 0, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+      }
+    } else { ctx.beginPath(); ctx.moveTo(f.cx - f.cw, gy + 2 * f.s); ctx.lineTo(f.cx + f.cw, gy + 2 * f.s); ctx.stroke(); }
+    if (!conv) {
+      const b = cellBall(li, f, t);
+      // 影
+      const lift = (GROUND - R0 * b.sy - (b.y - f.cy) / f.s - f.fy);
+      ctx.fillStyle = f.idx === 1 ? 'rgba(0,0,0,.25)' : 'rgba(22,21,19,.12)';
+      ctx.beginPath(); ctx.ellipse(f.cx, gy + 2 * f.s, R0 * f.s * (1.1 - lift / 900), R0 * f.s * 0.16, 0, 0, Math.PI * 2); ctx.fill();
+      ball(b.x, b.y, b.r, { sx: b.sx, sy: b.sy, color: FG4[f.idx] });
+      if (li <= 2) impact(b.x, gy, ((t - 0.25 - f.off) % 0.5 + 0.5) % 0.5, f.idx === 1 ? C.paper : C.ink, f.s, 6);
+    }
+    ctx.restore();
+  }
+}
+function drawGrid(t) {
+  let cur = 0; for (let li = 1; li < LV.length; li++) if (t >= LV[li].t) cur = li;
+  const tr = LV[cur].t, u = cur > 0 ? sat(t, tr, tr + 0.34) : 1;
+  if (u < 1) {
+    drawLevel(cur - 1, t);
+    const cx = 960, cy = cur === 1 ? GROUND : 540;
+    const Rr = eOut4(u) * 2300;
+    ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, Rr, 0, Math.PI * 2); ctx.clip();
+    drawLevel(cur, t); ctx.restore();
+    ctx.save(); ctx.strokeStyle = C.ink; ctx.lineWidth = 22 * (1 - u);
+    ctx.beginPath(); ctx.arc(cx, cy, Rr, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+  } else drawLevel(cur, t);
+}
+// 3.75〜4.5：升目が縮み、144個の球が渦を巻いて中心で1つになる
+function drawConverge(t) {
+  ctx.fillStyle = C.forest; ctx.fillRect(-60, -60, W + 120, H + 120);
+  drawLevel(5, t, true);
+  const L = LV[5];
+  for (let j = 0; j < L.r; j++) for (let i = 0; i < L.c; i++) {
+    const f = cellInfo(5, i, j);
+    const dl = Math.hypot(f.cx - 960, f.cy - 540) / 1100 * 0.15;
+    const e = eIO3(sat(t, 3.8 + dl, 4.35 + dl));
+    if (e >= 1) continue;
+    const b = cellBall(5, f, t, 1 - e);
+    const a = e * 1.6, dx = (b.x - 960) * (1 - e), dy = (b.y - 540) * (1 - e);
+    const x = 960 + dx * Math.cos(a) - dy * Math.sin(a), y = 540 + dx * Math.sin(a) + dy * Math.cos(a);
+    ball(x, y, b.r * (1 + 0.6 * e), { sx: b.sx, sy: b.sy, color: mix(FG4[f.idx], C.pink, e) });
+  }
+}
+
+// ---------- 03 TRACK（線が球の先に引かれていく） ----------
+const PTS = [];
+(function buildTrack() {
+  const add = (fn, n) => { for (let i = 0; i <= n; i++) { if (PTS.length && i === 0) continue; PTS.push(fn(i / n)); } };
+  const line = (a, b) => u => ({ x: lerp(a[0], b[0], u), y: lerp(a[1], b[1], u) });
+  const bez = (a, b, c, d) => u => {
+    const v = 1 - u;
+    return { x: v * v * v * a[0] + 3 * v * v * u * b[0] + 3 * v * u * u * c[0] + u * u * u * d[0],
+             y: v * v * v * a[1] + 3 * v * v * u * b[1] + 3 * v * u * u * c[1] + u * u * u * d[1] };
+  };
+  add(line([640, 760], [1150, 760]), 60);
+  add(bez([1150, 760], [1450, 760], [1600, 1040], [1950, 1040]), 160);
+  add(line([1950, 1040], [2350, 1040]), 50);
+  const LR = 230, lcx = 2350, lcy = 1040 - LR;
+  add(u => ({ x: lcx + LR * Math.sin(u * Math.PI * 2), y: lcy + LR * Math.cos(u * Math.PI * 2) }), 260);
+  add(line([2350, 1040], [2750, 1040]), 50);
+  add(bez([2750, 1040], [3000, 1040], [3150, 960], [3330, 760]), 120);
+})();
+const SL = [0];
+for (let i = 1; i < PTS.length; i++) SL.push(SL[i - 1] + Math.hypot(PTS[i].x - PTS[i - 1].x, PTS[i].y - PTS[i - 1].y));
+const SEND = SL[SL.length - 1];
+function trackAt(s) {
+  s = clamp(s, 0, SEND);
+  let lo = 0, hi = SL.length - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (SL[m] <= s) lo = m; else hi = m; }
+  const a = PTS[lo], b = PTS[hi], u = (s - SL[lo]) / Math.max(1e-6, SL[hi] - SL[lo]);
+  let tx = b.x - a.x, ty = b.y - a.y; const l = Math.hypot(tx, ty) || 1; tx /= l; ty /= l;
+  return { x: lerp(a.x, b.x, u), y: lerp(a.y, b.y, u), tx, ty, nx: ty, ny: -tx };
+}
+const S0 = 960 - 640;
+// エネルギー保存で速さを決め、時刻→弧長の表を作る（読み込み時に1回だけ）
+const ROLL0 = 4.75, ROLL1 = 6.6;
+const TT = [], TS = [];
+(function buildTiming() {
+  const g = 2600, v0 = 1150, y0 = trackAt(S0).y;
+  let tm = 0;
+  for (let s = S0; s <= SEND; s += 2) {
+    TT.push(tm); TS.push(s);
+    const y = trackAt(s).y, v = Math.sqrt(Math.max(v0 * v0 + 2 * g * (y - y0), 260 * 260));
+    tm += 2 / v;
+  }
+  const k = (ROLL1 - ROLL0) / tm;
+  for (let i = 0; i < TT.length; i++) TT[i] *= k;
+})();
+function sAtTime(t) {
+  const tau = t - ROLL0;
+  if (tau <= 0) return S0;
+  if (tau >= TT[TT.length - 1]) return SEND;
+  let lo = 0, hi = TT.length - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (TT[m] <= tau) lo = m; else hi = m; }
+  return lerp(TS[lo], TS[hi], (tau - TT[lo]) / (TT[hi] - TT[lo]));
+}
+function smooth(s) {
+  let x = 0, y = 0;
+  for (let i = -6; i <= 6; i++) { const p = trackAt(s + i * 45); x += p.x; y += p.y; }
+  return { x: x / 13, y: y / 13 };
+}
+const CAM0 = smooth(S0);
+function cam(s) { const p = smooth(s); return { x: p.x - CAM0.x, y: (p.y - CAM0.y) * 0.75 }; }
+
+function ballS3(t) {
+  if (t < ROLL0) {
+    const u = sat(t, 4.5, ROLL0);
+    const by = lerp(540 + R0, GROUND, eIn2(u));
+    const d = ROLL0 - t, sq = Math.exp(-Math.pow(d / 0.042, 2));
+    const sy = (1 - 0.42 * sq) * (1 + 0.22 * u * (1 - sq)), sx = (1 + 0.36 * sq) * (1 - 0.1 * u * (1 - sq));
+    return { x: 960, y: by - R0 * sy, r: R0, sx, sy, rot: 0, cam: { x: 0, y: 0 } };
+  }
+  const after = bounce(t - ROLL0, 0.5, 0);
+  const sq = Math.exp(-Math.pow((t - ROLL0) / 0.042, 2));
+  const sy = 1 - 0.42 * sq, sx = 1 + 0.36 * sq;
+  if (t < ROLL1) {
+    const s = sAtTime(t), p = trackAt(s), c = cam(s);
+    // 接地のつぶれは法線方向に
+    const ang = Math.atan2(p.ny, p.nx) + Math.PI / 2;
+    return { x: p.x + p.nx * R0 * sy - c.x, y: p.y + p.ny * R0 * sy - c.y, r: R0, sx, sy, ang, rot: (s - S0) / R0, cam: c };
+  }
+  // 06.6〜7.0：ランプから飛び出し、カメラへ向かって画面を埋める
+  const tau = t - ROLL1, u = sat(t, ROLL1, 7.0);
+  const p = trackAt(SEND), c = cam(SEND);
+  const v = 1500;
+  const bx = p.x + p.nx * R0 + p.tx * v * tau - c.x, by = p.y + p.ny * R0 + p.ty * v * tau + 0.5 * 2600 * tau * tau - c.y;
+  const e = eIO3(u);
+  return { x: lerp(bx, 960, e), y: lerp(by, 540, e), r: R0 * Math.pow(21, eIn3(u)), sx: 1, sy: 1, rot: SEND / R0 + tau * 25, cam: c, stripeA: 1 - eOut3(u) };
+}
+function drawS3(t) {
+  if (t < 4.5) drawConverge(t);
+  else { ctx.fillStyle = C.forest; ctx.fillRect(-60, -60, W + 120, H + 120); }
+  const b = ballS3(t);
+  const c = t < ROLL0 ? { x: 0, y: 0 } : b.cam;
+  const sBall = t < ROLL0 ? S0 : sAtTime(t);
+  const sDraw = t < ROLL0 ? lerp(0, S0 + 520, eOut3(sat(t, 4.3, ROLL0))) : Math.min(SEND, sBall + 520);
+  ctx.save(); ctx.translate(-c.x, -c.y);
+  // 枕木
+  ctx.strokeStyle = 'rgba(243,234,216,.28)'; ctx.lineWidth = 3;
+  for (let s = 20; s < sDraw; s += 42) {
+    const p = trackAt(s);
+    ctx.beginPath(); ctx.moveTo(p.x - p.nx * 6, p.y - p.ny * 6); ctx.lineTo(p.x - p.nx * 22, p.y - p.ny * 22); ctx.stroke();
+  }
+  // 線
+  ctx.strokeStyle = C.paper; ctx.lineWidth = 9; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(PTS[0].x, PTS[0].y);
+  for (let i = 1; i < PTS.length && SL[i] <= sDraw; i++) ctx.lineTo(PTS[i].x, PTS[i].y);
+  const tip = trackAt(sDraw); ctx.lineTo(tip.x, tip.y); ctx.stroke();
+  if (sDraw < SEND) { ctx.fillStyle = C.yellow; ctx.beginPath(); ctx.arc(tip.x, tip.y, 9, 0, Math.PI * 2); ctx.fill(); }
+  ctx.restore();
+  if (t >= 4.5) {
+    // 残像
+    for (let j = 8; j >= 1; j--) {
+      const tp = t - j * 0.012; if (tp < 4.5) continue;
+      const q = ballS3(tp);
+      ball(q.x - (q.cam.x - c.x) * 0, q.y, q.r, { sx: q.sx, sy: q.sy, ang: q.ang, color: C.yellow, alpha: 0.1 * (9 - j) / 8 * (1 - sat(t, 6.7, 7.0)) });
+    }
+    impact(960, GROUND, t - ROLL0, C.paper, 1, 6);
+    const r = t < 4.56 ? R0 * eOutBack(sat(t, 4.3, 4.56)) : b.r;
+    ball(b.x, b.y, r, { sx: b.sx, sy: b.sy, ang: b.ang, color: C.pink, stripe: C.forest, rot: b.rot, stripeA: b.stripeA });
+  } else {
+    const r = R0 * eOutBack(sat(t, 4.3, 4.56));
+    ball(960, 540, r, { color: C.pink, stripe: C.forest });
+  }
+}
+
+// ---------- 04 PENDULUM / 05 RELEASE ----------
+const NP = 15, GAM = 6, NN = 5, BAR_Y = 140, LMAX = 600, AMP = 0.7, BOB = 24, FLOOR = 960, REL = 7.7;
+const PEN = Array.from({ length: NP }, (_, k) => {
+  const T = GAM / (NN + k);
+  return { T, L: LMAX - k * 4, px: 400 + k * 80, snap: 10.7 + (NP - 1 - k) * 0.025, col: k % 2 ? C.paper : C.forest };
+});
+function barDy(t) {
+  return -1150 * (1 - eOutBack(sat(t, 7.0, 7.42), 1.4)) - 420 * eInBack(sat(t, 11.15, 11.5));
+}
+// 振り子は奥行き方向に揺れる（下から見上げる斜めの透視）：手前に来ると上がって大きくなる
+const TILT = 0.55;
+function bobSwing(k, t) {
+  const p = PEN[k];
+  const dy = -1150 * (1 - eOutBack(sat(t, 7.0 + k * 0.015, 7.42 + k * 0.015), 1.4));
+  const tau = t - REL;
+  const th = tau < 0 ? AMP : AMP * Math.cos(2 * Math.PI * tau / p.T);
+  const yy = p.L * Math.cos(th), z = p.L * Math.sin(th);
+  const sc = 1 + z / 1000;
+  return { x: 960 + (p.px - 960) * (1 + z / 5000), y: BAR_Y + (yy * Math.cos(TILT) - z * Math.sin(TILT)) + dy, py: BAR_Y + dy, sc };
+}
+// 高さ h から落ちて弾む（反発係数 e）。lift＝床からの高さ、d＝最寄りの接地までの時間
+function fall(h, dt, g = 6000, e = 0.4) {
+  const t1 = Math.sqrt(2 * Math.max(h, 0) / g);
+  if (dt < t1) return { lift: h - 0.5 * g * dt * dt, d: t1 - dt, v: g * t1 };
+  let tt = dt - t1, v = g * t1 * e;
+  for (let i = 0; i < 12 && v > 40; i++) {
+    const dur = 2 * v / g;
+    if (tt < dur) return { lift: v * tt - 0.5 * g * tt * tt, d: Math.min(tt, dur - tt), v: v / e };
+    tt -= dur; v *= e;
+  }
+  return { lift: 0, d: tt, v: 0 };
+}
+function bobState(k, t) {
+  const p = PEN[k];
+  if (t < p.snap) { const s = bobSwing(k, t); return { x: s.x, y: s.y, sx: 1, sy: 1, sc: s.sc }; }
+  const s0 = bobSwing(k, p.snap);
+  const sc = lerp(s0.sc, 1, eOut3(sat(t, p.snap, p.snap + 0.3)));
+  const rest = FLOOR - BOB;
+  const f = fall(rest - s0.y, t - p.snap);
+  const sq = Math.exp(-Math.pow(f.d / 0.035, 2)) * clamp(f.v / 2400 + 0.2);
+  let sy = 1 - 0.45 * sq, sx = 1 + 0.38 * sq;
+  // 予備動作：みんなで沈んでから跳ぶ
+  const a = eOut3(sat(t, 12.0, 12.25)) * (1 - sat(t, 12.25 + k * 0.012, 12.3 + k * 0.012));
+  sy *= 1 - 0.38 * a; sx *= 1 + 0.32 * a;
+  return { x: s0.x, y: rest + BOB - BOB * sy - f.lift, sx, sy, sc };
+}
+function drawPendulum(t) {
+  ctx.fillStyle = C.pink; ctx.fillRect(-60, -60, W + 120, H + 120);
+  const bd = barDy(t);
+  // 床
+  const fl = eOut3(sat(t, 10.55, 10.9));
+  if (fl > 0) {
+    ctx.strokeStyle = C.ink; ctx.lineWidth = 4; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(960 - 1000 * fl, FLOOR + 2); ctx.lineTo(960 + 1000 * fl, FLOOR + 2); ctx.stroke();
+  }
+  // 位相の蛇（玉を結ぶ曲線）
+  const snakeA = sat(t, 7.9, 8.4) * (1 - sat(t, 10.55, 10.7));
+  if (snakeA > 0) {
+    const ps = PEN.map((_, k) => bobSwing(k, t));
+    ctx.save(); ctx.globalAlpha = snakeA * 0.55; ctx.strokeStyle = C.ink; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(ps[0].x, ps[0].y);
+    for (let k = 1; k < NP - 1; k++) { const mx = (ps[k].x + ps[k + 1].x) / 2, my = (ps[k].y + ps[k + 1].y) / 2; ctx.quadraticCurveTo(ps[k].x, ps[k].y, mx, my); }
+    ctx.lineTo(ps[NP - 1].x, ps[NP - 1].y); ctx.stroke(); ctx.restore();
+  }
+  // 糸
+  ctx.strokeStyle = C.ink; ctx.lineCap = 'round';
+  PEN.forEach((p, k) => {
+    ctx.lineWidth = 3;
+    if (t < p.snap) {
+      const s = bobSwing(k, t);
+      ctx.beginPath(); ctx.moveTo(p.px, s.py); ctx.lineTo(s.x, s.y); ctx.stroke();
+    } else {
+      // 切れた糸は跳ね上がって縮む
+      const u = sat(t, p.snap, p.snap + 0.32); if (u >= 1) return;
+      const s0 = bobSwing(k, p.snap);
+      const len = 1 - eOut3(u), wob = Math.sin(u * 24) * (1 - u) * 26;
+      const ex = lerp(p.px, s0.x, len), ey = lerp(BAR_Y + bd, s0.y, len) ;
+      ctx.beginPath(); ctx.moveTo(p.px, BAR_Y + bd);
+      ctx.quadraticCurveTo((p.px + ex) / 2 + wob, (BAR_Y + bd + ey) / 2, ex, ey); ctx.stroke();
+    }
+  });
+  // 梁
+  ctx.lineWidth = 12; ctx.beginPath(); ctx.moveTo(350, BAR_Y + bd); ctx.lineTo(1570, BAR_Y + bd); ctx.stroke();
+  ctx.fillStyle = C.ink;
+  PEN.forEach(p => { ctx.beginPath(); ctx.arc(p.px, BAR_Y + bd, 7, 0, Math.PI * 2); ctx.fill(); });
+  // 玉（揺れの残像つき）
+  PEN.forEach((p, k) => {
+    if (t >= 12.25 + k * 0.012) return;
+    if (t > REL && t < p.snap) {
+      for (let j = 7; j >= 1; j--) {
+        const q = bobSwing(k, t - j * 0.014);
+        ball(q.x, q.y, BOB * q.sc, { color: p.col, alpha: 0.07 * (8 - j) });
+      }
+    }
+    const b = bobState(k, t);
+    ball(b.x, b.y, BOB * b.sc, { sx: b.sx, sy: b.sy, color: p.col });
+    if (t >= p.snap) {
+      const s0 = bobSwing(k, p.snap), f = fall(FLOOR - BOB - s0.y, t - p.snap);
+      const t1 = Math.sqrt(2 * Math.max(FLOOR - BOB - s0.y, 0) / 6000);
+      impact(b.x, FLOOR, t - p.snap - t1, C.ink, 0.42, 6);
+    }
+  });
+}
+// 12.25〜12.62：15個の玉が跳び、文字 T の上で1つにまとまる
+function jumper(k, t) {
+  const p = PEN[k], s0 = bobSwing(k, p.snap);
+  const M = mergePoint(), u = sat(t, 12.25 + k * 0.012, 12.6);
+  const x = lerp(s0.x, M.x, eIO3(u)), y = lerp(FLOOR - BOB, M.y, eOut3(u)) - (70 + 9 * k) * Math.sin(Math.PI * u);
+  return { x, y, u };
+}
+function drawJumpers(t) {
+  if (t < 12.25 || t >= 12.62) return;
+  PEN.forEach((p, k) => {
+    if (t < 12.25 + k * 0.012) return;
+    const a = jumper(k, t), b = jumper(k, t - 0.01);
+    for (let j = 3; j >= 1; j--) {
+      const q = jumper(k, t - j * 0.012);
+      ball(q.x, q.y, BOB, { color: mix(p.col, C.pink, q.u), alpha: 0.12 * (4 - j) * (1 - a.u) });
+    }
+    const ang = Math.atan2(a.y - b.y, a.x - b.x) + Math.PI / 2;
+    const st = Math.sin(Math.PI * a.u) * 0.35;
+    ball(a.x, a.y, BOB * (1 - 0.35 * eIn3(a.u)), { sx: 1 - st * 0.5, sy: 1 + st, ang, color: mix(p.col, C.pink, a.u) });
+  });
+}
+
+// ---------- 見出し・拍のメーター ----------
+const SCENES = [[0, 'DROP'], [0.75, 'DIVIDE'], [4.5, 'TRACK'], [7.0, 'PENDULUM'], [10.7, 'RELEASE'], [12.4, 'TEMPO']];
+function hud(t) {
+  let si = 0; for (let i = 0; i < SCENES.length; i++) if (t >= SCENES[i][0]) si = i;
+  const dark = t >= 4.35 && t < 6.95;
+  const grid = t >= 0.75 && t < 4.35;
+  const col = dark ? C.paper : C.ink;
+  ctx.save(); ctx.font = MONO; ctx.textBaseline = 'middle';
+  const label = (txt, x, y, align) => {
+    ctx.textAlign = align;
+    if (grid) {
+      const w = ctx.measureText(txt).width, x0 = align === 'left' ? x - 10 : align === 'right' ? x - w - 10 : x - w / 2 - 10;
+      ctx.fillStyle = C.paper; ctx.fillRect(x0, y - 17, w + 20, 34);
+    }
+    ctx.fillStyle = col; ctx.fillText(txt, x, y);
+  };
+  label('MIDDLE STUDIES  REEL — 004', 48, 52, 'left');
+  label('TEMPO   120 BPM', W - 48, 52, 'right');
+  label(`0${si + 1} / 06   ${SCENES[si][1]}`, 48, H - 52, 'left');
+  label('Claude', W - 48, H - 52, 'right');
+  // 拍のメーター
+  let cur = -1; BEATS.forEach((b, k) => { if (t >= b) cur = k; });
+  const x0 = 960 - 29 * 9;
+  if (grid) { ctx.fillStyle = C.paper; ctx.fillRect(x0 - 16, H - 52 - 26, 29 * 18 + 32, 52); }
+  for (let k = 0; k < 30; k++) {
+    const x = x0 + k * 18;
+    const flash = k === cur ? Math.exp(-(t - BEATS[k]) * 6) : 0;
+    const h = 10 + 22 * flash;
+    ctx.fillStyle = k <= cur ? (flash > 0.05 ? mix(dark ? C.paper : C.ink, C.pink, flash) : col) : col;
+    ctx.globalAlpha = k <= cur ? 1 : 0.28;
+    ctx.fillRect(x - 2, H - 52 - h / 2, 4, h);
+  }
+  ctx.restore();
+}
+
+// ---------- 1コマ ----------
+function frame(t) {
+  if (!LAY) LAY = layout();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const T = t < 0.25 ? t + 15 : t;
+  const sh = shake(T);
+  ctx.save(); ctx.translate(sh.x, sh.y);
+  if (t < 0.25) drawS6(T);
+  else if (t < 3.75) drawGrid(t);
+  else if (t < 7.0) drawS3(t);
+  else if (t < 12.35) { drawPendulum(t); drawJumpers(t); }
+  else {
+    const u = eIO3(sat(t, 12.35, 12.72));
+    if (u < 1) {
+      drawPendulum(t);
+      ctx.save(); ctx.beginPath(); ctx.arc(960, 1180, u * 2300, 0, Math.PI * 2); ctx.clip();
+      drawS6(t, false); ctx.restore();
+      drawJumpers(t);
+      if (t >= 12.54) { const b = ballS6(t); ball(b.x, b.y, b.r, { sx: b.sx, sy: b.sy, color: C.pink }); }
+    } else drawS6(t);
+  }
+  ctx.restore();
+  hud(t);
+}
+
+window.__duration = DUR;
+window.__poster = 8.9;
+const ready = Promise.all([
+  document.fonts.load(DISPLAY, 'TEMPO'),
+  document.fonts.load(MONO, 'REEL'),
+  document.fonts.load('500 24px "IBM Plex Mono"', 'REEL'),
+]).catch(() => {});
+ready.then(() => {
+  LAY = null;
+  window.__seek = async t => { frame(((t % DUR) + DUR) % DUR); };
+  if (!location.search.includes('render')) {
+    const t0 = performance.now();
+    const loop = now => { frame(((now - t0) / 1000) % DUR); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  } else frame(0);
+});
+</script>
+</body>
+</html>
