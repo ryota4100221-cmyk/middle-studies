@@ -146,5 +146,42 @@
     },
     "review_rounds": 4,
     "review": "1周目：振り子が画面内で振れて長短が交差し波が読めない→奥行き方向に振れる透視に変え、糸の長さをそろえて周期だけ変える／0.8秒で見出しが緑地にインクで読めない→割れ始めから見出しに紙色の台／最初の1秒が球と線だけ→着地で地面が波打ちピンクの輪が広がる。2周目：12.45秒の跳躍が15個同時で塊に見える→左から0.012秒ずつずらし、弧を噴水状に。3周目：跳躍の弧が画面の上から出る→弧を低く。4周目：合流・文字の立ち上がり・0秒目への戻りを等倍で確認、直すことなし。許容した差：3.5秒の144分割では球が直径16px前後と小さい（升目の色の波として見せる場面なので残す）。"
+  },
+  {
+    "id": "005",
+    "slug": "matter",
+    "title": "Matter",
+    "date": "2026-10-03",
+    "concept": "1つの物体が、表面から生まれて膨らむ「新しい世界の泡」に飲まれるたびに、形と素材と部屋を丸ごと入れ替える。Chrome（赤い部屋の歪む球）→ Plaster（黒い部屋のねじれる箱）→ Glass（生成りの部屋で床を分散して曲げるトーラス）→ Ink（青灰の部屋で6滴に割れて戻る薄膜干渉の液体）→ Chrome。泡の境界は物体と床に光る縫い目として走り、文字も泡の投影円で塗り替わる。見せ場は4.3秒、白い石膏が赤いクロームの内側から湧き出し、床に光る輪が広がるところ。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/005_matter.mp4",
+    "techniques": [
+      "sdf-raymarching",
+      "material-wipe",
+      "expanding-sphere-transition",
+      "shape-morph-by-region",
+      "glass-refraction-dispersion",
+      "thin-film-iridescence",
+      "soft-shadows",
+      "studio-softbox-environment",
+      "projected-text-mask",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#e8202a",
+        "#17171a",
+        "#e7e2d8",
+        "#9fb3c8",
+        "#f6f1e8"
+      ],
+      "type": [
+        "Instrument Serif Italic",
+        "DM Mono"
+      ],
+      "structure": "one object / 4 materials / bubble wipes that rebuild shape, material and room",
+      "renderer": "webgl"
+    },
+    "review_rounds": 3,
+    "review": "1周目：ガラスが乳白で素材に見えない→RGBで屈折率をずらす分散と吸収を追加／クロームが赤いプラスチックに見える→反射に床の影を入れた／0秒目の泡の出が遅い→半径カーブを早めた。泡の背景が地平線で半円の帯に割れる不整合は試し撮り段階で床の霧を同じ判定に寄せて解消。2周目：8.2秒で暗い文字が旧世界（黒）の上に出て読めない→投影円と3Dの境界のずれが原因なので、新しい名前と仕様は泡が背景を塗り終える0.72秒後から立ち上がるように。3周目：四隅の小文字の点滅も含めて直すことが言えなくなった。許容した差：クロームは赤い部屋を映すので赤い漆にも見える／各ワイプの終わり0.3秒ほど、地平線に旧世界の細い弧が残る。"
   }
 ]

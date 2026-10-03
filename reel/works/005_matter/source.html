@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 005 · Matter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #000; overflow: hidden; }
+  #stage { position: relative; width: 1920px; height: 1080px; }
+  canvas { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; display: block; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="gl" width="1920" height="1080"></canvas>
+  <canvas id="ui" width="1920" height="1080"></canvas>
+</div>
+<script>
+(() => {
+const W = 1920, H = 1080, DUR = 15, SEG = 3.75, WIPE = 1.15, FL = 1.85, TAU = Math.PI * 2;
+window.__duration = DUR;
+window.__poster = 4.25;
+
+// 素材＝形＝世界。0 Chrome / 1 Plaster / 2 Glass / 3 Ink
+const MAT = [
+  { name: 'Chrome',  world: '#e8202a', ink: '#f6f1e8', spec: ['METAL', 'ROUGHNESS 0.02', 'MIRRORS THE ROOM'] },
+  { name: 'Plaster', world: '#17171a', ink: '#efe9df', spec: ['DIELECTRIC', 'ROUGHNESS 0.90', 'HOLDS THE LIGHT'] },
+  { name: 'Glass',   world: '#e7e2d8', ink: '#17171a', spec: ['IOR 1.45', 'TRANSMISSION 1.00', 'BENDS THE FLOOR'] },
+  { name: 'Ink',     world: '#9fb3c8', ink: '#17171a', spec: ['THIN FILM 410 NM', 'IRIDESCENT', 'COLOUR BY INTERFERENCE'] },
+];
+const hex = h => [1, 3, 5].map(i => Math.pow(parseInt(h.slice(i, i + 2), 16) / 255, 2.2));
+
+// ---------- WebGL ----------
+const gl = document.getElementById('gl').getContext('webgl', { preserveDrawingBuffer: true, antialias: false });
+const VS = `attribute vec2 a; void main(){ gl_Position = vec4(a, 0., 1.); }`;
+const FS = `
+precision highp float;
+uniform vec2 uRes; uniform float uT;
+uniform vec3 uCam, uRight, uUp, uFwd;
+uniform vec3 uC; uniform float uR, uWipe;
+uniform int uOld, uNew;
+uniform vec3 uWOld, uWNew;
+#define PI 3.14159265
+#define TAU 6.28318531
+const float FLOOR = -1.42;
+const vec3 L = vec3(-0.5604, 0.7845, 0.2615);
+
+mat2 rot(float a){ float c = cos(a), s = sin(a); return mat2(c, -s, s, c); }
+float smin(float a, float b, float k){ float h = clamp(.5 + .5 * (b - a) / k, 0., 1.); return mix(b, a, h) - k * h * (1. - h); }
+float sdBox(vec3 p, vec3 b, float r){ vec3 q = abs(p) - b + r; return length(max(q, 0.)) + min(max(q.x, max(q.y, q.z)), 0.) - r; }
+
+float shape(int id, vec3 p){
+  float w = TAU * uT / 15.;
+  p.y -= 0.07 * sin(w * 4. + 1.2);
+  if (id == 0) {
+    float d = length(p) - 1.0;
+    d += 0.045 * sin(6. * p.y - w * 8.) * sin(5. * p.x + 3. * p.z + w * 4.);
+    return d * 0.8;
+  }
+  if (id == 1) {
+    vec3 q = p;
+    q.xz *= rot(w * 2.);
+    q.xz *= rot(q.y * 1.1 * sin(w * 4. - 0.6));
+    q.xy *= rot(0.3 * sin(w * 2.));
+    return sdBox(q, vec3(.7, .98, .7), .16) * 0.66;
+  }
+  if (id == 2) {
+    vec3 q = p;
+    q.yz *= rot(w * 3. + 0.9); q.xy *= rot(w * 2.);
+    vec2 v = vec2(length(q.xz) - .92, q.y);
+    return length(v) - .36;
+  }
+  float spread = 0.5 - 0.5 * cos(w * 4.);
+  float d = length(p) - (0.62 - 0.12 * spread);
+  for (int i = 0; i < 6; i++) {
+    float fi = float(i);
+    float a = fi * TAU / 6. + w * (mod(fi, 2.) < .5 ? 2. : -1.);
+    float rr = 0.3 + 0.95 * spread;
+    vec3 c = vec3(cos(a) * rr, 0.45 * sin(w * 3. + fi * 1.7) * spread, sin(a) * rr);
+    d = smin(d, length(p - c) - (0.4 - 0.08 * spread), 0.5);
+  }
+  return d * 0.85;
+}
+
+float mixW(vec3 p){ return smoothstep(uR + 0.2, uR - 0.2, length(p - uC)); }
+float map(vec3 p){
+  if (uOld == uNew) return shape(uNew, p);
+  float m = mixW(p);
+  if (m <= 0.) return shape(uOld, p);
+  if (m >= 1.) return shape(uNew, p);
+  return mix(shape(uOld, p), shape(uNew, p), m) * 0.85;
+}
+vec3 nrm(vec3 p){
+  const vec2 k = vec2(1., -1.); const float e = 0.0015;
+  return normalize(k.xyy * map(p + k.xyy * e) + k.yyx * map(p + k.yyx * e) + k.yxy * map(p + k.yxy * e) + k.xxx * map(p + k.xxx * e));
+}
+bool bound(vec3 ro, vec3 rd, out float t0, out float t1){
+  float R = 2.25; float b = dot(ro, rd); float c = dot(ro, ro) - R * R; float h = b * b - c;
+  if (h < 0.) return false; h = sqrt(h); t0 = max(-b - h, 0.); t1 = -b + h; return t1 > 0.;
+}
+float march(vec3 ro, vec3 rd){
+  float t0, t1; if (!bound(ro, rd, t0, t1)) return -1.;
+  float t = t0;
+  for (int i = 0; i < 110; i++) {
+    float d = map(ro + rd * t);
+    if (abs(d) < 0.0008 * t) return t;
+    t += d; if (t > t1) break;
+  }
+  return -1.;
+}
+float shadow(vec3 ro, vec3 rd){
+  float t0, t1; if (!bound(ro, rd, t0, t1)) return 1.;
+  float res = 1., t = max(t0, 0.02);
+  for (int i = 0; i < 40; i++) {
+    float h = map(ro + rd * t);
+    res = min(res, 9. * h / t);
+    t += clamp(h, 0.03, 0.25);
+    if (res < 0.002 || t > t1) break;
+  }
+  return clamp(res, 0., 1.);
+}
+// 新しい世界＝半径 uR の泡の内側
+bool inNew(vec3 p){ return uWipe > .5 ? length(p - uC) < uR : true; }
+bool rayNew(vec3 ro, vec3 rd){
+  if (uWipe < .5) return true;
+  vec3 oc = ro - uC; float b = dot(oc, rd); float c = dot(oc, oc) - uR * uR;
+  if (c < 0.) return true;
+  return b < 0. && b * b - c > 0.;
+}
+vec3 worldCol(bool nw){ return nw ? uWNew : uWOld; }
+float box(vec3 d, vec3 dir, vec2 size, float soft){
+  vec3 u = normalize(cross(dir, vec3(0., 1., 0.))); vec3 v = cross(u, dir);
+  float k = dot(d, dir); if (k <= 0.) return 0.;
+  vec2 q = abs(vec2(dot(d, u), dot(d, v)) / k) - size;
+  return smoothstep(soft, 0., max(q.x, q.y));
+}
+vec3 env(vec3 d, vec3 wc){
+  vec3 c = wc * mix(0.55, 1.05, smoothstep(-0.25, 0.5, d.y));
+  c += vec3(2.4, 2.35, 2.25) * box(d, L, vec2(0.42, 0.26), 0.03);
+  c += vec3(1.3) * box(d, normalize(vec3(0.85, 0.3, -0.45)), vec2(0.08, 0.6), 0.02);
+  c += vec3(0.9) * box(d, normalize(vec3(0.2, 0.25, 0.95)), vec2(0.5, 0.025), 0.01);
+  c += vec3(1.1) * box(d, normalize(vec3(-0.3, 0.12, -0.95)), vec2(0.03, 0.5), 0.01);
+  // 黒い板（クロームに輪郭を出す）
+  c *= 1. - 0.92 * box(d, normalize(vec3(0.9, 0.1, 0.45)), vec2(0.35, 0.5), 0.04);
+  c *= 1. - 0.9 * box(d, normalize(vec3(-0.8, 0.05, -0.55)), vec2(0.3, 0.35), 0.04);
+  return c;
+}
+float seam(vec3 p){
+  if (uWipe < .5) return 0.;
+  float x = abs(length(p - uC) - uR);
+  return smoothstep(0.03, 0.0, x) * 2.2 + smoothstep(0.3, 0.0, x) * 0.35;
+}
+vec3 bgCol(vec3 ro, vec3 rd){
+  vec3 wc = worldCol(rayNew(ro, rd));
+  return wc * mix(1.02, 0.86, smoothstep(0.0, 0.5, rd.y));
+}
+vec3 floorCol(vec3 ro, vec3 rd, vec3 p, float dist, bool shad){
+  bool nw = inNew(p);
+  vec3 wc = worldCol(nw);
+  vec2 g = abs(fract(p.xz * 2. + .5) - .5) / fwidth(p.xz * 2.);
+  float line = 1. - clamp(min(g.x, g.y), 0., 1.);
+  vec3 c = wc * (1. - 0.13 * line * exp(-dist * 0.1));
+  float sh = shad ? shadow(p + vec3(0., .01, 0.), L) : 1.;
+  float ao = clamp(length(p.xz) / 1.6, 0.0, 1.0);
+  c *= mix(0.42, 1.0, sh) * mix(0.55, 1.0, smoothstep(0.0, 1.0, ao));
+  c += vec3(1., .96, .9) * seam(p);
+  return mix(c, bgCol(ro, rd), smoothstep(7., 16., dist));
+}
+// 反射・屈折の二次レイ（床は解析、物体は省く）
+vec3 trace2(vec3 ro, vec3 rd, bool shad){
+  if (rd.y < -0.001) {
+    float t = (FLOOR - ro.y) / rd.y;
+    vec3 p = ro + rd * t;
+    return floorCol(ro, rd, p, t + 4., shad);
+  }
+  return env(rd, worldCol(rayNew(ro, rd)));
+}
+vec3 irid(float c){ return 0.5 + 0.5 * cos(TAU * (vec3(0.0, 0.33, 0.67) + c * 1.6 + 0.15)); }
+
+vec3 shadeObj(vec3 p, vec3 rd, int id){
+  vec3 n = nrm(p);
+  vec3 v = -rd; vec3 r = reflect(rd, n);
+  float ndv = max(dot(n, v), 0.);
+  float fr = pow(1. - ndv, 5.);
+  bool nw = inNew(p);
+  vec3 wc = worldCol(nw);
+  float sh = shadow(p + n * 0.02, L);
+  float occ = clamp(0.5 + 0.5 * map(p + n * 0.25) / 0.25, 0., 1.);
+  vec3 col;
+  if (id == 0) {
+    vec3 rc = trace2(p + n * 0.02, r, true);
+    col = rc * vec3(0.96, 0.94, 0.91) * mix(0.8, 1.0, fr) * mix(0.6, 1., occ);
+  } else if (id == 1) {
+    vec3 alb = vec3(0.86, 0.81, 0.74);
+    float dif = max(dot(n, L), 0.) * sh;
+    float wrap = max(dot(n, L) * 0.5 + 0.5, 0.);
+    vec3 amb = mix(wc * 0.6 + 0.05, vec3(0.55), n.y * 0.5 + 0.5) * occ;
+    col = alb * (dif * 1.25 + wrap * 0.12 + amb * 0.45);
+    col += 0.06 * env(r, wc) * (0.2 + fr) * sh;
+  } else if (id == 2) {
+    vec3 refl = trace2(p + n * 0.02, r, false);
+    vec3 r1 = refract(rd, n, 1. / 1.45);
+    vec3 q = p - n * 0.02; float t = 0.;
+    for (int i = 0; i < 48; i++) { float d = -map(q + r1 * t); t += max(d, 0.004); if (d < 0.001) break; }
+    vec3 pe = q + r1 * t; vec3 ne = -nrm(pe);
+    // 分散：赤・緑・青で屈折率を少しずらす
+    vec3 refr;
+    for (int c = 0; c < 3; c++) {
+      float eta = 1.41 + 0.04 * float(c);
+      vec3 r2 = refract(r1, ne, eta);
+      if (dot(r2, r2) < 0.01) r2 = reflect(r1, ne);
+      vec3 s = trace2(pe - ne * 0.02, r2, false);
+      refr[c] = c == 0 ? s.r : (c == 1 ? s.g : s.b);
+    }
+    refr *= exp(-t * vec3(0.42, 0.2, 0.16));
+    col = mix(refr, refl, 0.04 + 0.96 * fr);
+    col += vec3(2.) * pow(max(dot(r, L), 0.), 220.) * sh;
+  } else {
+    vec3 rc = trace2(p + n * 0.02, r, true);
+    vec3 tint = mix(irid(ndv), vec3(1.), fr * 0.6);
+    col = vec3(0.012) + rc * tint * (0.28 + 0.72 * fr) * mix(0.5, 1., occ);
+    col += vec3(1.5) * pow(max(dot(r, L), 0.), 90.) * sh;
+  }
+  col += vec3(1., .96, .9) * seam(p);
+  return col;
+}
+
+vec3 render(vec2 frag){
+  vec2 uv = (2. * frag - uRes) / uRes.y;
+  vec3 rd = normalize(uv.x * uRight + uv.y * uUp + 1.85 * uFwd);
+  vec3 ro = uCam;
+  float tf = rd.y < 0. ? (FLOOR - ro.y) / rd.y : 1e9;
+  float t = march(ro, rd);
+  if (t > 0. && t < tf) {
+    vec3 p = ro + rd * t;
+    int id = uNew;
+    if (uOld != uNew && !inNew(p)) id = uOld;
+    return shadeObj(p, rd, id);
+  }
+  if (tf < 1e8) return floorCol(ro, rd, ro + rd * tf, tf, true);
+  return bgCol(ro, rd);
+}
+void main(){
+  vec3 c = render(gl_FragCoord.xy);
+  c = c / (1. + max(c - 0.85, 0.) * 0.9);
+  c = pow(clamp(c, 0., 1.), vec3(1. / 2.2));
+  vec2 q = gl_FragCoord.xy / uRes;
+  c *= 0.9 + 0.1 * pow(16. * q.x * q.y * (1. - q.x) * (1. - q.y), 0.25);
+  float g = fract(sin(dot(gl_FragCoord.xy + floor(uT * 60.) * 7.31, vec2(12.9898, 78.233))) * 43758.5453);
+  c += (g - 0.5) / 160.;
+  gl_FragColor = vec4(c, 1.);
+}`;
+gl.getExtension('OES_standard_derivatives');
+function sh(type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS));
+gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, '#extension GL_OES_standard_derivatives : enable\n' + FS));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+const aLoc = gl.getAttribLocation(prog, 'a'); gl.enableVertexAttribArray(aLoc); gl.vertexAttribPointer(aLoc, 2, gl.FLOAT, false, 0, 0);
+const U = n => gl.getUniformLocation(prog, n);
+const u = Object.fromEntries(['uRes', 'uT', 'uCam', 'uRight', 'uUp', 'uFwd', 'uC', 'uR', 'uWipe', 'uOld', 'uNew', 'uWOld', 'uWNew'].map(n => [n, U(n)]));
+gl.viewport(0, 0, W, H);
+
+// ---------- 時間の関数 ----------
+const v3 = {
+  sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
+  add: (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]],
+  mul: (a, s) => [a[0] * s, a[1] * s, a[2] * s],
+  dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
+  cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]],
+  norm: a => { const l = Math.hypot(...a); return [a[0] / l, a[1] / l, a[2] / l]; },
+};
+const clamp01 = x => Math.min(1, Math.max(0, x));
+const easeOut = x => 1 - Math.pow(1 - clamp01(x), 3);
+const easeInOut = x => { x = clamp01(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+
+function camera(t) {
+  const w = TAU * t / DUR;
+  const lt = ((t % SEG) + SEG) % SEG;
+  const ang = w + 0.22 * Math.sin(4 * w) + 0.5;
+  const punch = Math.exp(-Math.pow((lt - 0.45) / 0.5, 2)) + Math.exp(-Math.pow((lt - SEG - 0.45) / 0.5, 2));
+  const dist = 5.2 - 0.75 * punch;
+  const hgt = 0.55 + 0.55 * Math.sin(2 * w + 0.5);
+  const cam = [dist * Math.cos(ang), hgt, dist * Math.sin(ang)];
+  const fwd0 = v3.norm(v3.sub([0, -0.2, 0], cam));
+  const right0 = v3.norm(v3.cross(fwd0, [0, 1, 0]));
+  const ta = v3.add([0, -0.25, 0], v3.mul(right0, -0.95));
+  const fwd = v3.norm(v3.sub(ta, cam));
+  const right = v3.norm(v3.cross(fwd, [0, 1, 0]));
+  const up = v3.cross(right, fwd);
+  return { cam, fwd, right, up };
+}
+function wipeAt(t) {
+  const k = Math.floor(t / SEG) % 4, lt = t - Math.floor(t / SEG) * SEG;
+  const old = (k + 3) % 4;
+  const c0 = camera(Math.floor(t / SEG) * SEG);
+  // 泡は物体の、カメラに向いた面の上で生まれる
+  const toCam = v3.norm(c0.cam);
+  const side = [0.45, -0.35, 0.3, -0.25][k];
+  const C = v3.add(v3.add(v3.mul(toCam, 0.92), v3.mul(c0.right, side)), [0, [0.35, 0.15, 0.4, 0.25][k], 0]);
+  if (lt >= WIPE) return { k, old: k, lt, C, R: 1e3, active: false };
+  const x = lt / WIPE;
+  const R = 13.5 * Math.pow(x, 1.9) + 0.04 * Math.sin(Math.PI * x);
+  return { k, old, lt, C, R, active: true };
+}
+function project(cm, p) {
+  const v = v3.sub(p, cm.cam); const z = v3.dot(v, cm.fwd);
+  return { x: W / 2 + (v3.dot(v, cm.right) / z) * FL * H / 2, y: H / 2 - (v3.dot(v, cm.up) / z) * FL * H / 2, z };
+}
+
+// ---------- 文字 ----------
+const ui = document.getElementById('ui').getContext('2d');
+const SERIF = '"Instrument Serif", "Times New Roman", serif';
+const MONO = '"DM Mono", Menlo, monospace';
+function layer(k, t, lt, entering) {
+  const m = MAT[k];
+  // 入ってくる文字は、泡が背景を塗り終えるころから
+  const e = i => entering ? easeOut((lt - 0.72 - i * 0.04) / 0.6) : 1;
+  ui.fillStyle = m.ink;
+  ui.globalAlpha = 1;
+  ui.textBaseline = 'alphabetic';
+  // 四隅
+  ui.font = `500 18px ${MONO}`;
+  ui.letterSpacing = '0.14em';
+  ui.textAlign = 'left';
+  ui.fillText('MIDDLE STUDIES REEL — 005', 96, 92);
+  ui.textAlign = 'right';
+  ui.fillText('MATTER · ONE OBJECT, FOUR MATERIALS', W - 96, 92);
+  ui.fillText('Claude', W - 96, H - 84);
+  ui.textAlign = 'left';
+  ui.fillText(`T = ${t.toFixed(2).padStart(5, '0')} S`, 96, H - 84);
+  // 番号
+    ui.font = `500 20px ${MONO}`;
+  ui.globalAlpha = e(0);
+  ui.fillText(`0${k + 1} / 04`, 100, 560 + (1 - e(0)) * 40);
+  // 名前（1字ずつ立ち上がる）
+  ui.font = `italic 232px ${SERIF}`;
+  ui.letterSpacing = '-0.01em';
+  let x = 88;
+  const word = m.name + '.';
+  for (let i = 0; i < word.length; i++) {
+    const ei = e(i + 1);
+    ui.globalAlpha = ei;
+    ui.save();
+    ui.translate(x, 790 + (1 - ei) * 120);
+    ui.transform(1, 0, -0.25 * (1 - ei), 1, 0, 0);
+    ui.fillText(word[i], 0, 0);
+    ui.restore();
+    x += ui.measureText(word[i]).width;
+  }
+  // 仕様
+  ui.font = `400 20px ${MONO}`;
+  ui.letterSpacing = '0.12em';
+  m.spec.forEach((s, i) => {
+    const ei = e(word.length + 1 + i * 1.5);
+    ui.globalAlpha = ei;
+    ui.fillText(s, 100 + (1 - ei) * 30, 862 + i * 32);
+  });
+  ui.globalAlpha = 1;
+  ui.fillRect(100, 588, 520 * e(2), 2);
+}
+
+let fontsReady = null;
+async function seek(t) {
+  t = ((t % DUR) + DUR) % DUR;
+  if (!fontsReady) fontsReady = Promise.all([
+    document.fonts.load(`italic 232px "Instrument Serif"`), document.fonts.load(`400 20px "DM Mono"`), document.fonts.load(`500 20px "DM Mono"`)]);
+  await fontsReady;
+  const cm = camera(t), wp = wipeAt(t);
+  gl.uniform2f(u.uRes, W, H); gl.uniform1f(u.uT, t);
+  gl.uniform3fv(u.uCam, cm.cam); gl.uniform3fv(u.uRight, cm.right); gl.uniform3fv(u.uUp, cm.up); gl.uniform3fv(u.uFwd, cm.fwd);
+  gl.uniform3fv(u.uC, wp.C); gl.uniform1f(u.uR, wp.R); gl.uniform1f(u.uWipe, wp.active ? 1 : 0);
+  gl.uniform1i(u.uOld, wp.old); gl.uniform1i(u.uNew, wp.k);
+  gl.uniform3fv(u.uWOld, hex(MAT[wp.old].world)); gl.uniform3fv(u.uWNew, hex(MAT[wp.k].world));
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.finish();
+
+  ui.clearRect(0, 0, W, H);
+  if (!wp.active) { layer(wp.k, t, wp.lt, wp.lt < 2); return; }
+  // 泡の投影円で文字も塗り替える
+  const camIn = Math.hypot(...v3.sub(cm.cam, wp.C)) < wp.R;
+  const pc = project(cm, wp.C);
+  const rad = camIn ? 1e5 : wp.R * FL * H / 2 / Math.sqrt(Math.max(pc.z * pc.z - wp.R * wp.R, 1e-3));
+  ui.save(); ui.beginPath(); ui.rect(0, 0, W, H); ui.arc(pc.x, pc.y, Math.max(rad, 0), 0, TAU); ui.clip('evenodd');
+  layer(wp.old, t, 9, false); ui.restore();
+  ui.save(); ui.beginPath(); ui.arc(pc.x, pc.y, Math.max(rad, 0), 0, TAU); ui.clip();
+  layer(wp.k, t, wp.lt, true); ui.restore();
+}
+window.__seek = seek;
+
+if (!/[?&]render/.test(location.search)) {
+  const t0 = performance.now();
+  const loop = async () => { await seek(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(loop); };
+  loop();
+}
+})();
+</script>
+</body>
+</html>
