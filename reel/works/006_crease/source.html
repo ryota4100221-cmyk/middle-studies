@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 006 Crease</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Martian+Mono:wght@400;600&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #1d2024; }
+  canvas { display: block; }
+  .hud { position: absolute; font: 600 19px 'Martian Mono', monospace; letter-spacing: .06em; text-transform: uppercase;
+         color: #fff; mix-blend-mode: difference; white-space: pre; line-height: 1; }
+  #tl { left: 44px; top: 40px; }
+  #tr { right: 44px; top: 40px; text-align: right; }
+  #bl { left: 44px; bottom: 40px; }
+  #br { right: 44px; bottom: 40px; }
+  #bar { position: absolute; left: 44px; right: 44px; bottom: 76px; height: 2px; mix-blend-mode: difference; }
+  #bar i { position: absolute; top: 0; width: 22px; height: 2px; background: #fff; }
+</style>
+<script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }</script>
+</head>
+<body>
+<div class="hud" id="tl">MIDDLE STUDIES REEL — 006</div>
+<div class="hud" id="tr">CREASE · ONE SHEET, SEVEN FOLDS</div>
+<div class="hud" id="bl"></div>
+<div class="hud" id="br">Claude</div>
+<script type="module">
+import * as THREE from 'three';
+
+const W = 1920, H = 1080, DUR = 15;
+const HW = 8, HH = 4.5, EPS = 0.0045;          // sheet = 16 × 9 units
+const COL = { paper: '#efe9dc', ink: '#141414', back: '#ff5a1f', mat: '#23262b', fog: '#1d2024' };
+const RENDER = new URLSearchParams(location.search).has('render');
+
+// ---------- utils ----------
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ss = (a, b, x) => { x = clamp((x - a) / (b - a)); return x * x * (3 - 2 * x); };
+const eio = x => { x = clamp(x); return x < .5 ? 16 * x ** 5 : 1 - (-2 * x + 2) ** 5 / 2; };   // quint in-out: paper snaps
+const cross2 = (a, b) => a[0] * b[1] - a[1] * b[0];
+const area = p => { let s = 0; for (let i = 0; i < p.length; i++) { const a = p[i], b = p[(i + 1) % p.length]; s += a[0] * b[1] - b[0] * a[1]; } return s / 2; };
+
+// ---------- the seven folds (fold space: sheet in xy, z = toward the viewer) ----------
+const K3 = 8 - HH / Math.tan(Math.PI / 8);        // where the 2nd crease meets the long edge
+const WING = Math.PI * 82 / 180;
+const OPS = [
+  { p: [8, 0], q: [3.5, 4.5],  m: [7.5, 4],   ang: Math.PI, t: [0.04, 0.66], u: [14.12, 14.72] },
+  { p: [8, 0], q: [3.5, -4.5], m: [7.5, -4],  ang: Math.PI, t: [0.10, 0.72], u: [14.12, 14.72] },
+  { p: [8, 0], q: [K3, 4.5],   m: [6, 3],     ang: Math.PI, t: [0.86, 1.46], u: [13.56, 14.10] },
+  { p: [8, 0], q: [K3, -4.5],  m: [6, -3],    ang: Math.PI, t: [0.92, 1.52], u: [13.56, 14.10] },
+  { p: [-9, 0], q: [9, 0],     m: [0, 3],     ang: Math.PI, t: [1.70, 2.42], u: [13.02, 13.54], tagA: true },
+  { p: [8.2, 0], q: [-8, -1.55], m: [0, -4],  ang: WING,  sel: 'A', t: [3.40, 4.05], u: [12.50, 13.00] },
+  { p: [8.2, 0], q: [-8, -1.55], m: [0, -4],  ang: -WING, sel: 'B', t: [3.46, 4.11], u: [12.50, 13.00] },
+];
+const amt = (op, t) => eio((t - op.t[0]) / (op.t[1] - op.t[0])) * (1 - eio((t - op.u[0]) / (op.u[1] - op.u[0])));
+
+function splitPoly(poly, s) {
+  const P = [], N = [], X = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length], sa = s[i], sb = s[(i + 1) % poly.length];
+    if (sa >= 0) P.push(a); if (sa <= 0) N.push(a); if (sa === 0) X.push(a);
+    if ((sa > 0 && sb < 0) || (sa < 0 && sb > 0)) {
+      const r = sa / (sa - sb), c = [a[0] + (b[0] - a[0]) * r, a[1] + (b[1] - a[1]) * r];
+      P.push(c); N.push(c); X.push(c);
+    }
+  }
+  return { P: Math.abs(area(P)) > 1e-7 ? P : null, N: Math.abs(area(N)) > 1e-7 ? N : null, X };
+}
+
+// thetas: array of fold angles (radians). Returns faces {poly (sheet coords), M (sheet→fold space), A, last}
+function simulate(thetas, creases) {
+  let faces = [{ poly: [[-HW, -HH], [HW, -HH], [HW, HH], [-HW, HH]], M: new THREE.Matrix4(), A: false, flat: true, last: -1 }];
+  const v = new THREE.Vector3();
+  OPS.forEach((op, k) => {
+    const th = thetas[k];
+    let d = [op.q[0] - op.p[0], op.q[1] - op.p[1]]; const L = Math.hypot(d[0], d[1]); d = [d[0] / L, d[1] / L];
+    if (cross2(d, [op.m[0] - op.p[0], op.m[1] - op.p[1]]) < 0) d = [-d[0], -d[1]];
+    let zmax = -1e9, zmin = 1e9;
+    for (const f of faces) if (f.flat) { zmax = Math.max(zmax, f.M.elements[14]); zmin = Math.min(zmin, f.M.elements[14]); }
+    const zA = op.ang >= 0 ? zmax + EPS / 2 : zmin - EPS / 2;
+    const R = new THREE.Matrix4().makeTranslation(op.p[0], op.p[1], zA)
+      .multiply(new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(d[0], d[1], 0), th))
+      .multiply(new THREE.Matrix4().makeTranslation(-op.p[0], -op.p[1], -zA));
+    const full = Math.abs(Math.abs(th) - Math.PI) < 1e-9 || th === 0;
+    const out = [];
+    for (const f of faces) {
+      if (!f.flat || (op.sel === 'A' && !f.A) || (op.sel === 'B' && f.A)) { out.push(f); continue; }
+      const s = f.poly.map(([x, y]) => { v.set(x, y, 0).applyMatrix4(f.M); const r = cross2(d, [v.x - op.p[0], v.y - op.p[1]]); return Math.abs(r) < 1e-9 ? 0 : r; });
+      const { P, N, X } = splitPoly(f.poly, s);
+      if (N) out.push({ ...f, poly: N });
+      if (P) out.push({ poly: P, M: th ? R.clone().multiply(f.M) : f.M.clone(), A: f.A || !!op.tagA, flat: full, last: k });
+      if (P && N && creases && X.length >= 2) creases.push({ op: k, a: X[0], b: X[X.length - 1] });
+    }
+    faces = out;
+  });
+  return faces;
+}
+const thetasAt = t => OPS.map(op => op.ang * amt(op, t));
+
+// ---------- textures ----------
+const S = 200, TW = 16 * S, TH = 9 * S;
+const sx = x => (x + HW) * S, sy = y => (HH - y) * S;
+
+function grain(ctx, w, h, seed, alpha) {
+  const r = mulberry32(seed);
+  for (let i = 0; i < 90000; i++) {
+    ctx.fillStyle = r() < .5 ? `rgba(0,0,0,${alpha * r()})` : `rgba(255,255,255,${alpha * r()})`;
+    ctx.fillRect(r() * w, r() * h, 1 + r() * 2, 1 + r() * 2);
+  }
+}
+function fitFont(ctx, text, family, width) {
+  ctx.font = `400 100px ${family}`; const w = ctx.measureText(text).width; return 100 * width / w;
+}
+
+function drawFront(creases) {
+  const c = document.createElement('canvas'); c.width = TW; c.height = TH; const g = c.getContext('2d');
+  g.fillStyle = COL.paper; g.fillRect(0, 0, TW, TH); grain(g, TW, TH, 6, .05);
+  g.fillStyle = COL.ink; g.textBaseline = 'alphabetic';
+  // big type — sized to the same width, stacked tight
+  const lines = ['ONE SHEET.', 'SEVEN FOLDS.', 'ONE FLIGHT.'];
+  const fs = Math.min(...lines.map(l => fitFont(g, l, 'Anton', 10.9 * S)));
+  g.font = `400 ${fs}px Anton`;
+  const lh = fs * 1.0, top = sy(3.05) + fs * .78;
+  lines.forEach((l, i) => g.fillText(l, sx(-7.25), top + i * lh));
+  // mono rows
+  g.font = `600 ${0.2 * S}px 'Martian Mono'`;
+  g.fillText('Nº 006 — A FLAT SHEET, 16 × 9', sx(-7.25), sy(3.45));
+  g.textAlign = 'right'; g.fillText('FOLD IN ORDER  01 → 07', sx(7.25), sy(3.45)); g.textAlign = 'left';
+  g.fillRect(sx(-7.25), sy(3.25), 14.5 * S, 5);
+  g.fillRect(sx(-7.25), sy(-3.28), 14.5 * S, 5);
+  g.fillText('VALLEY-FOLD ALONG EACH DASHED LINE. DO NOT CUT.', sx(-7.25), sy(-3.66));
+  g.textAlign = 'right'; g.fillText('THEN THROW IT.', sx(7.25), sy(-3.66)); g.textAlign = 'left';
+  // the crease pattern itself
+  drawCreases(g, creases, COL.back, COL.paper);
+  return c;
+}
+function drawCreases(g, creases, line, label) {
+  g.save(); g.strokeStyle = line; g.lineWidth = 7; g.setLineDash([34, 22]); g.lineCap = 'butt';
+  for (const c of creases) { g.beginPath(); g.moveTo(sx(c.a[0]), sy(c.a[1])); g.lineTo(sx(c.b[0]), sy(c.b[1])); g.stroke(); }
+  g.restore();
+  // one number per fold, on its longest segment
+  const best = {};
+  for (const c of creases) { const l = Math.hypot(c.a[0] - c.b[0], c.a[1] - c.b[1]); if (!best[c.op] || l > best[c.op].l) best[c.op] = { ...c, l }; }
+  const placed = [];
+  Object.values(best).forEach(c => {
+    // slide along the segment until the badge doesn't sit on another badge
+    let pt = null;
+    for (const f of [.5, .38, .62, .27, .73, .18, .82]) {
+      const q = [c.a[0] + (c.b[0] - c.a[0]) * f, c.a[1] + (c.b[1] - c.a[1]) * f];
+      if (Math.abs(q[0]) < HW - .5 && Math.abs(q[1]) < HH - .5 && placed.every(o => Math.hypot(o[0] - q[0], o[1] - q[1]) > .8)) { pt = q; break; }
+    }
+    if (!pt) return; placed.push(pt);
+    g.fillStyle = line; g.beginPath(); g.arc(sx(pt[0]), sy(pt[1]), .29 * S, 0, Math.PI * 2); g.fill();
+    g.fillStyle = label; g.font = `600 ${.22 * S}px 'Martian Mono'`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(String(c.op + 1).padStart(2, '0'), sx(pt[0]), sy(pt[1]) + 2);
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  });
+}
+
+function drawBack(creases) {
+  const c = document.createElement('canvas'); c.width = TW; c.height = TH; const g = c.getContext('2d');
+  g.fillStyle = COL.back; g.fillRect(0, 0, TW, TH); grain(g, TW, TH, 7, .06);
+  // after each fold, print a numeral on the newly exposed back — upright as seen at that moment
+  for (let k = 0; k < 5; k++) {
+    const th = OPS.map((op, j) => j <= k ? op.ang : 0);
+    const faces = simulate(th);
+    const cand = faces.filter(f => f.last === k && f.M.elements[0] * f.M.elements[5] - f.M.elements[1] * f.M.elements[4] < 0)
+      .sort((a, b) => Math.abs(area(b.poly)) - Math.abs(area(a.poly)));
+    const f = cand[0]; if (!f) continue;
+    const e = f.M.elements, A = [[e[0], e[4]], [e[1], e[5]]], b = [e[12], e[13]];
+    const det = A[0][0] * A[1][1] - A[0][1] * A[1][0];
+    const I = [[A[1][1] / det, -A[0][1] / det], [-A[1][0] / det, A[0][0] / det]];
+    // world centroid of the face (incenter-ish: average of verts pulled to centroid)
+    const wp = f.poly.map(([x, y]) => [A[0][0] * x + A[0][1] * y + b[0], A[1][0] * x + A[1][1] * y + b[1]]);
+    const cx = wp.reduce((s, p) => s + p[0], 0) / wp.length, cy = wp.reduce((s, p) => s + p[1], 0) / wp.length;
+    const s0 = [I[0][0] * (cx - b[0]) + I[0][1] * (cy - b[1]), I[1][0] * (cx - b[0]) + I[1][1] * (cy - b[1])];
+    g.save();
+    g.beginPath(); f.poly.forEach(([x, y], i) => i ? g.lineTo(sx(x), sy(y)) : g.moveTo(sx(x), sy(y))); g.closePath(); g.clip();
+    g.setTransform(S * I[0][0], -S * I[1][0], -S * I[0][1], S * I[1][1], sx(s0[0]), sy(s0[1]));
+    const size = [1.5, 1.5, 1.35, 1.35, 3.6][k];
+    g.fillStyle = COL.ink; g.font = `400 ${size}px Anton`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const dx = [.9, .9, .2, .2, -1.2][k], dy = [0, 0, 0, 0, .25][k];
+    g.fillText(String(k + 1).padStart(2, '0'), dx, dy * (k === 4 ? 1 : 0) + (k < 2 ? (k === 0 ? -.3 : .3) : 0));
+    if (k === 4) { g.font = `600 .2px 'Martian Mono'`; g.textAlign = 'left'; g.fillText('THE INSIDE IS ALSO THE OUTSIDE.', 1.0, -.15); g.fillText('FOLDS 01–05 COMPLETE.', 1.0, .2); }
+    g.restore();
+  }
+  drawCreases(g, creases, COL.ink, COL.back);
+  return c;
+}
+
+const MS = 240, MCX = 10, MCZ = -25, MT = 4096, MP = MT / MS;
+function drawMat() {
+  const c = document.createElement('canvas'); c.width = c.height = MT; const g = c.getContext('2d');
+  g.fillStyle = COL.mat; g.fillRect(0, 0, MT, MT); grain(g, MT, MT, 9, .04);
+  const px = x => (x - (MCX - MS / 2)) * MP, pz = z => (z - (MCZ - MS / 2)) * MP;
+  for (let i = -130; i <= 150; i++) {
+    const major = i % 5 === 0, ten = i % 10 === 0;
+    g.fillStyle = ten ? '#4c525c' : major ? '#3a3f47' : '#2f3339'; const w = ten ? 3 : major ? 2 : 1;
+    g.fillRect(px(i) - w / 2, 0, w, MT); g.fillRect(0, pz(i) - w / 2, MT, w);
+  }
+  g.fillStyle = '#596170'; g.font = `600 ${.7 * MP}px 'Martian Mono'`;
+  for (let i = -100; i <= 120; i += 10) { g.fillText(String(Math.abs(i)), px(i) + 6, pz(14) - 6); g.fillText(String(Math.abs(i)), px(-24) + 6, pz(i) - 6); }
+  // angle guides from a corner, as on a cutting mat
+  g.strokeStyle = '#3a3f47'; g.lineWidth = 2;
+  for (const a of [30, 45, 60]) { const r = a * Math.PI / 180; g.beginPath(); g.moveTo(px(-24), pz(14)); g.lineTo(px(-24) + Math.cos(r) * 300 * MP, pz(14) - Math.sin(r) * 300 * MP); g.stroke(); }
+  // giant print under the loop
+  g.fillStyle = '#2c3036'; g.font = `400 ${26 * MP}px Anton`; g.fillText('ONE FLIGHT.', px(-30), pz(-30));
+  return c;
+}
+
+// ---------- scene ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); renderer.setSize(W, H);
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(COL.fog);
+scene.fog = new THREE.Fog(COL.fog, 70, 210);
+const camera = new THREE.PerspectiveCamera(35, W / H, 0.1, 800);
+const hemi = new THREE.HemisphereLight(0xffffff, 0x6b6f78, 1.6); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff6ea, 1.9); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -15, right: 15, top: 15, bottom: -15, near: 1, far: 80 });
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02;
+scene.add(sun, sun.target);
+
+let ready, matFront, matBack, paperFront, paperBack, trails = [];
+const TIP = [];
+const foldGroup = new THREE.Group(); foldGroup.matrixAutoUpdate = false; scene.add(foldGroup);
+const Bmat = new THREE.Matrix4().makeRotationX(Math.PI);
+
+async function init() {
+  await Promise.all([document.fonts.load('400 100px Anton'), document.fonts.load("600 20px 'Martian Mono'")]);
+  await document.fonts.ready;
+  const creases = []; simulate(OPS.map(o => o.ang), creases);
+  const tex = cv => { const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); return t; };
+  matFront = new THREE.MeshStandardMaterial({ map: tex(drawFront(creases)), side: THREE.FrontSide, roughness: .92, metalness: 0, shadowSide: THREE.DoubleSide });
+  matBack = new THREE.MeshStandardMaterial({ map: tex(drawBack(creases)), side: THREE.BackSide, roughness: .92, metalness: 0, shadowSide: THREE.DoubleSide });
+  paperFront = new THREE.Mesh(new THREE.BufferGeometry(), matFront);
+  paperBack = new THREE.Mesh(new THREE.BufferGeometry(), matBack);
+  for (const m of [paperFront, paperBack]) { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; foldGroup.add(m); }
+  const mt = tex(drawMat());
+  const mat = new THREE.Mesh(new THREE.PlaneGeometry(MS, MS), new THREE.MeshStandardMaterial({ map: mt, roughness: 1 }));
+  mat.rotation.x = -Math.PI / 2; mat.position.set(MCX, 0, MCZ); mat.receiveShadow = true; scene.add(mat);
+  // wing tips (fold space) with the plane fully formed
+  const faces = simulate(OPS.map(o => o.ang));
+  const pts = []; const v = new THREE.Vector3();
+  for (const f of faces) for (const [x, y] of f.poly) pts.push(v.set(x, y, 0).applyMatrix4(f.M).clone());
+  const zx = Math.max(...pts.map(p => p.z)), zn = Math.min(...pts.map(p => p.z));
+  TIP.push(pts.filter(p => p.z > zx - .05).sort((a, b) => a.x - b.x)[0], pts.filter(p => p.z < zn + .05).sort((a, b) => a.x - b.x)[0]);
+  for (let i = 0; i < 2; i++) {
+    const m = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: true }));
+    m.frustumCulled = false; scene.add(m); trails.push(m);
+  }
+}
+ready = init();
+
+// ---------- geometry from faces ----------
+function buildPaper(faces) {
+  const pos = [], uv = [], nrm = [];
+  const v = new THREE.Vector3(), n = new THREE.Vector3(), nm = new THREE.Matrix3();
+  for (const f of faces) {
+    nm.getNormalMatrix(f.M); n.set(0, 0, 1).applyMatrix3(nm).normalize();
+    const w = f.poly.map(([x, y]) => v.set(x, y, 0).applyMatrix4(f.M).toArray());
+    for (let i = 1; i < f.poly.length - 1; i++) for (const j of [0, i, i + 1]) {
+      pos.push(...w[j]); uv.push((f.poly[j][0] + HW) / 16, (f.poly[j][1] + HH) / 9); nrm.push(n.x, n.y, n.z);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  paperFront.geometry.dispose(); paperFront.geometry = g; paperBack.geometry = g;
+}
+
+// ---------- flight ----------
+function bg(keys, t) {   // Barry–Goldman (non-uniform Catmull–Rom, knots = key times)
+  const n = keys.length;
+  if (t <= keys[0][0]) return keys[0][1].slice(); if (t >= keys[n - 1][0]) return keys[n - 1][1].slice();
+  let i = 0; while (keys[i + 1][0] < t) i++;
+  const k0 = keys[Math.max(i - 1, 0)], k1 = keys[i], k2 = keys[i + 1], k3 = keys[Math.min(i + 2, n - 1)];
+  const t1 = k1[0], t2 = k2[0]; const t0 = i === 0 ? t1 - (t2 - t1) : k0[0], t3 = i + 2 >= n ? t2 + (t2 - t1) : k3[0];
+  const L = (a, b, ta, tb) => a.map((x, j) => ((tb - t) * x + (t - ta) * b[j]) / (tb - ta));
+  const A1 = L(k0[1], k1[1], t0, t1), A2 = L(k1[1], k2[1], t1, t2), A3 = L(k2[1], k3[1], t2, t3);
+  return L(L(A1, A2, t0, t2), L(A2, A3, t1, t3), t1, t2);
+}
+const PATH = [
+  [2.9, [0, 0, 0]], [3.6, [1.2, 2.2, .4]], [4.4, [7, 5, 0]], [5.2, [17, 7.5, -4]], [6.1, [27, 10, -14]],
+  [7.0, [28.5, 11.5, -28]], [7.8, [19, 11.5, -39]], [8.3, [8, 11, -42]], [8.75, [-5, 21.5, -43]], [9.2, [6, 33, -44]],
+  [9.65, [17, 22, -45]], [10.1, [6, 11, -46]], [10.9, [-10, 8, -40]], [11.7, [-16, 7, -24]], [12.4, [-12, 6, -10]],
+  [13.1, [-5, 4, -2.5]], [14.0, [0, 0, 0]],
+];
+const POSE0_Q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+const Y = new THREE.Vector3(0, 1, 0);
+function flightPose(t) {
+  const h = 1 / 240;
+  const p = new THREE.Vector3(...bg(PATH, t)), a = new THREE.Vector3(...bg(PATH, t - h)), b = new THREE.Vector3(...bg(PATH, t + h));
+  const vel = b.clone().sub(a).divideScalar(2 * h);
+  const H2 = .14, a2 = new THREE.Vector3(...bg(PATH, t - H2)), b2 = new THREE.Vector3(...bg(PATH, t + H2));
+  const acc = b2.add(a2).sub(p.clone().multiplyScalar(2)).divideScalar(H2 * H2);
+  const f = vel.lengthSq() > 1e-6 ? vel.clone().normalize() : new THREE.Vector3(1, 0, 0);
+  const lat = acc.clone().sub(f.clone().multiplyScalar(acc.dot(f)));
+  const up = Y.clone().multiplyScalar(45).add(lat); up.sub(f.clone().multiplyScalar(up.dot(f))).normalize();
+  const roll = 2 * Math.PI * eio((t - 10.25) / 1.0);
+  up.applyAxisAngle(f, roll);
+  const z = new THREE.Vector3().crossVectors(f, up);
+  const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(f, up, z));
+  return { p, q, speed: vel.length() };
+}
+function poseAt(t) {
+  const wq = ss(2.95, 4.0, t) * (1 - ss(12.55, 13.9, t));
+  const wp = ss(2.92, 3.5, t) * (1 - ss(13.3, 14.0, t));
+  const fp = flightPose(t);
+  const p = new THREE.Vector3(0, .003, 0).lerp(fp.p, wp);
+  const q = POSE0_Q.clone().slerp(fp.q, wq);
+  return { m: new THREE.Matrix4().compose(p, q, new THREE.Vector3(1, 1, 1)), p, speed: fp.speed * wp };
+}
+
+// ---------- camera ----------
+const H0 = 14.05;
+const CAM = [
+  [0, [0, H0, 0]], [1.5, [.3, 13.2, .5]], [2.5, [-3.5, 12.5, 12]], [3.5, [-11, 8, 14]], [4.6, [-8, 9, 15]],
+  [11.8, [-30, 13, -16]], [12.8, [-26, 17, 15]], [13.6, [-6, 15, 8]], [14.25, [0, H0, 0]], [15, [0, H0, 0]],
+];
+const LOOPCAM = [[7.6, [22, 14, -12]], [8.6, [10, 17, -15]], [9.6, [2, 19, -17]], [10.4, [-6, 13, -20]]];
+function chase(t) {
+  const fp = flightPose(t - .32), d = new THREE.Vector3(...bg(PATH, t - .32 + .02)).sub(new THREE.Vector3(...bg(PATH, t - .32 - .02)));
+  d.y = 0; d.normalize(); const side = new THREE.Vector3().crossVectors(d, Y);
+  // the chase swings around the plane: low right-behind → high left-side; after the loop, side → behind
+  const phi = -0.55 + 1.65 * ss(4.8, 7.6, t) - 1.6 * ss(10.2, 11.8, t);
+  const h = 2.5 + 7 * ss(4.8, 7.4, t) - 6 * ss(10.0, 11.4, t);
+  const back = d.multiplyScalar(-(14 + 7 * (1 - ss(4.4, 5.8, t)) + 5 * ss(11.0, 12.0, t))).applyAxisAngle(Y, phi);
+  return fp.p.clone().add(back).add(new THREE.Vector3(0, h, 0));
+}
+function cameraAt(t, planeP) {
+  const p = new THREE.Vector3(...bg(CAM, t));
+  const wc = ss(3.9, 5.0, t) * (1 - ss(11.9, 13.0, t));
+  if (wc > 0) p.lerp(chase(t), wc);
+  const wl = ss(7.3, 8.1, t) * (1 - ss(9.9, 10.6, t));
+  if (wl > 0) p.lerp(new THREE.Vector3(...bg(LOOPCAM, t)), wl);
+  const stat = new THREE.Vector3(0, 0, 2 * ss(1.4, 2.6, t) * (1 - ss(13.0, 14.2, t)));
+  const follow = ss(3.2, 4.6, t) * (1 - ss(12.9, 14.0, t));
+  const target = stat.lerp(planeP.clone().add(new THREE.Vector3(0, 1.2, 0)), follow);
+  const top = clamp(1 - ss(1.5, 2.9, t) + ss(13.3, 14.2, t));
+  const up = Y.clone().multiplyScalar(1 - top).add(new THREE.Vector3(0, 0, -1).multiplyScalar(top)).normalize();
+  camera.position.copy(p); camera.up.copy(up); camera.lookAt(target);
+  camera.fov = 35 + 9 * ss(3.6, 5.0, t) * (1 - ss(12.4, 13.8, t)); camera.updateProjectionMatrix();
+}
+
+// ---------- trails ----------
+const NT = 64, TLEN = 1.1;
+function buildTrails(t) {
+  const env = ss(4.25, 4.8, t) * (1 - ss(12.1, 12.55, t));
+  trails.forEach((m, k) => {
+    m.visible = env > 0.001; if (!m.visible) return;
+    const pos = [], col = [];
+    const c = new THREE.Color(COL.paper);
+    const pts = [];
+    for (let i = 0; i < NT; i++) {
+      const tt = Math.max(4.15, t - TLEN * i / (NT - 1));
+      const fp = flightPose(tt);
+      const M = new THREE.Matrix4().compose(fp.p, fp.q, new THREE.Vector3(1, 1, 1)).multiply(Bmat);
+      pts.push(TIP[k].clone().applyMatrix4(M));
+    }
+    for (let i = 0; i < NT; i++) {
+      const a = pts[i], b = pts[Math.min(i + 1, NT - 1)], d = (i < NT - 1 ? b.clone().sub(a) : a.clone().sub(pts[i - 1])).normalize();
+      const view = camera.position.clone().sub(a).normalize();
+      const s = new THREE.Vector3().crossVectors(d, view).normalize().multiplyScalar(.07 * (1 - i / NT));
+      pos.push(...a.clone().add(s).toArray(), ...a.clone().sub(s).toArray());
+      const al = env * (1 - i / (NT - 1)) ** 1.6 * .85;
+      col.push(c.r, c.g, c.b, al, c.r, c.g, c.b, al);
+    }
+    const idx = []; for (let i = 0; i < NT - 1; i++) idx.push(2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 1, 2 * i + 3, 2 * i + 2);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 4)); g.setIndex(idx);
+    m.geometry.dispose(); m.geometry = g;
+  });
+}
+
+// ---------- HUD ----------
+const $bl = document.getElementById('bl');
+const NAMES = ['CORNER', 'CORNER', 'EDGE TO SPINE', 'EDGE TO SPINE', 'IN HALF', 'WING', 'WING'];
+function hud(t, speed, alt) {
+  const am = OPS.map(o => amt(o, t));
+  const done = am.filter(a => a > .5).length;
+  let txt;
+  if (t < 4.2 && t >= 0) {
+    const cur = OPS.findIndex((o, k) => t < o.t[1] + .25 && t >= o.t[0] - .2);
+    txt = `FOLD ${String(Math.max(done, 0)).padStart(2, '0')} / 07` + (cur >= 0 ? `   ${NAMES[cur]}` : t > 2.4 ? '   LIFT' : '');
+  } else if (t < 12.5) {
+    txt = `AIRBORNE ${(t - 4.2).toFixed(2).padStart(5, '0')} S   ALT ${alt.toFixed(1).padStart(4, '0')}   ${Math.round(speed).toString().padStart(2, '0')} U/S`;
+  } else {
+    txt = `UNFOLD ${String(done).padStart(2, '0')} / 07` + (t > 14.75 ? '   FLAT' : '');
+  }
+  $bl.textContent = txt;
+}
+
+// ---------- seek ----------
+function draw(t) {
+  t = ((t % DUR) + DUR) % DUR;
+  const faces = simulate(thetasAt(t));
+  buildPaper(faces);
+  const pose = poseAt(t);
+  foldGroup.matrix.copy(pose.m).multiply(Bmat); foldGroup.matrixWorldNeedsUpdate = true;
+  cameraAt(t, pose.p);
+  sun.position.copy(pose.p).add(new THREE.Vector3(9, 26, 11)); sun.target.position.copy(pose.p); sun.target.updateMatrixWorld();
+  buildTrails(t);
+  hud(t, pose.speed, pose.p.y);
+  renderer.render(scene, camera);
+}
+window.__duration = DUR;
+window.__poster = 3.95;
+window.__seek = async t => { await ready; draw(t); };
+if (!RENDER) ready.then(() => { const t0 = performance.now(); const loop = () => { draw((performance.now() - t0) / 1000); requestAnimationFrame(loop); }; loop(); });
+</script>
+</body>
+</html>
