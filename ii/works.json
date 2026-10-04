@@ -402,5 +402,38 @@
       ]
     },
     "use": "サイトのFV背景・区切りのビジュアル。左右3割ずつの空色の余白にコピーを載せられ、銅と藍の比率をブランドの2色に差し替えて使える"
+  },
+  {
+    "id": "013",
+    "slug": "grille",
+    "title": "GRILLE",
+    "title_ja": "網",
+    "date": "2026-10-05",
+    "track": "OBJECT",
+    "concept": "シボ革で包んだ携帯スピーカー。正面は波打つ線材で斜めに編んだ黒い網（頂点ごとに起こした実形状）で、奥の布の肌理が透ける。天面の真鍮のノブと黒い縁に沈んだ深紅だけが色を持つ。",
+    "source": {
+      "url": "https://images.ctfassets.net/javen7msabdh/Fttl4DrU7xxpEqrPBRiRB/58175527eaf6b1c3a114bfd04e5bbc9b/emberton-iii-blackandbrass-front-desktop.jpeg",
+      "took": "光：真上〜やや手前の大きく柔らかい1灯・天面だけが一段明るく正面は暗い / 素材：粒の立ったシボ革・斜めに編んだ黒い金属網・真鍮のノブだけがヘアラインで光る / 構図：1:1 の正面やや上から・被写体を下1/3に幅6割・上2/3は地の余白 / 色：チャコールの地に黒の塊、真鍮の金と深紅を数%"
+    },
+    "look": {
+      "track": "OBJECT",
+      "palette_family": "charcoal-brass",
+      "background": "void-floor",
+      "lighting": "top-softbox",
+      "lens": "tele",
+      "aspect": "1:1",
+      "material": "leather-mesh"
+    },
+    "review_rounds": 34,
+    "film": {
+      "sec": 11.5,
+      "shots": [
+        "スライド",
+        "マクロ",
+        "光の走り",
+        "決め"
+      ]
+    },
+    "use": "オーディオ・ガジェット・EC の商品紹介FV。上2/3の灰の余白にコピーを載せられ、真鍮と深紅の2点をブランド色に差し替えて使える"
   }
 ]
