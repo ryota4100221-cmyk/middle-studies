@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 007 Cross Section</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;800&family=Geist+Mono:wght@400;500&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #1a2bb8; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// CROSS SECTION — one surface z = h(x, y, t), cut three ways:
+// horizontal sections (contours), vertical sections (ridgelines), point samples (dots).
+// Everything is a pure function of t.
+const W = 1920, H = 1080, DUR = 15;
+const BG = '#1a2bb8', INK = '#f3f1ea', ACC = '#7dffcf';
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+
+// ---------- helpers ----------
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, k) => a + (b - a) * k;
+const ss = (a, b, v) => { const k = clamp((v - a) / (b - a)); return k * k * (3 - 2 * k); };
+const eio = k => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+const eoutExpo = k => k >= 1 ? 1 : 1 - Math.pow(2, -10 * k);
+const eoutBack = k => { const c1 = 1.5, c3 = c1 + 1; return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2); };
+
+// piecewise cubic Hermite: keys = [[t, value, slope], ...]
+function herm(keys, t) {
+  if (t <= keys[0][0]) return keys[0][1];
+  for (let i = 0; i < keys.length - 1; i++) {
+    const [t0, v0, m0] = keys[i], [t1, v1, m1] = keys[i + 1];
+    if (t <= t1) {
+      const h = t1 - t0, s = (t - t0) / h, s2 = s * s, s3 = s2 * s;
+      return (2 * s3 - 3 * s2 + 1) * v0 + (s3 - 2 * s2 + s) * h * m0 + (-2 * s3 + 3 * s2) * v1 + (s3 - s2) * h * m1;
+    }
+  }
+  return keys[keys.length - 1][1];
+}
+
+// deterministic value noise
+function hash(i, j) {
+  let h = (i * 374761393 + j * 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h = h ^ (h >>> 16);
+  return ((h >>> 0) / 4294967295) * 2 - 1;
+}
+function vnoise(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash(xi, yi), b = hash(xi + 1, yi), c = hash(xi, yi + 1), d = hash(xi + 1, yi + 1);
+  return lerp(lerp(a, b, u), lerp(c, d, u), v);
+}
+function fbm(x, y) {
+  let s = 0, a = .5, f = 1;
+  for (let o = 0; o < 4; o++) { s += a * vnoise(x * f + o * 17.3, y * f - o * 9.1); f *= 2.03; a *= .42; }
+  return s;
+}
+
+// ---------- domain ----------
+const XW = 1.6, YW = 1.0;          // plate: x in [-1.6,1.6], y in [-1,1]
+
+// text height field ("SECTION") baked once into a blurred bitmap
+const TX = 960, TY = 600;
+let textData = null;
+function bakeText() {
+  const oc = document.createElement('canvas'); oc.width = TX; oc.height = TY;
+  const o = oc.getContext('2d');
+  o.fillStyle = '#000'; o.fillRect(0, 0, TX, TY);
+  o.filter = 'blur(3.5px)';
+  o.fillStyle = '#fff'; o.textAlign = 'center'; o.textBaseline = 'middle';
+  o.font = '800 200px Syne';
+  const tw = o.measureText('SECTION').width, sx = (TX * .86) / tw;
+  o.save(); o.translate(TX / 2, TY / 2 + 10); o.scale(sx, 1.75); o.fillText('SECTION', 0, 0); o.restore();
+  const id = o.getImageData(0, 0, TX, TY).data;
+  textData = new Float32Array(TX * TY);
+  for (let i = 0; i < TX * TY; i++) textData[i] = id[i * 4] / 255;
+}
+function textH(x, y) {
+  const px = (x / XW * .5 + .5) * (TX - 1), py = (.5 - y / YW * .5) * (TY - 1);
+  if (px < 0 || py < 0 || px >= TX - 1 || py >= TY - 1) return 0;
+  const xi = px | 0, yi = py | 0, fx = px - xi, fy = py - yi, k = yi * TX + xi;
+  return lerp(lerp(textData[k], textData[k + 1], fx), lerp(textData[k + TX], textData[k + TX + 1], fx), fy);
+}
+
+// ---------- the surface ----------
+const DROPS = [[-0.15, 0, 0, .75], [0.85, -.62, .3, .5], [1.45, .7, -.34, .5], [2.0, .15, .52, .42]];
+function ripple(x, y, t0, cx, cy, A, t) {
+  const tau = t - t0; if (tau <= 0) return 0;
+  const r = Math.hypot(x - cx, y - cy), u = r - 1.25 * tau;
+  const env = u > 0 ? Math.exp(-u * u / .018) : Math.exp(-u * u / .35);
+  return A * Math.exp(-.55 * tau) * Math.sin(16 * u) * env;
+}
+let WF = {};
+function weights(t) {
+  const late = t >= 14.85;
+  return {
+    t, late,
+    drop: late ? 1 : 1 - ss(2.4, 3.9, t),
+    terr: ss(2.4, 3.9, t) * (1 - ss(7.5, 8.6, t)),
+    text: ss(7.5, 8.6, t) * (1 - ss(9.7, 10.5, t)),
+    wave: ss(9.7, 10.5, t) * (1 - ss(12.1, 13.1, t)),
+    bump: late ? 0 : ss(12.1, 13.1, t),
+    sigma: lerp(.95, .004, Math.pow(clamp((t - 12.9) / 1.95), 1.6)),
+  };
+}
+function h(x, y) {
+  const w = WF, t = w.t;
+  let z = 0;
+  if (w.drop > 0) {
+    if (w.late) z += ripple(x, y, 14.85, 0, 0, DROPS[0][3], t);
+    else for (const d of DROPS) z += ripple(x, y, d[0], d[1], d[2], d[3], t);
+    z *= w.drop;
+  }
+  if (w.terr > 0) {
+    const e = (1 - ss(1.2, 1.75, Math.abs(x))) * (1 - ss(.75, 1.05, Math.abs(y)));
+    z += w.terr * 1.75 * fbm(x * .95 + .16 * t + 3.1, y * .95 - .05 * t + 7.7) * (.35 + .65 * e);
+  }
+  if (w.text > 0) z += w.text * (textH(x, y) * .5 - .1);
+  if (w.wave > 0) z += w.wave * (.5 * Math.sin(3.1 * x - 4.2 * t) * Math.cos(2.3 * y + 1.4 * t) + .32 * Math.sin(2.2 * (x + y) + 2.6 * t));
+  if (w.bump > 0) z += w.bump * .97 * Math.exp(-(x * x + y * y) / (w.sigma * w.sigma)) * (1 - ss(14.5, 14.84, t));
+  return z;
+}
+
+// ---------- camera ----------
+const D2R = Math.PI / 180;
+const PITCH = [[0, 90, 0], [3.2, 90, 0], [4.6, 31, 0], [6.1, 25, -2], [7.3, 50, 0], [8.4, 62, 0], [9.6, 54, 0], [10.9, 50, 0], [12.1, 44, 0], [13.3, 90, 0], [15, 90, 0]];
+const YAW = [[0, 0, 4], [3.2, 12, 0], [4.6, -36, 0], [6.1, -18, 12], [7.3, 0, 0], [9.6, 3, 2], [12.1, 112, 60], [13.3, 300, 70], [15, 360, 4]];
+const DIST = [[0, 2.6, -.05], [3.2, 2.62, 0], [4.6, 3.75, 0], [6.1, 3.45, 0], [7.3, 3.5, 0], [8.4, 3.55, 0], [9.6, 3.35, 0], [10.9, 3.6, 0], [12.1, 3.3, 0], [13.3, 2.75, 0], [15, 2.6, -.05]];
+const LIFT = [[0, 0, 0], [3.2, 0, 0], [4.5, 1, 0], [12.0, 1, 0], [13.2, 0, 0], [15, 0, 0]];
+let cam = {};
+const F = 1560;
+function setCam(t) {
+  const p = herm(PITCH, t) * D2R, y = herm(YAW, t) * D2R, d = herm(DIST, t);
+  const pos = [d * Math.cos(p) * Math.sin(y), -d * Math.cos(p) * Math.cos(y), d * Math.sin(p)];
+  const fw = [-pos[0] / d, -pos[1] / d, -pos[2] / d];
+  const rt = [Math.cos(y), Math.sin(y), 0];
+  const up = [rt[1] * fw[2] - rt[2] * fw[1], rt[2] * fw[0] - rt[0] * fw[2], rt[0] * fw[1] - rt[1] * fw[0]];
+  cam = { pos, fw, rt, up, pitch: p / D2R, yaw: herm(YAW, t), lift: herm(LIFT, t) * .42, cy: H / 2 + 10 * (1 - Math.sin(p)) };
+}
+function P(x, y, z) {
+  const dx = x - cam.pos[0], dy = y - cam.pos[1], dz = z - cam.pos[2];
+  const zc = dx * cam.fw[0] + dy * cam.fw[1] + dz * cam.fw[2];
+  const xc = dx * cam.rt[0] + dy * cam.rt[1] + dz * cam.rt[2];
+  const yc = dx * cam.up[0] + dy * cam.up[1] + dz * cam.up[2];
+  return [W / 2 + F * xc / zc, cam.cy - F * yc / zc, zc];
+}
+
+// ---------- contours (horizontal sections) ----------
+const NX = 240, NY = 150, LEVELS = 25, DZ = .08;
+const levelZ = k => -0.96 + k * DZ;     // never exactly 0: a flat field draws nothing
+const grid = new Float32Array((NX + 1) * (NY + 1));
+function sampleGrid() {
+  for (let j = 0; j <= NY; j++) {
+    const y = -YW + 2 * YW * j / NY;
+    for (let i = 0; i <= NX; i++) grid[j * (NX + 1) + i] = h(-XW + 2 * XW * i / NX, y);
+  }
+}
+// mask(x, y) -> 0..1 visibility of contour at that plate point
+function drawContours(mask, alpha) {
+  if (alpha <= 0.002) return;
+  const segs = Array.from({ length: LEVELS }, () => []);
+  const dx = 2 * XW / NX, dy = 2 * YW / NY;
+  for (let j = 0; j < NY; j++) {
+    const y0 = -YW + j * dy;
+    for (let i = 0; i < NX; i++) {
+      const k = j * (NX + 1) + i;
+      const a = grid[k], b = grid[k + 1], c = grid[k + NX + 2], d = grid[k + NX + 1];
+      const mn = Math.min(a, b, c, d), mx = Math.max(a, b, c, d);
+      let k0 = Math.ceil((mn + .96) / DZ), k1 = Math.floor((mx + .96) / DZ);
+      if (k0 < 0) k0 = 0; if (k1 > LEVELS - 1) k1 = LEVELS - 1;
+      if (k0 > k1) continue;
+      const x0 = -XW + i * dx;
+      for (let L = k0; L <= k1; L++) {
+        const lv = levelZ(L);
+        const pts = [];
+        // edges: a-b (bottom), b-c (right), c-d (top), d-a (left)
+        if ((a < lv) !== (b < lv)) pts.push(x0 + dx * (lv - a) / (b - a), y0);
+        if ((b < lv) !== (c < lv)) pts.push(x0 + dx, y0 + dy * (lv - b) / (c - b));
+        if ((c < lv) !== (d < lv)) pts.push(x0 + dx * (lv - d) / (c - d), y0 + dy);
+        if ((d < lv) !== (a < lv)) pts.push(x0, y0 + dy * (lv - a) / (d - a));
+        for (let q = 0; q + 3 < pts.length; q += 4) {
+          const mx_ = (pts[q] + pts[q + 2]) / 2, my_ = (pts[q + 1] + pts[q + 3]) / 2;
+          if (mask(mx_, my_) < .5) continue;
+          segs[L].push(pts[q], pts[q + 1], pts[q + 2], pts[q + 3]);
+        }
+      }
+    }
+  }
+  ctx.lineCap = 'round';
+  for (let L = 0; L < LEVELS; L++) {
+    const s = segs[L]; if (!s.length) continue;
+    const z = levelZ(L) * cam.lift;
+    const index = (L - 2) % 5 === 0;
+    ctx.beginPath();
+    for (let q = 0; q < s.length; q += 4) {
+      const p0 = P(s[q], s[q + 1], z), p1 = P(s[q + 2], s[q + 3], z);
+      ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]);
+    }
+    ctx.strokeStyle = INK;
+    ctx.globalAlpha = alpha * (index ? 1 : .78);
+    ctx.lineWidth = index ? 2.6 : 1.25;
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ---------- ridgelines (vertical sections) / dots (samples) ----------
+const ROWS = 64, COLS = 100, SUB = 3;
+// f = 1 continuous line, f -> 0 dots at the sample points; fill = hidden-line fill opacity
+function drawRows(rowVisible, f, fill, dotGain, alpha, mask) {
+  if (alpha <= 0.002) return;
+  const order = [];
+  for (let r = 0; r < ROWS; r++) {
+    const y = -YW + 2 * YW * (r + .5) / ROWS;
+    if (!rowVisible(y)) continue;
+    const dist = (0 - cam.pos[0]) * cam.fw[0] + (y - cam.pos[1]) * cam.fw[1];
+    order.push([dist, y]);
+  }
+  order.sort((p, q) => q[0] - p[0]);
+  const dx = 2 * XW / COLS;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (const [, y] of order) {
+    // dense samples of this section
+    const N = COLS * SUB;
+    const xs = new Float32Array(N + 1), zs = new Float32Array(N + 1);
+    for (let i = 0; i <= N; i++) { xs[i] = -XW + 2 * XW * i / N; zs[i] = h(xs[i], y); }
+    if (fill > .01) {
+      ctx.beginPath();
+      let zmin = Infinity; for (let i = 0; i <= N; i++) if (zs[i] < zmin) zmin = zs[i];
+      const base = (zmin - .04) * cam.lift;
+      let p = P(xs[0], y, base); ctx.moveTo(p[0], p[1]);
+      for (let i = 0; i <= N; i++) { p = P(xs[i], y, zs[i] * cam.lift); ctx.lineTo(p[0], p[1]); }
+      p = P(xs[N], y, base); ctx.lineTo(p[0], p[1]);
+      ctx.closePath(); ctx.globalAlpha = fill; ctx.fillStyle = BG; ctx.fill();
+    }
+    ctx.strokeStyle = INK; ctx.globalAlpha = alpha;
+    if (f > .985) {
+      ctx.beginPath();
+      for (let i = 0; i <= N; i++) { const p = P(xs[i], y, zs[i] * cam.lift); i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); }
+      ctx.lineWidth = 1.7; ctx.stroke();
+    } else {
+      // segments shrinking toward each sample point; round caps turn them into dots
+      for (let c = 0; c <= COLS; c++) {
+        const x0 = -XW + c * dx;
+        const m = mask ? mask(x0, y) : 1; if (m <= 0) continue;
+        const z0 = h(x0, y);
+        const p0 = P(x0, y, z0 * cam.lift);
+        const lw = (1.7 + dotGain * (2.2 + 5.5 * clamp((z0 + .85) / 1.7)) * (3.0 / p0[2])) * m;
+        ctx.lineWidth = lw;
+        ctx.strokeStyle = (dotGain > .3 && z0 > .5) ? ACC : INK;
+        ctx.beginPath(); ctx.moveTo(p0[0], p0[1]);
+        if (c < COLS && f > .002) {
+          const e = x0 + f * dx;
+          for (let s = 1; s <= SUB; s++) { const xx = lerp(x0, e, s / SUB); const p = P(xx, y, h(xx, y) * cam.lift); ctx.lineTo(p[0], p[1]); }
+        } else ctx.lineTo(p0[0] + .01, p0[1]);
+        ctx.stroke();
+      }
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// the cutting plane: one accent profile at y = s, with the plane's outline
+function drawCut(s, a) {
+  if (a <= 0.002) return;
+  const N = 300;
+  ctx.globalAlpha = a * .22; ctx.fillStyle = ACC;
+  ctx.beginPath();
+  let p = P(-XW, s, -1.3 * cam.lift); ctx.moveTo(p[0], p[1]);
+  for (let i = 0; i <= N; i++) { const x = -XW + 2 * XW * i / N; p = P(x, s, h(x, s) * cam.lift); ctx.lineTo(p[0], p[1]); }
+  p = P(XW, s, -1.3 * cam.lift); ctx.lineTo(p[0], p[1]); ctx.closePath(); ctx.fill();
+  ctx.globalAlpha = a; ctx.strokeStyle = ACC; ctx.lineWidth = 3.2;
+  ctx.beginPath();
+  for (let i = 0; i <= N; i++) { const x = -XW + 2 * XW * i / N; p = P(x, s, h(x, s) * cam.lift); i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); }
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+// plate frame with map ticks
+function drawFrame(a) {
+  ctx.globalAlpha = a; ctx.strokeStyle = INK; ctx.lineWidth = 1.2;
+  const c = [[-XW, -YW], [XW, -YW], [XW, YW], [-XW, YW]].map(q => P(q[0], q[1], 0));
+  ctx.beginPath(); c.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.stroke();
+  ctx.beginPath();
+  for (let i = 0; i <= 16; i++) {
+    const x = -XW + 2 * XW * i / 16, L = i % 4 === 0 ? .06 : .03;
+    let p = P(x, -YW, 0), q = P(x, -YW - L, 0); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]);
+    p = P(x, YW, 0); q = P(x, YW + L, 0); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]);
+  }
+  for (let j = 0; j <= 10; j++) {
+    const y = -YW + 2 * YW * j / 10, L = j % 5 === 0 ? .06 : .03;
+    let p = P(-XW, y, 0), q = P(-XW - L, y, 0); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]);
+    p = P(XW, y, 0); q = P(XW + L, y, 0); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]);
+  }
+  ctx.stroke(); ctx.globalAlpha = 1;
+}
+
+// ---------- type ----------
+const SECTIONS = [
+  { u: 0, name: 'Drop', sub: 'z = Σ damped ripples · 4 drops' },
+  { u: 3.8, name: 'Terrain', sub: 'z = fbm(x, y) · 25 horizontal sections' },
+  { u: 7.0, name: 'Profile', sub: '64 vertical sections · hidden lines filled' },
+  { u: 10.5, name: 'Sample', sub: '6,464 point samples · size ∝ z' },
+  { u: 12.9, name: 'Collapse', sub: 'z = e^(−r²/σ²) · σ → 0' },
+];
+function drawLabel(name, sub, idx, k, out) {
+  // k: 0..1 entry progress per letter timeline; out: 0..1 exit progress
+  const x = 92, y = 958;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x - 10, y - 118, 1100, 140); ctx.clip();
+  ctx.font = '800 112px Syne'; ctx.fillStyle = INK; ctx.textBaseline = 'alphabetic';
+  ctx.shadowColor = 'rgba(19,32,143,.95)'; ctx.shadowBlur = 28;
+  let cx = x;
+  for (let i = 0; i < name.length; i++) {
+    const ch = name[i];
+    const ki = eoutBack(clamp(k * 1.9 - i * .09));
+    const ko = eio(clamp(out * 1.9 - i * .07));
+    const dy = (1 - ki) * 130 - ko * 180;
+    ctx.fillText(ch, cx, y + dy);
+    cx += ctx.measureText(ch).width - 2;
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = '500 19px "Geist Mono"'; ctx.fillStyle = INK; ctx.shadowColor = 'rgba(19,32,143,.95)'; ctx.shadowBlur = 14;
+  ctx.globalAlpha = clamp(k * 3) * (1 - clamp(out * 3));
+  ctx.fillText(`0${idx + 1} / 05`, x + 4, y - 142);
+  ctx.globalAlpha = clamp(k * 2.4 - .3) * (1 - clamp(out * 3)) * .9;
+  ctx.fillText(sub, x + 4, y + 44);
+  ctx.restore();
+}
+function drawType(t) {
+  const u = (t + .8) % DUR;
+  let i = SECTIONS.length - 1;
+  while (SECTIONS[i].u > u) i--;
+  const ts = u - SECTIONS[i].u;
+  const prev = (i + SECTIONS.length - 1) % SECTIONS.length;
+  if (ts < .5) drawLabel(SECTIONS[prev].name, SECTIONS[prev].sub, prev, 1, ts / .5);
+  drawLabel(SECTIONS[i].name, SECTIONS[i].sub, i, clamp((ts - .12) / .7), 0);
+
+  ctx.font = '500 18px "Geist Mono"'; ctx.fillStyle = INK; ctx.textBaseline = 'alphabetic';
+  ctx.globalAlpha = .92;
+  ctx.textAlign = 'left'; ctx.fillText('MIDDLE STUDIES REEL — 007', 92, 74);
+  ctx.textAlign = 'right'; ctx.fillText('CROSS SECTION · ONE SURFACE, THREE CUTS', W - 92, 74);
+  const yawN = ((cam.yaw % 360) + 360) % 360;
+  ctx.fillText(`PITCH ${cam.pitch.toFixed(1).padStart(5, '0')}°  YAW ${yawN.toFixed(1).padStart(5, '0')}°`, W - 92, 958 - 30);
+  ctx.font = '800 30px Syne'; ctx.fillText('Claude', W - 92, 1002);
+  ctx.textAlign = 'left'; ctx.globalAlpha = 1;
+
+  // level legend: 25 ticks, the ones present in the frame lit
+  const lx = W - 70, top = 300, step = 18;
+  let mn = Infinity, mx = -Infinity;
+  for (let q = 0; q < grid.length; q += 7) { const v = grid[q]; if (v < mn) mn = v; if (v > mx) mx = v; }
+  for (let L = 0; L < LEVELS; L++) {
+    const lv = levelZ(L), on = lv >= mn && lv <= mx;
+    const yy = top + (LEVELS - 1 - L) * step;
+    ctx.globalAlpha = on ? 1 : .3;
+    ctx.fillStyle = on && lv === levelZ(LEVELS - 1 - 0) ? ACC : INK;
+    const len = (L - 2) % 5 === 0 ? 22 : 12;
+    ctx.fillRect(lx - len, yy, len, (L - 2) % 5 === 0 ? 3 : 2);
+  }
+  // max marker
+  const my = top + (LEVELS - 1 - clamp((mx + .96) / DZ, 0, LEVELS - 1)) * step;
+  ctx.globalAlpha = 1; ctx.fillStyle = ACC;
+  ctx.beginPath(); ctx.moveTo(lx - 30, my + 1); ctx.lineTo(lx - 42, my - 6); ctx.lineTo(lx - 42, my + 8); ctx.closePath(); ctx.fill();
+  ctx.font = '500 18px "Geist Mono"'; ctx.fillStyle = INK; ctx.textAlign = 'right';
+  ctx.fillText(`zₘₐₓ ${(Math.max(0, mx)).toFixed(2)}`, lx, top - 22);
+  ctx.textAlign = 'left';
+}
+
+// ---------- frame ----------
+function render(t) {
+  t = ((t % DUR) + DUR) % DUR;
+  WF = weights(t);
+  setCam(t);
+  sampleGrid();
+
+  ctx.globalAlpha = 1;
+  const g = ctx.createRadialGradient(W / 2, H * .46, 80, W / 2, H / 2, 1250);
+  g.addColorStop(0, '#2338d0'); g.addColorStop(1, '#13208f');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+  drawFrame(.38);
+
+  // phases
+  const s = lerp(1.08, -1.08, eio(clamp((t - 6.05) / 1.45)));    // cutting plane sweeps back -> front
+  const sweepOn = t > 6.0 && t < 7.55;
+  const rowsOn = t > 6.0 && t < 13.4;
+  const R = lerp(0, 2.1, eio(clamp((t - 12.15) / 1.15)));        // dots -> contours radial hand-off
+  const dotK = eio(clamp((t - 9.75) / .9));                        // line -> dots
+  const f = 1 - dotK;
+  const fill = 1 - dotK;
+  const dotGain = eio(clamp((t - 10.2) / .9));
+
+  if (rowsOn) {
+    const rowVis = y => t >= 7.55 || y > s;
+    const mask = t > 12.1 ? (x, y) => clamp((Math.hypot(x, y) - R) / .25) : null;
+    drawRows(rowVis, f, fill, dotGain, 1, mask);
+  }
+  // contours: everywhere outside of the row phase; in front of the cut during the sweep; inside R at the end
+  if (t < 6.0) drawContours(() => 1, 1);
+  else if (sweepOn) drawContours((x, y) => y < s ? 1 : 0, 1);
+  else if (t > 12.1) drawContours((x, y) => Math.hypot(x, y) < R ? 1 : 0, 1);
+  if (sweepOn) drawCut(s, ss(6.0, 6.2, t) * (1 - ss(7.35, 7.55, t)));
+
+  drawType(t);
+}
+
+window.__duration = DUR;
+window.__poster = 4.9;
+let ready = (async () => {
+  await document.fonts.load('800 112px Syne');
+  await document.fonts.load('500 18px "Geist Mono"');
+  await document.fonts.ready;
+  bakeText();
+})();
+window.__seek = async t => { await ready; render(t); };
+if (!location.search.includes('render')) {
+  ready.then(() => { const t0 = performance.now(); const loop = () => { render(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(loop); }; loop(); });
+}
+</script>
+</body>
+</html>

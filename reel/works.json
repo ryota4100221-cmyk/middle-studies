@@ -219,5 +219,41 @@
     },
     "review_rounds": 3,
     "review": "1周目：飛行中盤の機体が小さく宙返りが読めない→追従カメラ＋宙返り用の横位置カメラに。翼端の軌跡が折れる→上方向の加速度を±0.14秒で平滑化。左下のHUDがポスター下段の文字と重なる→ポスター下段を上げ、進捗バーを廃止。2〜3.5秒のカメラが近すぎ→引いた。2周目：5〜8秒が真後ろからの同じ絵の連続→追従カメラを機体の周りで回し高さも変える。浮上時の腹側が暗く濁る→半球光の地面色を上げた。12秒で翼がカメラに刺さる→距離を伸ばした。3周目：4.6秒の離陸で機体が画面外へはみ出る→追従の初期距離を+7、回り込み角を浅く。許容した差：翼端の軌跡に節目で小さな折れが残る／3.5秒の浮上は一瞬だけ紙が真横を向いて細い板に見える。"
+  },
+  {
+    "id": "007",
+    "slug": "cross-section",
+    "title": "Cross Section",
+    "date": "2026-10-05",
+    "concept": "1枚の曲面 z = h(x, y, t) を、横に切って等高線（25段・5本ごとに太い計曲線）、縦に切って稜線（64本・陰線を背景色で塗って隠す）、点で拾って標本（6,464点・高さで大きさ）と、3通りに切って見せる。真上から見た地図がカメラの傾きで積層模型になり、緑の切断面が奥から手前へ掃いて等高線を稜線に置き換え、稜線の上に SECTION が浮かび、線は丸い端点のまま縮んで点になる。最後は山が1点に縮み、等高線の輪が中心へ吸い込まれた瞬間に滴が落ちて0秒目の波紋へ戻る（見せ場は6.2〜7.5秒の切断面の掃き）。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/007_cross-section.mp4",
+    "techniques": [
+      "marching-squares-contours",
+      "stacked-contour-model",
+      "hidden-line-ridgelines",
+      "sweeping-section-plane",
+      "line-to-dot-collapse",
+      "text-as-heightfield",
+      "damped-ripple-interference",
+      "hand-rolled-3d-projection",
+      "hermite-camera-keys",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#1a2bb8",
+        "#13208f",
+        "#f3f1ea",
+        "#7dffcf"
+      ],
+      "type": [
+        "Syne",
+        "Geist Mono"
+      ],
+      "structure": "one surface / 5 sections / cut horizontally → vertically → sampled → collapsed to a point",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：0秒目でラベルが Collapse→Drop の入れ替え途中で崩れて写る→ラベルの切り替えを14.2秒に前倒しして0秒目は Drop が立った状態に。点の面の上で下のラベルが沈む→ラベルに背景色のにじみを敷いた。（試写段階で：SECTION がはみ出して読めない→幅を実測して収め、文字の高さを下げてカメラを上げた／最前列の塗りが板の下にはみ出す→塗りを各行の最低点までに。）2周目：退場する Collapse の p の下端が切り抜きの中に残る→退場距離を130→180pxに。3周目：最後のコマと0秒目が同じ波紋・同じ Drop でつながることを確認、SECTION は等倍で読める。許容した差：細線が多く2パス7.9MBに収めたので点の面にわずかなブロックノイズ／14.3〜14.85秒は小さな輪だけの静かな区間（吸い込みの溜め）／ラベル登場のオーバーシュートで一瞬文字が段違いになる。"
   }
 ]
