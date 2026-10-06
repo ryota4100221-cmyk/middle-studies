@@ -255,5 +255,44 @@
     },
     "review_rounds": 3,
     "review": "1周目：0秒目でラベルが Collapse→Drop の入れ替え途中で崩れて写る→ラベルの切り替えを14.2秒に前倒しして0秒目は Drop が立った状態に。点の面の上で下のラベルが沈む→ラベルに背景色のにじみを敷いた。（試写段階で：SECTION がはみ出して読めない→幅を実測して収め、文字の高さを下げてカメラを上げた／最前列の塗りが板の下にはみ出す→塗りを各行の最低点までに。）2周目：退場する Collapse の p の下端が切り抜きの中に残る→退場距離を130→180pxに。3周目：最後のコマと0秒目が同じ波紋・同じ Drop でつながることを確認、SECTION は等倍で読める。許容した差：細線が多く2パス7.9MBに収めたので点の面にわずかなブロックノイズ／14.3〜14.85秒は小さな輪だけの静かな区間（吸い込みの溜め）／ラベル登場のオーバーシュートで一瞬文字が段違いになる。"
+  },
+  {
+    "id": "008",
+    "slug": "split-flap",
+    "title": "Split Flap",
+    "date": "2026-10-06",
+    "concept": "46×24＝1,104枚のフラップ（1枚に58面：無地・色4種×4周・A–Z・0–9・記号）の反転掲示板が、前にしか回れない機構のまま絵と文字を描く。1枚のフラップの接写から引くと、そこから全面に文字の雨が衝撃波のように広がって SPLIT になり、黄と赤の FLAP に払われ、同心円と3本腕の渦を色のフラップだけで回し、これまでの7本を並べた出発案内板に組み替わって 008 だけが BOARDING→NOW に変わる。最後は巨大な 008 から全面が渦を巻いて最初の1枚に吸い込まれ、0秒目の接写へ戻る（見せ場は0.3〜2.5秒、1枚から全面へ広がる文字の衝撃波）。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/008_split-flap.mp4",
+    "techniques": [
+      "split-flap-mechanics",
+      "rate-limited-follower",
+      "forward-only-drum",
+      "flip-cascade-wave",
+      "mosaic-raster-type",
+      "color-field-animation",
+      "departure-board-typography",
+      "macro-to-wide-zoom",
+      "gravity-flap-easing",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#0b0b0c",
+        "#232326",
+        "#efe9dc",
+        "#ffc400",
+        "#f0402a",
+        "#2b55ff"
+      ],
+      "type": [
+        "Archivo Narrow",
+        "Archivo Black",
+        "Red Hat Mono"
+      ],
+      "structure": "one board / one flap → whole board → back to one flap (5 states driven only by flips)",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：0秒目が白い色フラップで弱い→主役フラップを文字面から回す。SPLIT の L の中に主役フラップの数字が残って欠けに見える→2.05秒で語に合流させる。出発案内板が1.3秒しか読めない→回転速度36→40・遅延を詰めて開始を6.85秒へ。FLIPS が負になる→主役分を別計算。2周目：案内板が9.5〜10.3秒ほぼ静止→008の行だけ BOARDING→NOW・旗を赤へ反転する1拍を足した。3周目：NOW の列が1つずれていた（36列目始まり）→修正、つなぎ・0秒目への戻り（L→M）を確認。許容した差：12.0秒、008の0の中で主役フラップが一瞬赤を通過する（A へ戻る途中の色面）。"
   }
 ]

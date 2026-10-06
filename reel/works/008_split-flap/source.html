@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 008 Split Flap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@700&family=Archivo+Black&family=Red+Hat+Mono:wght@500;700&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #070707; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 56.25vw; max-height: 100vh; max-width: 177.78vh; margin: auto; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+(async () => {
+const W = 1920, H = 1080, DUR = 15;
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+
+// ---------- board ----------
+const COLS = 46, ROWS = 24, CELL = 40;
+const BX = (W - COLS * CELL) / 2, BY = (H - ROWS * CELL) / 2;   // 40, 60
+const HERO_C = 23, HERO_R = 12;
+const RATE = 40;      // flips per second for every flap
+const HRATE = 10;     // the hero flap, slow enough to read at macro
+
+// drum: blank, 4 laps of colour flaps, A–Z, 0–9, punctuation  (58 faces)
+const COLORS = ['#ffc400', '#f0402a', '#2b55ff', '#efe9dc'];
+const DRUM = [{ k: 'blank' }];
+for (let g = 0; g < 4; g++) for (let i = 0; i < 4; i++) DRUM.push({ k: 'color', c: COLORS[i] });
+for (const ch of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:-/.&') DRUM.push({ k: 'glyph', g: ch });
+const N = DRUM.length;
+const IDX = {}; DRUM.forEach((d, i) => { if (d.k === 'glyph') IDX[d.g] = i; });
+const Y = 1, R = 2, B = 3, Wt = 4;
+
+// ---------- deterministic noise ----------
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const rnd = mulberry32(8008);
+const jitter = Array.from({ length: COLS * ROWS }, () => rnd());
+
+// ---------- fonts ----------
+await Promise.all([
+  document.fonts.load('700 40px "Archivo Narrow"'),
+  document.fonts.load('400 40px "Archivo Black"'),
+  document.fonts.load('500 18px "Red Hat Mono"'),
+  document.fonts.load('700 18px "Red Hat Mono"'),
+]);
+
+// ---------- masks: rasterise text at 10× and area-average down to the grid ----------
+function mask(draw) {
+  const S = 10, oc = document.createElement('canvas');
+  oc.width = COLS * S; oc.height = ROWS * S;
+  const o = oc.getContext('2d');
+  o.fillStyle = '#000'; o.fillRect(0, 0, oc.width, oc.height);
+  o.fillStyle = '#fff'; o.save(); o.scale(S, S); draw(o); o.restore();
+  const px = o.getImageData(0, 0, oc.width, oc.height).data;
+  const m = new Float32Array(COLS * ROWS);
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    let s = 0;
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) s += px[((r * S + y) * oc.width + c * S + x) * 4];
+    m[r * COLS + c] = s / (S * S * 255);
+  }
+  return m;
+}
+const word = (txt, size, cy, track = 0) => mask(o => {
+  o.font = `400 ${size}px "Archivo Black"`; o.textAlign = 'center'; o.textBaseline = 'middle';
+  if (track) o.letterSpacing = track + 'px';
+  o.fillText(txt, COLS / 2, cy);
+});
+const M_SPLIT = word('SPLIT', 15.5, 12.4, 0.4);
+const M_FLAP = word('FLAP', 17.5, 12.4, 0.5);
+const M_008 = word('008', 19, 10.6, 0.6);
+
+// ---------- schedule: per flap, a list of jumps in an unwrapped drum count D ----------
+// shown position P(t) = min( D(t), min_j [ D_before_j + (t - s_j) * RATE ] )  — a rate-limited follower, pure in t
+const tiles = [];
+for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+  const hero = c === HERO_C && r === HERO_R;
+  const d0 = hero ? 17 + Math.round(3.2 * HRATE) : 0;   // hero free-runs through the letters from A
+  tiles.push({ c, r, hero, d0, D: d0, last: -1, s: [], before: [], after: [] });
+}
+const T = (c, r) => tiles[r * COLS + c];
+function go(tile, time, entry, laps = 0) {
+  if (tile.hero && time < 2.05) return;            // the hero flap is free-running until 2 s
+  time = Math.max(time, tile.last);
+  const k = ((entry - tile.D % N) + N) % N + laps * N;
+  if (k === 0) return;
+  tile.s.push(time); tile.before.push(tile.D); tile.D += k; tile.after.push(tile.D); tile.last = time;
+}
+const dist = (c, r, cx, cy) => Math.hypot(c - cx, (r - cy) * 1.0);
+
+// S0  0.25 s — a shockwave of full-drum spins from the hero, landing on SPLIT
+for (const t of tiles) {
+  const d = dist(t.c, t.r, HERO_C, HERO_R);
+  go(t, 0.25 + d * 0.03, M_SPLIT[t.r * COLS + t.c] > 0.45 ? Y : 0, 1);
+}
+go(T(HERO_C, HERO_R), 2.05, M_SPLIT[HERO_R * COLS + HERO_C] > 0.45 ? Y : 0);   // the hero stops running and joins the word
+// S1  2.95 s — wipe left→right: flood yellow, FLAP in red
+for (const t of tiles) {
+  const i = t.r * COLS + t.c;
+  go(t, 2.95 + t.c * 0.016 + Math.abs(t.r - 11.5) * 0.006 + jitter[i] * 0.03, M_FLAP[i] > 0.45 ? R : Y);
+}
+// S2  4.1–7.0 s — colour field: rings out from the centre, then a 3-arm spiral (colours only step forward)
+{
+  const cx = 22.5, cy = 11.5;
+  for (const t of tiles) {
+    let prev = -1;
+    for (let tt = 4.1; tt < 7.0; tt += 1 / 20) {
+      const rr = dist(t.c, t.r, cx, cy), th = Math.atan2(t.r - cy, t.c - cx);
+      const f = tt < 5.55
+        ? 2.1 * (tt - 4.1) - rr / 3.2
+        : 2.0 * (tt - 5.55) - rr / 4.2 + 3 * th / (2 * Math.PI) + 0.5;
+      const col = ((Math.floor(f) % 4) + 4) % 4;
+      if (col !== prev) {
+        // smallest forward step to a colour flap of that colour
+        const cur = t.D % N;
+        let e = 1 + col;
+        if (cur !== 0) { e = cur; while ((e - 1) % 4 !== col) e++; if (e > 16) window.__overflow = (window.__overflow || 0) + 1; }
+        go(t, tt, e);
+        prev = col;
+      }
+    }
+  }
+}
+// S3  7.0 s — the departures board: every reel so far
+const BOARD = [
+  [2, 'TIME   DESTINATION          REEL  STATUS'],
+  [4, '23:00  FUNCTION OF TIME     001   DEPARTED'],
+  [6, '23:00  VERBS                002   DEPARTED'],
+  [8, '23:00  ONE TAKE             003   DEPARTED'],
+  [10, '23:00  TEMPO                004   DEPARTED'],
+  [12, '23:00  MATTER               005   DEPARTED'],
+  [14, '23:00  CREASE               006   DEPARTED'],
+  [16, '23:00  CROSS SECTION        007   DEPARTED'],
+  [19, '23:00  SPLIT FLAP           008   BOARDING'],
+];
+const TEXT = new Int16Array(COLS * ROWS);   // 0 = blank
+for (const [r, s] of BOARD) for (let i = 0; i < s.length; i++) if (s[i] !== ' ') TEXT[r * COLS + 2 + i] = IDX[s[i]];
+for (const c of [0, 1, 44, 45]) TEXT[19 * COLS + c] = Y;          // the live row is flagged in yellow
+for (let c = 2; c < 44; c++) TEXT[18 * COLS + c] = TEXT[18 * COLS + c] || 0;
+for (const t of tiles) {
+  const i = t.r * COLS + t.c;
+  go(t, 6.85 + t.c * 0.015 + t.r * 0.008 + jitter[i] * 0.05, TEXT[i]);
+}
+// 9.45 s — 008 is called: BOARDING → NOW, the flags turn red
+for (let c = 36; c <= 43; c++) go(T(c, 19), 9.4 + (c - 36) * 0.03, c <= 38 ? IDX['NOW'[c - 36]] : 0);
+for (const c of [0, 1, 44, 45]) go(T(c, 19), 9.45 + (c > 40 ? 0.3 : 0), R);
+// S4  10.35 s — up from the live row: a giant 008
+const LINE = 'EVERY PIXEL HERE IS A FLAP';
+const T4 = new Int16Array(COLS * ROWS);
+for (let i = 0; i < COLS * ROWS; i++) T4[i] = M_008[i] > 0.45 ? Y : 0;
+for (let i = 0; i < LINE.length; i++) if (LINE[i] !== ' ') T4[21 * COLS + Math.round((COLS - LINE.length) / 2) + i] = IDX[LINE[i]];
+for (const t of tiles) {
+  const i = t.r * COLS + t.c;
+  go(t, 10.35 + Math.max(0, 19 - t.r) * 0.03 + Math.abs(t.c - 22.5) * 0.008 + jitter[i] * 0.03, T4[i]);
+}
+// S5  12.0 s — everything spins home, converging on the hero
+{
+  const maxd = dist(0, 0, HERO_C, HERO_R);
+  for (const t of tiles) {
+    if (t.hero) { go(t, 11.95, 17); continue; }      // the hero parks on A, then runs free
+    const d = dist(t.c, t.r, HERO_C, HERO_R);
+    go(t, 11.95 + (maxd - d) * 0.024, 0, t.D % N === 0 ? 1 : 0);
+  }
+}
+const HERO = T(HERO_C, HERO_R);
+const HERO_END = HERO.D - 17;          // ≡ 0, so HERO_END + 17 shows A
+const HERO_FREE = 13.8;                // hero runs free from here, through the loop point, until 2 s
+
+function pos(t, time) {
+  if (t.hero) {
+    if (time >= HERO_FREE) return { P: HERO_END + 17 + (time - HERO_FREE) * HRATE, moving: true };
+    if (time < 2) return { P: 17 + (time + (DUR - HERO_FREE)) * HRATE, moving: true };
+  }
+  let D = t.d0, P = Infinity;
+  for (let j = 0; j < t.s.length; j++) {
+    if (t.s[j] > time) break;
+    D = t.after[j];
+    const p = t.before[j] + (time - t.s[j]) * RATE;
+    if (p < P) P = p;
+  }
+  if (D < P) P = D;
+  return { P, moving: P < D };
+}
+
+// ---------- camera ----------
+const HX = BX + (HERO_C + 0.5) * CELL, HY = BY + (HERO_R + 0.5) * CELL;
+const CX = W / 2, CY = H / 2;
+const KEYS = [
+  [0.00, 24, HX, HY, -6],
+  [0.30, 24, HX, HY, -6],
+  [2.45, 1.00, CX, CY, 0],
+  [4.10, 1.05, CX, CY, 0],
+  [5.55, 1.24, CX, CY, 3],
+  [7.00, 1.00, CX, CY, 0],
+  [8.70, 1.05, CX, CY - 8, -0.5],
+  [10.35, 1.00, CX, CY, 0],
+  [12.20, 1.04, CX, CY, 0.4],
+  [15.00, 24, HX, HY, -6],
+];
+const ease = x => x * x * x * (x * (x * 6 - 15) + 10);
+function camera(t) {
+  let i = 0; while (i < KEYS.length - 2 && t > KEYS[i + 1][0]) i++;
+  const a = KEYS[i], b = KEYS[i + 1];
+  const u = ease(Math.min(1, Math.max(0, (t - a[0]) / (b[0] - a[0]))));
+  const ls = Math.log(a[1]) + (Math.log(b[1]) - Math.log(a[1])) * u;
+  const s = Math.exp(ls);
+  // while zooming, move the focus in 1/s so the point we leave (or approach) stays pinned on screen
+  const m = a[1] === b[1] ? u : (1 / s - 1 / a[1]) / (1 / b[1] - 1 / a[1]);
+  return { s, fx: a[2] + (b[2] - a[2]) * m, fy: a[3] + (b[3] - a[3]) * m, rot: (a[4] + (b[4] - a[4]) * u) * Math.PI / 180 };
+}
+
+// ---------- drawing ----------
+const FLAP_TOP = '#232326', FLAP_BOT = '#1b1b1e', INK = '#efe9dc', SLOT = '#060606';
+function face(e, half) {
+  const d = DRUM[e];
+  if (d.k === 'color') return d.c;
+  return half === 0 ? FLAP_TOP : FLAP_BOT;
+}
+const GLYPH_PX = 30;
+ctx.font = `700 ${GLYPH_PX}px "Archivo Narrow"`;
+const capH = ctx.measureText('H').actualBoundingBoxAscent;
+
+// draw one half (0 top, 1 bottom) of face e, hinge at (x, hy), half height h, squashed by sy toward the hinge
+function half(e, x, hy, w, h, which, sy, shade, big, sx = 1) {
+  if (sy <= 0.002) return;
+  ctx.save();
+  ctx.translate(x + w / 2, hy);
+  ctx.scale(sx, sy);
+  ctx.translate(-w / 2, 0);
+  const y0 = which === 0 ? -h : 0;
+  const rr = w * 0.07;
+  ctx.beginPath();
+  if (which === 0) { ctx.moveTo(0, 0); ctx.lineTo(0, y0 + rr); ctx.quadraticCurveTo(0, y0, rr, y0); ctx.lineTo(w - rr, y0); ctx.quadraticCurveTo(w, y0, w, y0 + rr); ctx.lineTo(w, 0); }
+  else { ctx.moveTo(0, 0); ctx.lineTo(0, h - rr); ctx.quadraticCurveTo(0, h, rr, h); ctx.lineTo(w - rr, h); ctx.quadraticCurveTo(w, h, w, h - rr); ctx.lineTo(w, 0); }
+  ctx.closePath();
+  ctx.fillStyle = face(e, which); ctx.fill();
+  const d = DRUM[e];
+  if (d.k === 'glyph') {
+    ctx.clip();
+    ctx.fillStyle = INK;
+    ctx.fillText(d.g, w / 2, capH / 2 + (which === 0 ? -h * 0.04 : -h * 0.04));
+  }
+  if (big) {   // a soft light falloff across the face, only worth it up close
+    ctx.fillStyle = which === 0 ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.12)';
+    ctx.fillRect(0, y0, w, h);
+  }
+  if (shade > 0.003) { ctx.fillStyle = `rgba(0,0,0,${shade})`; ctx.fill(); }
+  ctx.restore();
+}
+
+function drawTile(t, time, big) {
+  const x = BX + t.c * CELL, y = BY + t.r * CELL;
+  const m = CELL * 0.055, gap = CELL * 0.022;
+  const fx = x + m, fw = CELL - 2 * m, hy = y + CELL / 2, h = CELL / 2 - m - gap / 2;
+  const { P, moving } = pos(t, time);
+  const i = Math.floor(P + 1e-6), f = moving ? P - i : 0;
+  const a = ((i % N) + N) % N, b = (a + 1) % N;
+  if (!moving || f <= 0) {
+    half(a, fx, hy - gap / 2, fw, h, 0, 1, 0, big);
+    half(a, fx, hy + gap / 2, fw, h, 1, 1, 0, big);
+    return 0;
+  }
+  // gravity: the flap accelerates the whole way down and slaps
+  const g = Math.pow(f, 1.55);
+  if (g < 0.5) {
+    const th = g * Math.PI;             // 0 → 90°
+    half(b, fx, hy - gap / 2, fw, h, 0, 1, 0, big);                       // next face, revealed behind
+    half(a, fx, hy + gap / 2, fw, h, 1, 1, 0.35 * Math.sin(th), big);      // old bottom, in the falling flap's shadow
+    half(a, fx, hy - gap / 2, fw, h, 0, Math.cos(th), 0.55 * Math.sin(th), big, 1 + 0.12 * Math.sin(th));   // falling flap (front)
+  } else {
+    const th = (1 - g) * Math.PI;       // 90° → 0
+    half(b, fx, hy - gap / 2, fw, h, 0, 1, 0, big);
+    half(a, fx, hy + gap / 2, fw, h, 1, 1, 0.3 * Math.sin(th), big);
+    half(b, fx, hy + gap / 2, fw, h, 1, Math.cos(th), 0.25 * Math.sin(th), big, 1 + 0.12 * Math.sin(th));  // its back, carrying the new bottom
+  }
+  return 1;
+}
+
+const fmt = (n, w) => String(Math.floor(n)).padStart(w, '0');
+function seek(time) {
+  time = ((time % DUR) + DUR) % DUR;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#0b0b0c'; ctx.fillRect(0, 0, W, H);
+  const cam = camera(time);
+  ctx.translate(W / 2, H / 2); ctx.rotate(cam.rot); ctx.scale(cam.s, cam.s); ctx.translate(-cam.fx, -cam.fy);
+
+  // housing + slots
+  ctx.fillStyle = '#111113'; ctx.fillRect(BX - 14, BY - 14, COLS * CELL + 28, ROWS * CELL + 28);
+  ctx.fillStyle = SLOT; ctx.fillRect(BX, BY, COLS * CELL, ROWS * CELL);
+
+  // visible range (bounding box of the rotated screen in board space)
+  const inv = 1 / cam.s, cs = Math.cos(-cam.rot), sn = Math.sin(-cam.rot);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const [sx, sy] of [[-W / 2, -H / 2], [W / 2, -H / 2], [-W / 2, H / 2], [W / 2, H / 2]]) {
+    const bx = cam.fx + (sx * cs - sy * sn) * inv, by = cam.fy + (sx * sn + sy * cs) * inv;
+    x0 = Math.min(x0, bx); x1 = Math.max(x1, bx); y0 = Math.min(y0, by); y1 = Math.max(y1, by);
+  }
+  const c0 = Math.max(0, Math.floor((x0 - BX) / CELL) - 1), c1 = Math.min(COLS - 1, Math.floor((x1 - BX) / CELL) + 1);
+  const r0 = Math.max(0, Math.floor((y0 - BY) / CELL) - 1), r1 = Math.min(ROWS - 1, Math.floor((y1 - BY) / CELL) + 1);
+  const big = cam.s > 2.5;
+  ctx.font = `700 ${GLYPH_PX}px "Archivo Narrow"`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  let movingNow = 0;
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) movingNow += drawTile(T(c, r), time, big);
+
+  if (big) {   // hinge pins, visible only up close
+    ctx.fillStyle = '#3a3a3e';
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+      const x = BX + c * CELL, y = BY + r * CELL + CELL / 2;
+      ctx.fillRect(x + CELL * 0.012, y - CELL * 0.03, CELL * 0.03, CELL * 0.06);
+      ctx.fillRect(x + CELL * 0.958, y - CELL * 0.03, CELL * 0.03, CELL * 0.06);
+    }
+  }
+
+  // total flips so far, across the whole board (not just what's on screen)
+  let flips = 0;
+  for (const t of tiles) if (!t.hero) flips += Math.floor(pos(t, time).P + 1e-6) - t.d0;
+  // the hero: its free run before 2 s, then its own schedule
+  flips += time < 2 ? Math.floor(time * HRATE) : 2 * HRATE + Math.floor(pos(HERO, Math.min(time, HERO_FREE - 1e-6)).P + 1e-6) - HERO.d0 + Math.floor(Math.max(0, time - HERO_FREE) * HRATE);
+
+  // HUD
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 1.05);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.45)');
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+  ctx.font = '500 18px "Red Hat Mono"'; ctx.textBaseline = 'middle';
+  const hud = (s, x, y, al, col = '#9a9488') => { ctx.textAlign = al; ctx.fillStyle = col; ctx.fillText(s, x, y); };
+  hud('MIDDLE STUDIES REEL — 008', 40, 30, 'left', '#efe9dc');
+  hud('SPLIT FLAP  ·  46 × 24 FLAPS  ·  58 FACES EACH', W - 40, 30, 'right');
+  hud(`FLIPS ${fmt(flips, 6)}   IN MOTION ${fmt(countMoving(time), 4)}`, 40, H - 30, 'left');
+  hud('Claude', W - 40, H - 30, 'right', '#efe9dc');
+}
+function countMoving(time) { let n = 0; for (const t of tiles) if (pos(t, time).moving) n++; return n; }
+
+window.__duration = DUR;
+window.__poster = 8.9;
+window.__seek = seek;
+window.__debug = { tiles, pos, N };
+if (!location.search.includes('render')) {
+  const t0 = performance.now();
+  const loop = () => { seek(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(loop); };
+  loop();
+} else seek(0);
+})();
+</script>
+</body>
+</html>
