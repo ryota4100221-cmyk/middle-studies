@@ -294,5 +294,40 @@
     },
     "review_rounds": 3,
     "review": "1周目：0秒目が白い色フラップで弱い→主役フラップを文字面から回す。SPLIT の L の中に主役フラップの数字が残って欠けに見える→2.05秒で語に合流させる。出発案内板が1.3秒しか読めない→回転速度36→40・遅延を詰めて開始を6.85秒へ。FLIPS が負になる→主役分を別計算。2周目：案内板が9.5〜10.3秒ほぼ静止→008の行だけ BOARDING→NOW・旗を赤へ反転する1拍を足した。3周目：NOW の列が1つずれていた（36列目始まり）→修正、つなぎ・0秒目への戻り（L→M）を確認。許容した差：12.0秒、008の0の中で主役フラップが一瞬赤を通過する（A へ戻る途中の色面）。"
+  },
+  {
+    "id": "009",
+    "slug": "interference",
+    "title": "Interference",
+    "date": "2026-10-07",
+    "concept": "紙・墨・紫の2版刷りで、線の格子を2枚重ねるだけで絵を出す。描いたものは1つも無く、見えるものはすべて2枚のずれから出る。2組の同心円が干渉縞を広げ、円の中心が無限遠へ飛んで直線になり、片方を数度回すと太い縞が画面を流れる。文字の内側だけ線を半周期遅らせておき、2枚が揃った瞬間に TWO GRIDS・ONE SHIFT・MOIRÉ が浮かぶ（見せ場は6.2秒、回転縞が止まって文字が出るところ）。最後は遮蔽板を不透明な縞に変え、5コマを6px幅に織り込んだ花をスキャニメーションで回し、また同心円へ戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/009_interference.mp4",
+    "techniques": [
+      "moire-interference",
+      "line-grating-shader",
+      "ring-to-line-curvature-morph",
+      "rotational-fringe-magnification",
+      "phase-shift-hidden-type",
+      "scanimation-barrier-grid",
+      "two-plate-overprint",
+      "analytic-antialiasing-fwidth",
+      "live-fringe-readout",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#ecebe4",
+        "#141418",
+        "#5b2bff"
+      ],
+      "type": [
+        "Unbounded",
+        "Azeret Mono"
+      ],
+      "structure": "two gratings / 5 relations (rings → rotation → offset type → scanimation → rings), nothing drawn",
+      "renderer": "webgl"
+    },
+    "review_rounds": 3,
+    "review": "1周目：スキャニメーションの遮蔽板が乗算で下の縞を透かし、花が黒地に紫の細線になって読めない→その場面だけ遮蔽板を不透明にし、花を紙色・地を紫に反転。渦の戻りのワイプの縁が140pxでぼやけた光輪になる→40pxに締めた。2周目：スキャニメーションの3秒間、花が中央に同じ大きさで据わり構図が止まって見える→0.8倍→1.2倍へ寄る動きを足した。3周目：寄りが効き、14.98秒と0秒目のつながりも確認。直すことが言えなくなったので止めた。許容した差：細かい縞は2パス4Mbpsの圧縮で等倍だとわずかに滲む／12.9秒の戻りは暗い円が絞りのように閉じる見え方で、意図より重いが、つなぎとしては成立しているので残した。"
   }
 ]

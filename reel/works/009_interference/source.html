@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 009 Interference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@900&family=Azeret+Mono:wght@500;700&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #ecebe4; overflow: hidden; }
+  #stage { position: relative; width: 1920px; height: 1080px; }
+  canvas { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+  .chip { position: absolute; font: 500 18px/1 'Azeret Mono', monospace; letter-spacing: .04em;
+          color: #141418; background: #ecebe4; padding: 9px 12px 8px; white-space: pre; }
+  .chip b { font-weight: 700; }
+  #tl { left: 40px; top: 36px; }
+  #tr { right: 40px; top: 36px; }
+  #bl { left: 40px; bottom: 36px; }
+  #bl2 { left: 40px; bottom: 82px; font-size: 30px; padding: 10px 14px 9px; font-weight: 700; }
+  #br { right: 40px; bottom: 36px; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="gl" width="1920" height="1080"></canvas>
+  <div class="chip" id="tl"><b>MIDDLE STUDIES REEL — 009</b></div>
+  <div class="chip" id="tr">INTERFERENCE · TWO GRIDS, NOTHING ELSE</div>
+  <div class="chip" id="bl2">01 RINGS</div>
+  <div class="chip" id="bl">—</div>
+  <div class="chip" id="br">Claude</div>
+</div>
+<script>
+const W = 1920, H = 1080, TAU = Math.PI * 2;
+window.__duration = 15;
+window.__poster = 6.5;
+
+// ---------- helpers ----------
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ss = (a, b, t) => { const x = clamp((t - a) / (b - a)); return x * x * (3 - 2 * x); };
+const ease = (a, b, t) => { const x = clamp((t - a) / (b - a)); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const lerp = (a, b, k) => a + (b - a) * k;
+function catmull(keys, t) {           // keys: [[t, v], ...]  (Catmull-Rom, clamped ends)
+  if (t <= keys[0][0]) return keys[0][1];
+  const n = keys.length;
+  if (t >= keys[n - 1][0]) return keys[n - 1][1];
+  let i = 0; while (keys[i + 1][0] < t) i++;
+  const [t1, v1] = keys[i], [t2, v2] = keys[i + 1];
+  const v0 = i > 0 ? keys[i - 1][1] : v1, v3 = i + 2 < n ? keys[i + 2][1] : v2;
+  const t0 = i > 0 ? keys[i - 1][0] : t1 - 1, t3 = i + 2 < n ? keys[i + 2][0] : t2 + 1;
+  const m1 = (v2 - v0) / (t2 - t0) * (t2 - t1), m2 = (v3 - v1) / (t3 - t1) * (t2 - t1);
+  const x = (t - t1) / (t2 - t1), x2 = x * x, x3 = x2 * x;
+  return (2 * x3 - 3 * x2 + 1) * v1 + (x3 - 2 * x2 + x) * m1 + (-2 * x3 + 3 * x2) * v2 + (x3 - x2) * m2;
+}
+const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
+const PAPER = hex('#ecebe4'), INK = hex('#141418'), VIOLET = hex('#5b2bff');
+const filt = c => c.map((v, i) => v / PAPER[i]);      // multiply filter that turns paper into ink
+
+// ---------- timeline (all pure functions of t) ----------
+const P = 16;                 // grating period in px
+const N = 5, WS = 6;          // scanimation: 5 frames in 6px strips → barrier period 30px
+const BETA0 = -0.6;
+
+const phA = t => -1.6 * t + 0.25 * Math.sin(TAU * t / 15);          // integer drift over 15 s
+const dphA = t => -1.6 + 0.25 * (TAU / 15) * Math.cos(TAU * t / 15);
+// word stairs: 0 (TWO GRIDS) → .5 (ONE SHIFT, inverted) → 1 (MOIRÉ)
+const St = t => 0.5 * ease(6.95, 7.35, t) + 0.5 * ease(7.95, 8.35, t);
+// scanimation frame rate (frames / s)
+const vAnim = t => catmull([[9.3, 0], [10.0, 9], [10.7, 14], [11.35, 34], [11.9, 8], [12.4, 5], [15, 5]], t);
+// J(t) = ∫_9^t ( phA'·g − v/N ) : barrier stops drifting with A and starts sliding by itself
+const DT = 1 / 1200, J = new Float64Array(Math.ceil(6 / DT) + 2);
+for (let i = 1; i < J.length; i++) {
+  const t = 9 + (i - 0.5) * DT;
+  J[i] = J[i - 1] + (dphA(t) * ss(9.0, 9.6, t) - vAnim(t) / N) * DT;
+}
+const Jt = t => { if (t <= 9) return 0; const x = (t - 9) / DT, i = Math.min(J.length - 2, Math.floor(x)); return lerp(J[i], J[i + 1], x - i); };
+const ringB = t => phA(t) + 0.5;
+const lineRaw = t => -phA(t) + St(t) + Jt(t);
+const K1 = Math.round(ringB(3.15) - lineRaw(3.15)), K5 = Math.round(ringB(13.6) - lineRaw(13.6));
+
+function params(t) {
+  const e1 = ease(2.55, 3.75, t);                 // rings → lines
+  const e5 = ease(12.7, 14.7, t);                 // lines → rings
+  const beta = t < 7.5 ? lerp(BETA0, 0, ease(0, 3.75, t)) : lerp(0, BETA0, ease(12.7, 15, t));
+  const d = t < 7.5 ? lerp(70, 270, ease(0, 3.0, t)) : lerp(330, 70, ease(12.7, 15, t));
+  const kap = t < 7.5 ? (1 - e1) / d : e5 / d;
+  const alpha = catmull([[3.5, 0], [4.35, 0.17], [5.0, -0.075], [5.6, 0.028], [6.15, 0], [15, 0]], t);
+  const m = t < 7.5 ? e1 : 1 - e5;                 // B phase: ring-coupled → line-coupled
+  const line = lineRaw(t) + (t < 11 ? K1 : K5);
+  const phB = lerp(ringB(t), line, m);
+  const mask = ss(4.75, 5.85, t) * (1 - ss(9.0, 9.6, t));
+  const sel = St(t) < 0.25 ? [1, 0, 0] : St(t) < 0.75 ? [0, 1, 0] : [0, 0, 1];
+  const il = ease(9.05, 9.85, t) * (1 - ease(12.35, 13.4, t));
+  const sw = ease(9.05, 9.7, t) * (1 - ease(12.3, 13.2, t));       // barrier shape: 16px/50% → 30px/80%
+  const col = ease(9.1, 9.7, t) * (1 - ease(12.3, 13.0, t));        // colour swap for the dark scene
+  return { beta, d, kap, alpha, phA: phA(t), phB, mask, sel, il, sw, col, m };
+}
+
+// ---------- GL ----------
+const cv = document.getElementById('gl');
+const gl = cv.getContext('webgl2', { preserveDrawingBuffer: true, antialias: false });
+const vs = `#version 300 es
+in vec2 a; void main(){ gl_Position = vec4(a, 0., 1.); }`;
+const fs = `#version 300 es
+precision highp float;
+uniform vec2 uRes, uO;
+uniform vec4 uA, uB;          // angle, curvature, period, phase
+uniform vec2 uDuty;
+uniform float uMask, uIl, uWs, uN, uOpq, uSc;
+uniform vec3 uWord, uFa, uFb, uPaper;
+uniform sampler2D uTex;
+out vec4 frag;
+const float TAU = 6.28318531;
+// signed distance to a circle of radius 1/k through uO whose centre lies along n (stable for k → 0: straight line)
+float sdist(vec2 p, float ang, float k){
+  vec2 n = vec2(cos(ang), sin(ang)); vec2 q = p - uO;
+  float x = dot(q, n), y = dot(q, vec2(-n.y, n.x));
+  float kx = 1. - k * x, ky = k * y;
+  return (-2. * x + k * (x * x + y * y)) / (1. + sqrt(kx * kx + ky * ky));
+}
+float cov(float u, float w, float duty){
+  float d = abs(fract(u + .5) - .5);
+  float c = clamp((duty * .5 - d) / max(w, 1e-4) + .5, 0., 1.);
+  return mix(c, duty, smoothstep(.3, .6, w));
+}
+float shape(vec2 p, float k){
+  float f = k / uN; vec2 q = (p - uRes * .5) / uSc; float r = length(q); float a = atan(q.y, q.x);
+  float rot = f * TAU / 5.;
+  float R = 330. * (1. + .2 * cos(5. * (a - rot))) * (1. + .08 * cos(TAU * f));
+  float inner = 105. * (1. + .4 * sin(TAU * f));
+  float orb = length(q - 455. * vec2(cos(-TAU * f + 1.2), sin(-TAU * f + 1.2))) - 42.;
+  float d = min(max(r - R, inner - r), orb);
+  return clamp(.5 - d, 0., 1.);
+}
+void main(){
+  vec2 p = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
+  float sA = sdist(p, uA.x, uA.y);
+  float u = sA / uA.z + uA.w; float w = fwidth(u);
+  float mk = dot(texture(uTex, p / uRes).rgb, uWord);
+  float cA = cov(u + .5 * uMask * mk, w, uDuty.x);
+  if (uIl > 0.){
+    float k = mod(floor(sA / uWs), uN);
+    float lw = clamp((uIl * 1250. - length(p - uRes * .5)) / 40., 0., 1.);
+    cA = mix(cA, 1. - shape(p, k), lw);   // ink everywhere except the figure: the figure shows as paper
+  }
+  float sB = sdist(p, uB.x, uB.y);
+  float ub = sB / uB.z + uB.w;
+  float cB = cov(ub, fwidth(ub), uDuty.y);
+  vec3 c = uPaper * mix(vec3(1.), uFa, cA) * mix(vec3(1.), uFb, cB);
+  c = mix(c, uPaper * uFb, cB * uOpq);   // the barrier becomes an opaque sheet in the scanimation
+  frag = vec4(c, 1.);
+}`;
+function sh(type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs));
+gl.linkProgram(prog); if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+const aLoc = gl.getAttribLocation(prog, 'a'); gl.enableVertexAttribArray(aLoc); gl.vertexAttribPointer(aLoc, 2, gl.FLOAT, false, 0, 0);
+const U = {}; for (const n of ['uRes', 'uO', 'uA', 'uB', 'uDuty', 'uMask', 'uIl', 'uWs', 'uN', 'uWord', 'uOpq', 'uSc', 'uFa', 'uFb', 'uPaper', 'uTex']) U[n] = gl.getUniformLocation(prog, n);
+
+// three hidden words, one per colour channel
+function buildMask() {
+  const words = ['TWO GRIDS', 'ONE SHIFT', 'MOIRÉ'];
+  const out = new Uint8Array(W * H * 4);
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  words.forEach((wd, ch) => {
+    x.fillStyle = '#000'; x.fillRect(0, 0, W, H);
+    let size = 400; x.font = `900 ${size}px Unbounded`;
+    const mw = x.measureText(wd).width; size = Math.min(size, size * 1640 / mw);
+    x.font = `900 ${size}px Unbounded`;
+    x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'alphabetic';
+    const m = x.measureText(wd);
+    const asc = m.actualBoundingBoxAscent, desc = m.actualBoundingBoxDescent;
+    x.fillText(wd, W / 2, H / 2 + (asc - desc) / 2);
+    const d = x.getImageData(0, 0, W, H).data;
+    for (let i = 0; i < W * H; i++) out[i * 4 + ch] = d[i * 4];
+  });
+  for (let i = 0; i < W * H; i++) out[i * 4 + 3] = 255;
+  const tex = gl.createTexture(); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, out);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+}
+
+// ---------- HUD ----------
+const $ = id => document.getElementById(id);
+const deg = r => (r * 180 / Math.PI);
+function hud(t, q) {
+  let title, line;
+  if (t < 3.3 || t >= 13.6) {
+    title = t < 3.3 ? '01 RINGS' : '05 RINGS AGAIN';
+    line = `two sets of circles · centres ${(2 * q.d).toFixed(0).padStart(3, ' ')} px apart`;
+  } else if (t < 6.2) {
+    const a = Math.abs(q.alpha), f = a > 1e-4 ? P / (2 * Math.sin(a / 2)) : Infinity;
+    title = '02 ROTATION';
+    line = `Δθ ${deg(q.alpha) >= 0 ? '+' : '−'}${Math.abs(deg(q.alpha)).toFixed(2)}° · fringe ${isFinite(f) && f < 9999 ? f.toFixed(0).padStart(4, ' ') + ' px' : '   ∞'}`;
+  } else if (t < 9.3) {
+    title = '03 OFFSET';
+    line = 'inside the letters the lines sit half a period late';
+  } else {
+    title = '04 SCANIMATION';
+    line = `${N} frames in ${WS} px strips · barrier at ${vAnim(t).toFixed(0).padStart(2, ' ')} fps`;
+  }
+  $('bl2').textContent = title; $('bl').textContent = line;
+}
+
+// ---------- draw ----------
+function draw(t) {
+  t = ((t % 15) + 15) % 15;
+  const q = params(t);
+  gl.viewport(0, 0, W, H);
+  gl.uniform2f(U.uRes, W, H); gl.uniform2f(U.uO, W / 2, H / 2);
+  // A: centre on −x side (angle β+π points from anchor to centre); B: +x side, plus rotation α
+  gl.uniform4f(U.uA, q.beta + Math.PI, q.kap, P, q.phA);
+  gl.uniform4f(U.uB, q.beta + q.alpha, q.kap, lerp(P, N * WS, q.sw), q.phB);
+  gl.uniform2f(U.uDuty, 0.5, lerp(0.5, (N - 1) / N, q.sw));
+  gl.uniform1f(U.uMask, q.mask); gl.uniform3f(U.uWord, ...q.sel);
+  gl.uniform1f(U.uIl, q.il); gl.uniform1f(U.uOpq, q.col); gl.uniform1f(U.uSc, lerp(0.8, 1.2, ease(9.4, 12.6, t))); gl.uniform1f(U.uWs, WS); gl.uniform1f(U.uN, N);
+  const fa = filt(INK).map((v, i) => lerp(v, filt(VIOLET)[i], q.col));
+  const fb = filt(VIOLET).map((v, i) => lerp(v, filt(INK)[i], q.col));
+  gl.uniform3f(U.uFa, ...fa); gl.uniform3f(U.uFb, ...fb); gl.uniform3f(U.uPaper, ...PAPER);
+  gl.uniform1i(U.uTex, 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  hud(t, q);
+}
+
+const ready = (async () => {
+  await document.fonts.load('900 200px Unbounded'); await document.fonts.load('500 18px "Azeret Mono"');
+  await document.fonts.ready; buildMask();
+})();
+window.__seek = async t => { await ready; draw(t); };
+if (!location.search.includes('render')) {
+  ready.then(() => { const t0 = performance.now(); const loop = now => { draw((now - t0) / 1000); requestAnimationFrame(loop); }; requestAnimationFrame(loop); });
+}
+</script>
+</body>
+</html>
