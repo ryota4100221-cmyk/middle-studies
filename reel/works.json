@@ -329,5 +329,41 @@
     },
     "review_rounds": 3,
     "review": "1周目：スキャニメーションの遮蔽板が乗算で下の縞を透かし、花が黒地に紫の細線になって読めない→その場面だけ遮蔽板を不透明にし、花を紙色・地を紫に反転。渦の戻りのワイプの縁が140pxでぼやけた光輪になる→40pxに締めた。2周目：スキャニメーションの3秒間、花が中央に同じ大きさで据わり構図が止まって見える→0.8倍→1.2倍へ寄る動きを足した。3周目：寄りが効き、14.98秒と0秒目のつながりも確認。直すことが言えなくなったので止めた。許容した差：細かい縞は2パス4Mbpsの圧縮で等倍だとわずかに滲む／12.9秒の戻りは暗い円が絞りのように閉じる見え方で、意図より重いが、つなぎとしては成立しているので残した。"
+  },
+  {
+    "id": "010",
+    "slug": "variable",
+    "title": "Variable",
+    "date": "2026-10-08",
+    "concept": "出てくる語は VARIABLE の1語だけで、動きはすべて可変フォント（Roboto Flex）の wdth・wght 軸と文字の並べ方から出す。0秒目の極細の1行が7行に破裂し、各行は高さが変わるたびに wdth を解き直して画面幅を埋め続ける。行が1本の線に閉じると、重さの場が泳ぐ360字の格子が開き、その格子が円筒に巻かれて回転し、錠前のように止まった瞬間に正面へ縦の V·A·R·I·A·B·L·E がそろう（見せ場は9.25秒）。縦の8字はばねで横一列の題字に組み替わり、太さ・幅の叩きで隣を押しのけながら組み直され、加速しながら画面いっぱいの行へ伸びて0秒目の破裂へ戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/010_variable.mp4",
+    "techniques": [
+      "variable-font-axes",
+      "width-axis-fit-to-measure",
+      "accordion-row-layout",
+      "weight-field-typography",
+      "grid-to-cylinder-curl",
+      "css-3d-transforms",
+      "combination-lock-alignment",
+      "spring-physics-on-font-axes",
+      "live-axis-readout",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#ff6a00",
+        "#111111",
+        "#f2eee6",
+        "#c9b6ff"
+      ],
+      "type": [
+        "Roboto Flex",
+        "Fragment Mono"
+      ],
+      "structure": "one word / 4 states (fill rows → weight field → rolled cylinder that locks → sprung title) → back to one row",
+      "renderer": "dom"
+    },
+    "review_rounds": 4,
+    "review": "1周目：錠前直前（9.0秒）に全字が細く薄くなって画面が抜ける→場を錠前の直前まで残し正面列の強調を早めた。9.6秒のクリームの円が「I」の上の点に見えてバグのよう→錠前の列から左右に開く縦帯に変更。04が静か→太さの叩きに跳ねを足した。2周目：題字の読み値の重なり（初回の試写で数字のみ＋凡例に直し済み）・HUDの埋もれ（地色の札で解消）を等倍で確認、問題なし。3周目：14.8〜0.1秒が減速で止まりかける（入りのイージングの終速0）→x²系の加速で満ちて0秒目の破裂へそのまま入るように。4周目：継ぎ目が一続きの動きになったのを確認、直すことが無くなった。許容した差：01の細い行は wdth 151 でも幅が足りず scaleX で横に伸ばしている（行の帯として読めるので残した）。"
   }
 ]

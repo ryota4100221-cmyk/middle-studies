@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MIDDLE STUDIES REEL — 010 Variable</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fragment+Mono&family=Roboto+Flex:opsz,wdth,wght@8..144,25..151,100..1000&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #111; overflow: hidden; }
+  #stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; background: #111111; transform-origin: 0 0; }
+  .L { position: absolute; left: 0; top: 0; display: block; font-family: 'Roboto Flex', sans-serif; line-height: 1; white-space: pre;
+       font-kerning: none; font-optical-sizing: none; font-synthesis: none; transform-origin: 0 0; }
+  .bg { position: absolute; left: 0; top: 0; }
+  #circL { border-radius: 50%; }
+  #g3 { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; perspective: 1600px; perspective-origin: 960px 540px; }
+  #grp { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-style: preserve-3d; transform-origin: 960px 540px; }
+  #grp .L { backface-visibility: visible; }
+  .hud { position: absolute; font: 20px/1 'Fragment Mono', monospace; letter-spacing: .02em; white-space: pre; padding: 6px 9px; }
+  .ro { position: absolute; left: 0; top: 0; font: 18px/1.25 'Fragment Mono', monospace; white-space: pre; text-align: center; transform-origin: 0 0; }
+  #meas { position: absolute; left: -9999px; top: 0; visibility: hidden; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="bg" id="circL"></div>
+  <div class="bg" id="circC"></div>
+  <div class="bg" id="rectO"></div>
+  <div id="g3"><div id="grp"></div></div>
+  <div id="rows"></div>
+  <div id="title"></div>
+  <div id="ros"></div>
+  <div class="hud" id="hTL" style="left:31px;top:30px">MIDDLE STUDIES REEL — 010</div>
+  <div class="hud" id="hTR" style="right:31px;top:30px;text-align:right"></div>
+  <div class="hud" id="hBL" style="left:31px;bottom:30px"></div>
+  <div class="hud" id="hBR" style="right:31px;bottom:30px">Claude</div>
+  <div id="meas"></div>
+</div>
+<script>
+(async () => {
+const W = 1920, H = 1080, WORD = 'VARIABLE', PAT = 'VARIABLE·';
+const COL = { or: [255, 106, 0], ink: [17, 17, 17], cream: [242, 238, 230], lil: [201, 182, 255] };
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const prog = (a, b, x) => clamp((x - a) / (b - a));
+const ss = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+const eio = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const eout = t => 1 - Math.pow(1 - t, 3);
+const ein = t => t * t * t;
+const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+const rgb = c => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
+// 減衰ばね（0→1、行き過ぎて戻る）。t<=0 は 0
+function spring(t, f, z) {
+  if (t <= 0) return 0;
+  const w = 2 * Math.PI * f, wd = w * Math.sqrt(1 - z * z);
+  return 1 - Math.exp(-z * w * t) * (Math.cos(wd * t) + z * w / wd * Math.sin(wd * t));
+}
+// 叩き：0.05秒で1に立ち上がり、ばねで0へ揺れ戻る
+const kick = (t, f = 2.4, z = 0.28) => t <= 0 ? 0 : ss(0, 0.05, t) * (1 - spring(t - 0.05, f, z));
+
+const stage = document.getElementById('stage');
+const $ = id => document.getElementById(id);
+
+await Promise.all([
+  document.fonts.load("400 100px 'Roboto Flex'"),
+  document.fonts.load("20px 'Fragment Mono'"),
+]);
+await document.fonts.ready;
+
+// ---------- 実測（字幅表・キャップハイト・ベースライン） ----------
+const FVS = (wd, wg) => `"wdth" ${wd.toFixed(2)}, "wght" ${wg.toFixed(1)}, "opsz" 144`;
+const meas = $('meas');
+const ms = document.createElement('span');
+ms.className = 'L'; ms.style.position = 'static'; ms.style.display = 'inline-block'; ms.style.fontSize = '100px';
+meas.appendChild(ms);
+const WDS = [], WGS = [];
+for (let w = 25; w <= 151.001; w += 6) WDS.push(w);
+for (let g = 100; g <= 1000.001; g += 100) WGS.push(g);
+const TAB = {};
+for (const ch of new Set(PAT + WORD)) {
+  ms.textContent = ch;
+  TAB[ch] = WDS.map(wd => WGS.map(wg => { ms.style.fontVariationSettings = FVS(wd, wg); return ms.getBoundingClientRect().width / 100; }));
+}
+function adv(ch, wd, wg) {             // 1em あたりの送り幅（双線形補間）
+  const x = clamp((wd - 25) / 6, 0, WDS.length - 1.0001), y = clamp((wg - 100) / 100, 0, WGS.length - 1.0001);
+  const i = Math.floor(x), j = Math.floor(y), fx = x - i, fy = y - j, T = TAB[ch];
+  return lerp(lerp(T[i][j], T[i + 1][j], fx), lerp(T[i][j + 1], T[i + 1][j + 1], fx), fy);
+}
+const wordAdv = (wd, wg) => { let s = 0; for (const c of WORD) s += adv(c, wd, wg); return s; };
+function fitWdth(fs, wg, target) {      // 幅 target を wdth 軸で埋める
+  let a = 25, b = 151;
+  if (wordAdv(b, wg) * fs <= target) return b;
+  if (wordAdv(a, wg) * fs >= target) return a;
+  for (let k = 0; k < 24; k++) { const m = (a + b) / 2; if (wordAdv(m, wg) * fs < target) a = m; else b = m; }
+  return (a + b) / 2;
+}
+const cv = document.createElement('canvas').getContext('2d');
+cv.font = "400 100px 'Roboto Flex'";
+const CAP = cv.measureText('H').actualBoundingBoxAscent / 100;
+meas.innerHTML = '<div style="font:100px/1 \'Roboto Flex\'">H<span style="display:inline-block;width:1px;height:0"></span></div>';
+const BR = meas.querySelector('span').offsetTop / 100;    // 行高1の箱の上端→ベースライン
+meas.innerHTML = '';
+
+// ---------- 書き込みキャッシュ ----------
+function S(el, k, v) { const c = el._c || (el._c = {}); if (c[k] !== v) { c[k] = v; el.style[k] = v; } }
+function mkSpan(parent, txt) { const s = document.createElement('span'); s.className = 'L'; s.textContent = txt; parent.appendChild(s); return s; }
+
+// 1語を左から並べて描く（全レイヤー共通）
+function drawWord(spans, P) {
+  // P: {fs, wd[], wg[], left, base, sx, color, op, dy[]}
+  let x = P.left;
+  for (let i = 0; i < spans.length; i++) {
+    const sp = spans[i], fs = P.fs;
+    if (P.op <= 0.001 || fs < 0.5) { S(sp, 'opacity', '0'); continue; }
+    S(sp, 'opacity', P.op.toFixed(3));
+    S(sp, 'fontSize', fs.toFixed(2) + 'px');
+    S(sp, 'fontVariationSettings', FVS(P.wd[i], P.wg[i]));
+    S(sp, 'color', P.color);
+    const dy = P.dy ? P.dy[i] : 0;
+    S(sp, 'transform', `translate(${x.toFixed(2)}px,${(P.base - BR * fs + dy).toFixed(2)}px) scale(${P.sx.toFixed(4)},1)`);
+    x += adv(WORD[i], P.wd[i], P.wg[i]) * fs * P.sx;
+  }
+  return x;
+}
+const wordWidth = P => { let s = 0; for (let i = 0; i < 8; i++) s += adv(WORD[i], P.wd[i], P.wg[i]) * P.fs * P.sx; return s; };
+
+// ---------- 背景 ----------
+const rectO = $('rectO'), circL = $('circL'), circC = $('circC');
+S(rectO, 'background', rgb(COL.or)); S(circL, 'background', rgb(COL.lil)); S(circC, 'background', rgb(COL.cream));
+
+// ---------- 01 WIDTH：幅を埋める行 ----------
+const NR = 7, DOMR = 3, M = 40, TW = W - 2 * M;
+const rowSpans = [];
+for (let r = 0; r < NR; r++) rowSpans.push([...WORD].map(c => mkSpan($('rows'), c)));
+function rowState(t) {
+  const u = eout(prog(0, 0.95, t));
+  const wv = []; let sw = 0;
+  for (let i = 0; i < NR; i++) { const v = 0.32 + Math.pow(0.5 + 0.5 * Math.sin(t * 2.3 - i * 0.82 + 1.2), 2.4); wv.push(v); sw += v; }
+  const c = ein(prog(2.7, 3.3, t));
+  const stackH = H * (1 - c), top0 = (H - stackH) / 2;
+  const rows = []; let y = top0;
+  for (let i = 0; i < NR; i++) {
+    const wgt = (1 - u) * (i === DOMR ? 1 : 0) + u * wv[i] / sw;
+    const h = wgt * stackH;
+    rows.push(rowParams(y, h)); y += h;
+  }
+  return { rows, top0, stackH };
+}
+function rowParams(y, h) {
+  const cap = h * 0.86, fs = cap / CAP, base = y + h * 0.93;
+  const wg = lerp(880, 180, ss(0.08, 0.6, h / H));
+  const wd = fitWdth(fs, wg, TW);
+  const sx = fs > 0.5 ? TW / (wordAdv(wd, wg) * fs) : 1;
+  return { fs, base, h, wd: Array(8).fill(wd), wg: Array(8).fill(wg), left: M, sx, color: rgb(COL.ink), op: h > 1.2 ? 1 : 0 };
+}
+const ROW0 = rowParams(0, H);   // t=0 の主役の行（＝15秒目の着地点）
+
+// ---------- 02 WEIGHT / 03 TURN：文字の格子 → 円筒 ----------
+const NG = 8, RH = H / NG, NC = 45, CELL = 78, WG = NC * CELL, RAD = WG / (2 * Math.PI);
+const FSG = (RH * 0.62) / CAP;
+const grid = [];
+for (let r = 0; r < NG; r++) {
+  const off = (r * 5) % 9;
+  for (let c = 0; c < NC; c++) {
+    const pi = (c + off) % 9;
+    const sp = mkSpan($('grp'), PAT[pi]);
+    S(sp, 'fontSize', FSG.toFixed(2) + 'px');
+    grid.push({ sp, r, c, ch: PAT[pi], lockClass: pi === r, u0: (c + 0.5) * CELL - WG / 2 });
+  }
+}
+// 横送り：速度を数値積分（決定論）→ 9.25秒で各行が錠前のように止まる
+const DT = 1 / 1200, T1 = 8.45, T2 = 9.25;
+const vel = t => 70 + 1130 * ss(6.5, 8.0, t);
+const SFREE = [0]; for (let k = 1; k <= Math.ceil(16 / DT); k++) { const t = k * DT; SFREE.push(SFREE[k - 1] + vel(t - DT / 2) * DT); }
+const sfree = t => { const x = clamp(t, 0, 16) / DT, i = Math.min(SFREE.length - 2, Math.floor(x)); return lerp(SFREE[i], SFREE[i + 1], x - i); };
+const LOCK = [];
+const PER = 9 * CELL; // 同じ文字の列の間隔
+for (let r = 0; r < NG; r++) {
+  const dir = r % 2 ? -1 : 1, off = (r * 5) % 9;
+  const cs = ((r - off) % 9 + 9) % 9;
+  const u0 = (cs + 0.5) * CELL - WG / 2;
+  const s1 = dir * sfree(T1), v1 = dir * vel(T1), want = s1 + v1 * (T2 - T1) * 0.5;
+  // s ≡ -u0 (mod PER) のうち want に一番近い値
+  const k = Math.round((want + u0) / PER);
+  LOCK.push({ dir, s1, v1, st: k * PER - u0 });
+}
+function scroll(r, t) {
+  const L = LOCK[r];
+  if (t <= T1) return L.dir * sfree(t);
+  if (t >= T2) return L.st;
+  const T = T2 - T1, p = (t - T1) / T, p2 = p * p, p3 = p2 * p;
+  return (2 * p3 - 3 * p2 + 1) * L.s1 + (p3 - 2 * p2 + p) * L.v1 * T + (-2 * p3 + 3 * p2) * L.st;
+}
+const blobs = t => [
+  [960 + 760 * Math.sin(1.05 * t + 0.4), 540 + 330 * Math.sin(1.62 * t + 1.0)],
+  [960 + 640 * Math.sin(0.83 * t + 2.6), 540 + 360 * Math.sin(1.31 * t + 4.1)],
+  [960 + 520 * Math.sin(1.37 * t + 4.9), 540 + 300 * Math.sin(0.97 * t + 2.2)],
+];
+function field(x, y, t, B) {
+  let f = 0;
+  for (const [bx, by] of B) { const dx = x - bx, dy = y - by; f += Math.exp(-(dx * dx + dy * dy) / (250 * 250)); }
+  const d = Math.hypot(x - 960, y - 540), rr = 1150 * (t - 4.5);
+  if (t > 4.5) f += 1.1 * Math.exp(-Math.pow((d - rr) / 95, 2)) * Math.exp(-(t - 4.5) * 0.9);
+  return clamp(f);
+}
+
+// ---------- 04 SPRING：題字 ----------
+const tSpans = [...WORD].map(c => mkSpan($('title'), c));
+const roEls = [...WORD].map(() => { const d = document.createElement('div'); d.className = 'ro'; $('ros').appendChild(d); return d; });
+const FSD = 250, BASED = 640;
+const roLeg = document.createElement('div'); roLeg.className = 'ro'; roLeg.style.textAlign = 'right'; roLeg.style.width = '64px'; roLeg.style.color = 'rgba(17,17,17,.45)'; roLeg.textContent = 'wght\nwdth'; $('ros').appendChild(roLeg);
+const baseG = r => (r + 0.5) * RH + CAP * FSG / 2;
+
+function titleAxes(t) {
+  const wd = [], wg = [];
+  for (let i = 0; i < 8; i++) {
+    const settle = spring(t - (10.05 + 0.05 * i), 1.5, 0.42);
+    let g = lerp(900, 380, settle) + 620 * kick(t - (11.35 + 0.075 * i));
+    let d = 100 - 75 * kick(t - (12.25 + 0.07 * (7 - i)), 2.0, 0.3) + 51 * kick(t - (12.85 + 0.06 * i), 2.6, 0.3);
+    wg.push(clamp(g, 100, 1000)); wd.push(clamp(d, 25, 151));
+  }
+  return { wd, wg };
+}
+
+// ---------- HUD ----------
+const hud = { TL: $('hTL'), TR: $('hTR'), BL: $('hBL'), BR: $('hBR') };
+
+// 背景がその点で明るいか（文字色を決める）
+function bgState(t) {
+  const st = { rect: null, rl: 0, rc: 0 };
+  if (t < 3.32) { const R = rowState(t); st.rect = [0, R.top0, W, R.stackH]; }
+  if (t >= 13.4) {
+    const P = d2aParams(t), hh = CAP * P.fs / 0.86, wx = ss(13.4, 13.8, t);
+    st.rect = [W / 2 * (1 - wx), P.base - 0.93 * hh, W * wx, hh];
+  }
+  if (t >= 6.9 && t < 13.4) st.rl = 2300 * eio(prog(6.9, 7.6, t));
+  if (t >= 9.42) st.rc = 960 * eio(prog(9.42, 10.1, t));   // 錠前の列から左右に開く帯
+  return st;
+}
+function lightAt(st, x, y) {
+  if (st.rect) { const [rx, ry, rw, rh] = st.rect; if (x >= rx && x <= rx + rw && y >= ry && y <= ry + rh) return true; }
+  const d = Math.hypot(x - 960, y - 540);
+  return d < st.rl || Math.abs(x - 960) < st.rc;
+}
+
+function bgColorAt(st, x, y) {
+  if (st.rect) { const [rx, ry, rw, rh] = st.rect; if (x >= rx && x <= rx + rw && y >= ry && y <= ry + rh) return rgb(COL.or); }
+  const d = Math.hypot(x - 960, y - 540);
+  if (Math.abs(x - 960) < st.rc) return rgb(COL.cream);
+  if (d < st.rl) return rgb(COL.lil);
+  return rgb(COL.ink);
+}
+function d2aParams(t) {   // 13.55→15：題字が t=0 の主役の行へ伸びる
+  const x = prog(13.55, 15, t), p = x * x * (1.6 - 0.6 * x);   // 加速しながら満ちて、0秒目の破裂へそのまま入る
+  const A = titleAxes(t);
+  const fs = Math.exp(lerp(Math.log(FSD), Math.log(ROW0.fs), p));
+  const wd = A.wd.map((v, i) => lerp(v, ROW0.wd[i], p)), wg = A.wg.map((v, i) => lerp(v, ROW0.wg[i], p));
+  const sx = lerp(1, ROW0.sx, p);
+  const P = { fs, wd, wg, sx, base: lerp(BASED, ROW0.base, p), color: rgb(COL.ink), op: 1 };
+  P.left = (W - wordWidth(P)) / 2;
+  return P;
+}
+
+function seek(t) {
+  t = ((t % 15) + 15) % 15;
+  const st = bgState(t);
+  // 背景
+  if (st.rect) { S(rectO, 'display', 'block'); S(rectO, 'transform', `translate(${st.rect[0].toFixed(2)}px,${st.rect[1].toFixed(2)}px)`); S(rectO, 'width', st.rect[2].toFixed(2) + 'px'); S(rectO, 'height', Math.max(0, st.rect[3]).toFixed(2) + 'px'); }
+  else S(rectO, 'display', 'none');
+  if (st.rc > 0) { S(circC, 'display', 'block'); S(circC, 'width', (2 * st.rc).toFixed(1) + 'px'); S(circC, 'height', H + 'px'); S(circC, 'transform', `translate(${(960 - st.rc).toFixed(1)}px,0px)`); } else S(circC, 'display', 'none');
+  for (const [el, r] of [[circL, st.rl]]) {
+    if (r > 0) { S(el, 'display', 'block'); S(el, 'width', (2 * r).toFixed(1) + 'px'); S(el, 'height', (2 * r).toFixed(1) + 'px'); S(el, 'transform', `translate(${(960 - r).toFixed(1)}px,${(540 - r).toFixed(1)}px)`); }
+    else S(el, 'display', 'none');
+  }
+  // 01 行
+  let label = '', bl = '';
+  if (t < 3.32) {
+    const R = rowState(t);
+    let big = R.rows[0];
+    R.rows.forEach((P, i) => { drawWord(rowSpans[i], P); if (P.h > big.h) big = P; });
+    S($('rows'), 'display', 'block');
+    label = '01  WIDTH';
+    bl = `h ${big.h.toFixed(0).padStart(4)}px   wdth ${big.wd[0].toFixed(1).padStart(5)}   wght ${big.wg[0].toFixed(0).padStart(4)}   fill ${TW}px`;
+  } else S($('rows'), 'display', 'none');
+
+  // 02/03 格子・円筒
+  if (t >= 3.3 && t < 10.3) {
+    S($('g3'), 'display', 'block');
+    const o = t < 4.5 ? spring(t - 3.3, 1.25, 0.42) : 1;
+    const cu = eio(prog(6.55, 7.7, t));                 // 巻き
+    const r = cu > 1e-4 ? RAD / cu : 1e9;
+    const tilt = -11 * ss(6.9, 7.8, t) * (1 - ss(8.6, 9.25, t));
+    const sc = 1 - 0.1 * ss(6.9, 7.8, t) * (1 - ss(8.6, 9.25, t));
+    const ex = eio(prog(9.4, 10.2, t));                 // 抜け
+    const scE = sc * (1 + 1.6 * ex);
+    S($('grp'), 'transform', `rotateX(${tilt.toFixed(3)}deg) scale3d(${scE.toFixed(4)},${(scE * Math.max(0.001, o)).toFixed(4)},${scE.toFixed(4)})`);
+    const B = blobs(t), amp = 1 - ss(8.85, 9.3, t), hl = ss(8.7, 9.15, t);
+    const sweepX = lerp(-300, 2200, prog(5.3, 6.5, t));
+    let fmax = 0;
+    for (const g of grid) {
+      const s = scroll(g.r, t);
+      let u = g.u0 + s; u = ((u + WG / 2) % WG + WG) % WG - WG / 2;
+      const th = u / r, X = r * Math.sin(th), Z = r * (Math.cos(th) - 1);
+      const yb = baseG(g.r);
+      const xf = 960 + u, yc = (g.r + 0.5) * RH;
+      let f = field(xf, yc, t, B) * amp;
+      const sw = Math.exp(-Math.pow((xf - sweepX) / 140, 2)) * amp;
+      fmax = Math.max(fmax, f);
+      const front = g.lockClass && Math.abs(u) < CELL * 0.6;
+      let wg = 100 + 900 * f, wd = lerp(35, 125, f) + (151 - 35) * sw * (1 - f);
+      wd = clamp(wd, 25, 151);
+      if (front) { wg = lerp(wg, 900, hl); wd = lerp(wd, 100, hl); }
+      const cf = Math.cos(th);
+      let op = (0.2 + 0.8 * ss(-0.25, 0.35, cf)) * ss(1, 0.9, Math.abs(u) / (WG / 2));
+      if (!front) op *= 1 - 0.6 * ss(8.95, 9.3, t); else if (t >= 9.4) op = 0;
+      op *= 1 - ex;
+      // 文字色：暗い背景ではクリーム（重いところは橙）、明るい背景では墨
+      const sxp = 960 + (X) * sc, syp = 540 + (yc - 540) * sc;
+      const light = lightAt(st, sxp, syp);
+      const c = light ? COL.ink : mix(COL.cream, COL.or, ss(0.42, 0.7, f));
+      S(g.sp, 'opacity', op.toFixed(3));
+      if (op > 0.001) {
+        S(g.sp, 'fontVariationSettings', FVS(wd, wg));
+        S(g.sp, 'color', rgb(c));
+        S(g.sp, 'transform', `translate3d(${(960 + X).toFixed(2)}px,${yb.toFixed(2)}px,${Z.toFixed(2)}px) rotateY(${th.toFixed(4)}rad) translate(-50%,${(-BR * FSG).toFixed(2)}px)`);
+      }
+    }
+    if (t < 6.55) { label = '02  WEIGHT'; bl = `${grid.length} glyphs   field max wght ${(100 + 900 * fmax).toFixed(0).padStart(4)}   wdth ${lerp(35, 125, fmax).toFixed(1)}`; }
+    else if (t < 10.3) {
+      label = '03  TURN';
+      const om = vel(t) / RAD * (t < T2 ? (t < T1 ? 1 : 1 - prog(T1, T2, t)) : 0);
+      bl = t < T2 ? `r ${(r > 1e5 ? '∞' : r.toFixed(0)).padStart(4)}px   ω ${om.toFixed(2)} rad/s   ${NG} rings × ${NC}` : `locked   V·A·R·I·A·B·L·E   ${NG} rings`;
+    }
+  } else S($('g3'), 'display', 'none');
+
+  // 04 題字
+  if (t >= 9.4) {
+    S($('title'), 'display', 'block');
+    let P;
+    if (t < 13.55) {
+      const A = titleAxes(t);
+      const PF = { fs: FSD, wd: A.wd, wg: A.wg, sx: 1 };
+      const tw = wordWidth(PF);
+      let x = (W - tw) / 2;
+      for (let i = 0; i < 8; i++) {
+        const k = spring(t - (9.5 + 0.06 * i), 1.15, 0.5);
+        const kf = clamp(k, 0, 1.15);
+        const fs = lerp(FSG, FSD, kf);
+        const aw = adv(WORD[i], A.wd[i], A.wg[i]);
+        const xL = x, xC = 960 - aw * fs / 2;
+        const xi = lerp(xC, xL, k);
+        const bi = lerp(baseG(i), BASED, k);
+        const sp = tSpans[i];
+        S(sp, 'opacity', '1'); S(sp, 'fontSize', fs.toFixed(2) + 'px'); S(sp, 'fontVariationSettings', FVS(A.wd[i], A.wg[i]));
+        S(sp, 'color', rgb(COL.ink));
+        const hop = -70 * kick(t - (11.35 + 0.075 * i)) - 40 * kick(t - (12.85 + 0.06 * i), 2.6, 0.3);
+        S(sp, 'transform', `translate(${xi.toFixed(2)}px,${(bi - BR * fs + hop).toFixed(2)}px) scale(1,1)`);
+        // 読み値
+        const ro = roEls[i], rop = ss(10.35 + 0.04 * i, 10.7 + 0.04 * i, t) * (1 - ss(13.25, 13.5, t));
+        S(ro, 'opacity', rop.toFixed(3));
+        if (rop > 0) {
+          ro.textContent = `${A.wg[i].toFixed(0)}\n${A.wd[i].toFixed(0)}`;
+          S(ro, 'transform', `translate(${(xL + aw * FSD / 2 - 28).toFixed(1)}px,${(BASED + 42).toFixed(1)}px)`);
+          S(ro, 'width', '56px');
+          if (i === 0) { S(roLeg, 'opacity', rop.toFixed(3)); S(roLeg, 'transform', `translate(${(xL - 76).toFixed(1)}px,${(BASED + 42).toFixed(1)}px)`); } S(ro, 'color', 'rgba(17,17,17,.72)');
+        }
+        x += aw * FSD;
+      }
+      label = '04  SPRING';
+      bl = t < 11.3 ? 'spring  f 1.5 Hz  ζ 0.42' : t < 12.2 ? 'kick → wght 1000  f 2.4 Hz  ζ 0.28' : 'kick → wdth 25 / 151  f 2.0–2.6 Hz';
+    } else {
+      roEls.forEach(r => S(r, 'opacity', '0')); S(roLeg, 'opacity', '0');
+      P = d2aParams(t);
+      drawWord(tSpans, P);
+      label = '01  WIDTH';
+      bl = `h ${(CAP * P.fs / 0.86).toFixed(0).padStart(4)}px   wdth ${P.wd[0].toFixed(1).padStart(5)}   wght ${P.wg[0].toFixed(0).padStart(4)}   fill ${TW}px`;
+    }
+  } else { S($('title'), 'display', 'none'); roEls.forEach(r => S(r, 'opacity', '0')); S(roLeg, 'opacity', '0'); }
+
+  // HUD
+  hud.TR.textContent = label; hud.BL.textContent = bl;
+  for (const [el, x, y] of [[hud.TL, 160, 46], [hud.TR, 1800, 46], [hud.BL, 160, 1034], [hud.BR, 1840, 1034]])
+  { const L = lightAt(st, x, y); S(el, 'color', L ? rgb(COL.ink) : rgb(COL.cream)); S(el, 'background', bgColorAt(st, x, y)); }
+}
+
+window.__duration = 15;
+window.__poster = 8.1;
+window.__seek = t => { seek(t); };
+
+if (!/[?&]render/.test(location.search)) {
+  const fit = () => { const s = Math.min(innerWidth / W, innerHeight / H); stage.style.transform = `translate(${(innerWidth - W * s) / 2}px,${(innerHeight - H * s) / 2}px) scale(${s})`; };
+  addEventListener('resize', fit); fit();
+  const t0 = performance.now();
+  const loop = () => { seek(((performance.now() - t0) / 1000) % 15); requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+} else seek(0);
+})();
+</script>
+</body>
+</html>
