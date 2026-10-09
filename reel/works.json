@@ -365,5 +365,45 @@
     },
     "review_rounds": 4,
     "review": "1周目：錠前直前（9.0秒）に全字が細く薄くなって画面が抜ける→場を錠前の直前まで残し正面列の強調を早めた。9.6秒のクリームの円が「I」の上の点に見えてバグのよう→錠前の列から左右に開く縦帯に変更。04が静か→太さの叩きに跳ねを足した。2周目：題字の読み値の重なり（初回の試写で数字のみ＋凡例に直し済み）・HUDの埋もれ（地色の札で解消）を等倍で確認、問題なし。3周目：14.8〜0.1秒が減速で止まりかける（入りのイージングの終速0）→x²系の加速で満ちて0秒目の破裂へそのまま入るように。4周目：継ぎ目が一続きの動きになったのを確認、直すことが無くなった。許容した差：01の細い行は wdth 151 でも幅が足りず scaleX で横に伸ばしている（行の帯として読めるので残した）。"
+  },
+  {
+    "id": "011",
+    "slug": "cast",
+    "title": "Cast",
+    "date": "2026-10-10",
+    "concept": "影だけで見せる15秒。白い点光源が CAST の字間を縫って走り、長い影が画面を掃く。2.7秒で光が R・G・B の3灯に分かれると、1灯の影には残り2灯の和が差し込み、影がシアン・マゼンタ・イエローになる。文字が縮んで消え、何も遮らない床が一瞬白に戻ったあと、36枚の羽根のリングが3灯を囲み、回転と傾き（虹彩）で放射状の色の光線を開閉する（見せ場は7.1秒）。羽根が外へ弾け飛び、文字が戻り、3灯は1灯の白に戻って0秒目の位置へ着く。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/011_cast.mp4",
+    "techniques": [
+      "2d-shadow-casting",
+      "edge-shadow-quads",
+      "additive-rgb-light-mixing",
+      "colored-shadows-cmy",
+      "rim-lighting-by-facing-edge",
+      "glyph-outline-flattening-opentype",
+      "radial-slat-iris",
+      "light-path-weaving",
+      "spiral-converge-transition",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#ffffff",
+        "#0b0b0d",
+        "#ff161e",
+        "#16e42a",
+        "#1732e4",
+        "#00ffff",
+        "#ff00ff",
+        "#ffff00"
+      ],
+      "type": [
+        "Big Shoulders Display Black",
+        "Spline Sans Mono"
+      ],
+      "structure": "one light → three lights → letters out, slat ring in → letters back → one light (5 states, static camera, only the lights move)",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "試し撮り：光のバッファを clearRect していなかったため前フレームの羽根が残像として透けていた（__seek が純関数でない）→ clearRect を追加。文字が消えてから羽根が出るまで白い空白が0.6秒あった → 光の収束を渦巻きにして前倒しし、0.3秒の「R+G+B＝白」の間として残した。羽根の飛散後にも0.5秒の空白 → 飛散を0.9秒に延ばし、文字の復帰を前倒し。1周目：3灯の和が青寄りで白場の周辺が紫にかぶる → 各チャンネルの和を300にそろえた。色の床の上で difference の HUD が補色でちらつく → 黒い台座のラベルに変更。2周目：ループの継ぎ目（14.95→0.0）と分光の瞬間・虹彩の閉じを確認し、直すことなし。3周目：7.1秒と2.85秒を等倍で確認。許容した差：光線の場面は8MB上限のため crf 29 になり、細い光線の縁に圧縮ノイズが出る。"
   }
 ]

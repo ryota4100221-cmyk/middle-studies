@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>REEL — 011 Cast</title>
+<link href="https://fonts.googleapis.com/css2?family=Spline+Sans+Mono:wght@500&display=block" rel="stylesheet">
+<style>html,body{margin:0;background:#0c0c0e;overflow:hidden}canvas{display:block;width:100vw;height:56.25vw;max-height:100vh;max-width:177.78vh;margin:auto}</style>
+<script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+</head><body><canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// REEL — 011  Cast : one light → three lights (R,G,B). Every shadow is the colour of the other two.
+const W = 1920, H = 1080, CX = 960, CY = 540;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+window.__duration = 15; window.__poster = 7.1;
+
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lin = (t, a, b) => clamp((t - a) / (b - a));
+const sm = x => x * x * (3 - 2 * x);
+const eio = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const ein = x => x * x * x;
+const eout = x => 1 - Math.pow(1 - x, 3);
+const eback = x => { const c = 1.9; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const mix = (a, b, s) => ({ x: a.x + (b.x - a.x) * s, y: a.y + (b.y - a.y) * s });
+function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+// ---------- lights ----------
+const LCOL = [[255, 22, 30], [22, 228, 42], [23, 50, 228]];   // each channel sums to 300 → neutral white
+const LNAME = ['R', 'G', 'B'];
+const bufs = LCOL.map(() => { const c = document.createElement('canvas'); c.width = W; c.height = H; return c; });
+
+const PITCH = 400, A_WEAVE = 250;
+function weave(u) {                       // 01: the white light threads the gaps between letters
+  const x = 360 + 560 * u;
+  const v = Math.sin(Math.PI * (x - 160) / PITCH);
+  return { x, y: CY + A_WEAVE * Math.sign(v) * Math.pow(Math.abs(v), .35) };
+}
+const RX = 840, RY = 400, OMEGA = 5 * Math.PI / 12;
+const spread = t => t < 8 ? eio(lin(t, 2.6, 3.5)) : 1 - eio(lin(t, 12.6, 13.9));
+function ellipse(t, i) {
+  const th = OMEGA * (t - 2.6) + spread(t) * (i - 1) * 2 * Math.PI / 3;
+  return { x: CX + RX * Math.cos(th), y: CY - RY * Math.sin(th) };
+}
+const irisBump = t => sm(lin(t, 7.45, 8.05)) * (1 - sm(lin(t, 8.6, 9.15)));
+function core(t, i) {                     // 03: lights circle tightly inside the slat ring
+  const r = 46 + 52 * irisBump(t);
+  const ph = 2.3 * t + i * 2 * Math.PI / 3;
+  return { x: CX + r * Math.cos(ph), y: CY + r * Math.sin(ph) };
+}
+function converge(t, i, s) {             // spiral in: radius shrinks while the angle keeps turning
+  const a = ellipse(t, i), c = core(t, i);
+  const ra = Math.hypot((a.x - CX) / RX, (a.y - CY) / RY), th = Math.atan2(-(a.y - CY) / RY, (a.x - CX) / RX);
+  const thc = Math.atan2(c.y - CY, c.x - CX);
+  const th2 = th + 2.2 * s;
+  const rx = RX * (1 - s), ry = RY * (1 - s);
+  const sp = { x: CX + rx * Math.cos(th2), y: CY - ry * Math.sin(th2) };
+  return mix(sp, c, sm(lin(s, .55, 1)));
+}
+function lightPos(t, i) {
+  if (t < 2.4) return weave(t);
+  if (t < 2.9) return mix(weave(t), ellipse(t, i), sm(lin(t, 2.4, 2.9)));
+  if (t < 4.95) return ellipse(t, i);
+  if (t < 5.5) return converge(t, i, eio(lin(t, 4.95, 5.5)));
+  if (t < 9.55) return core(t, i);
+  if (t < 10.05) return mix(core(t, i), ellipse(t, i), eio(lin(t, 9.55, 10.05)));
+  if (t < 14.2) return ellipse(t, i);
+  return mix(ellipse(t, i), weave(t - 15), sm(lin(t, 14.2, 15)));
+}
+
+// ---------- occluders ----------
+let GLYPHS = [];                          // [{contours:[[{x,y}]], cx}]
+const WORD = 'CAST';
+function flatten(cmds) {
+  const cs = []; let cur = null, px = 0, py = 0;
+  for (const c of cmds) {
+    if (c.type === 'M') { cur = [{ x: c.x, y: c.y }]; cs.push(cur); px = c.x; py = c.y; }
+    else if (c.type === 'L') { cur.push({ x: c.x, y: c.y }); px = c.x; py = c.y; }
+    else if (c.type === 'Q') { for (let k = 1; k <= 8; k++) { const s = k / 8, u = 1 - s; cur.push({ x: u * u * px + 2 * u * s * c.x1 + s * s * c.x, y: u * u * py + 2 * u * s * c.y1 + s * s * c.y }); } px = c.x; py = c.y; }
+    else if (c.type === 'C') { for (let k = 1; k <= 10; k++) { const s = k / 10, u = 1 - s; cur.push({ x: u * u * u * px + 3 * u * u * s * c.x1 + 3 * u * s * s * c.x2 + s * s * s * c.x, y: u * u * u * py + 3 * u * u * s * c.y1 + 3 * u * s * s * c.y2 + s * s * s * c.y }); } px = c.x; py = c.y; }
+  }
+  return cs.map(c => { const o = c.filter((p, k) => k === 0 || Math.hypot(p.x - c[k - 1].x, p.y - c[k - 1].y) > .3); const a = o[0], b = o[o.length - 1]; if (Math.hypot(a.x - b.x, a.y - b.y) < .3) o.pop(); return o; }).filter(c => c.length > 2);
+}
+const area = c => { let s = 0; for (let k = 0; k < c.length; k++) { const a = c[k], b = c[(k + 1) % c.length]; s += a.x * b.y - b.x * a.y; } return s / 2; };
+let OUTSIGN = 1;                          // which perpendicular points out of the material
+function buildGlyphs(font) {
+  const SIZE = 470;
+  GLYPHS = [...WORD].map((ch, k) => {
+    let cs = flatten(font.getPath(ch, 0, 0, SIZE).commands);
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (const c of cs) for (const p of c) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); }
+    const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+    cs = cs.map(c => c.map(p => ({ x: p.x - mx, y: p.y - my })));
+    return { contours: cs, cx: CX + (k - 1.5) * PITCH, cy: CY, w: x1 - x0, h: y1 - y0 };
+  });
+  // largest contour is an outer one: pick the normal sign that points away from its centroid
+  const big = GLYPHS[0].contours.reduce((a, b) => Math.abs(area(b)) > Math.abs(area(a)) ? b : a);
+  OUTSIGN = area(big) > 0 ? 1 : -1;
+}
+
+const NS = 36, SL_L = 118, SL_W = 17;
+const srnd = mulberry32(11); const SL_J = Array.from({ length: NS }, () => srnd());
+
+function occluders(t) {
+  const polys = [];
+  GLYPHS.forEach((g, k) => {
+    let s, rot;
+    if (t < 8) {
+      const spin = eio(lin(t, 3.45 + .22 * k, 4.3 + .22 * k));
+      const shr = ein(lin(t, 4.3 + .06 * k, 4.9 + .06 * k));
+      s = (1 - shr) * (1 - .24 * Math.sin(Math.PI * spin)); rot = (k % 2 ? -1 : 1) * (2 * Math.PI * spin + Math.PI * .75 * shr);
+    } else {
+      const gr = lin(t, 10.0 + .09 * k, 10.9 + .09 * k);
+      s = gr <= 0 ? 0 : eback(gr); rot = (k % 2 ? 1 : -1) * Math.PI * .75 * (1 - eout(gr));
+    }
+    if (s < .004) return;
+    const c = Math.cos(rot) * s, si = Math.sin(rot) * s;
+    for (const ct of g.contours) polys.push(ct.map(p => ({ x: g.cx + p.x * c - p.y * si, y: g.cy + p.x * si + p.y * c })));
+  });
+  if (t > 5.4 && t < 10.2) {
+    const ringRot = .45 * (t - 5.4) + 1.6 * eio(lin(t, 7.3, 9.0));
+    const tilt = .44 * irisBump(t);
+    for (let k = 0; k < NS; k++) {
+      const a = eout(lin(t, 5.4 + .4 * k / NS, 5.8 + .4 * k / NS));
+      const e = ein(lin(t, 9.05 + .15 * SL_J[k], 9.95 + .15 * SL_J[k]));
+      if (a <= 0) continue;
+      const ang = 2 * Math.PI * k / NS + ringRot;
+      const rc = 238 + 1500 * e, L = SL_L * a * (1 - .5 * e), w = SL_W;
+      const dir = ang + tilt + e * 2.4 * (SL_J[k] - .5);
+      const ox = CX + rc * Math.cos(ang), oy = CY + rc * Math.sin(ang);
+      const ux = Math.cos(dir), uy = Math.sin(dir), vx = -uy, vy = ux;
+      const p = [[-L / 2, -w / 2], [L / 2, -w / 2], [L / 2, w / 2], [-L / 2, w / 2]].map(([a1, b1]) => ({ x: ox + ux * a1 + vx * b1, y: oy + uy * a1 + vy * b1 }));
+      if (OUTSIGN * area(p) < 0) p.reverse();
+      polys.push(p);
+    }
+  }
+  return polys;
+}
+
+// ---------- draw ----------
+const FAR = 6000;
+function shadowPath(polys, L) {
+  const P = new Path2D();
+  for (const c of polys) for (let k = 0; k < c.length; k++) {
+    const a = c[k], b = c[(k + 1) % c.length];
+    let ax = a.x - L.x, ay = a.y - L.y, bx = b.x - L.x, by = b.y - L.y;
+    const la = Math.hypot(ax, ay) || 1, lb = Math.hypot(bx, by) || 1;
+    const q = [a, b, { x: b.x + bx / lb * FAR, y: b.y + by / lb * FAR }, { x: a.x + ax / la * FAR, y: a.y + ay / la * FAR }];
+    if (area(q) < 0) q.reverse();
+    P.moveTo(q[0].x, q[0].y); P.lineTo(q[1].x, q[1].y); P.lineTo(q[2].x, q[2].y); P.lineTo(q[3].x, q[3].y); P.closePath();
+  }
+  return P;
+}
+function rimPath(polys, L) {
+  const P = new Path2D();
+  for (const c of polys) for (let k = 0; k < c.length; k++) {
+    const a = c[k], b = c[(k + 1) % c.length];
+    const nx = OUTSIGN * (b.y - a.y), ny = -OUTSIGN * (b.x - a.x);
+    if (nx * (L.x - (a.x + b.x) / 2) + ny * (L.y - (a.y + b.y) / 2) > 0) { P.moveTo(a.x, a.y); P.lineTo(b.x, b.y); }
+  }
+  return P;
+}
+
+function seek(t) {
+  t = ((t % 15) + 15) % 15;
+  const polys = occluders(t);
+  const lights = [0, 1, 2].map(i => lightPos(t, i));
+  const sp = spread(t), nL = sp > .02 && t > 2.6 && t < 14.2 ? 3 : 1;
+
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#0b0b0d'; ctx.fillRect(0, 0, W, H);
+  lights.forEach((L, i) => {
+    const b = bufs[i].getContext('2d'), [r, g, bl] = LCOL[i];
+    b.globalCompositeOperation = 'source-over'; b.clearRect(0, 0, W, H);
+    const gr = b.createRadialGradient(L.x, L.y, 0, L.x, L.y, 2100);
+    gr.addColorStop(0, `rgb(${r},${g},${bl})`);
+    gr.addColorStop(.32, `rgba(${r},${g},${bl},.86)`);
+    gr.addColorStop(1, `rgba(${r},${g},${bl},.34)`);
+    b.fillStyle = gr; b.fillRect(0, 0, W, H);
+    b.globalCompositeOperation = 'destination-out';
+    b.fillStyle = '#000'; b.fill(shadowPath(polys, L));
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(bufs[i], 0, 0);
+  });
+  // occluder tops
+  ctx.globalCompositeOperation = 'source-over';
+  const body = new Path2D();
+  for (const c of polys) { body.moveTo(c[0].x, c[0].y); for (let k = 1; k < c.length; k++) body.lineTo(c[k].x, c[k].y); body.closePath(); }
+  ctx.fillStyle = '#1d1d21'; ctx.fill(body, 'evenodd');
+  // rim light: each edge facing a light glows in that light's colour
+  ctx.globalCompositeOperation = 'lighter'; ctx.lineWidth = 3.2; ctx.lineCap = 'round';
+  lights.forEach((L, i) => { const [r, g, b] = LCOL[i]; ctx.strokeStyle = `rgba(${r},${g},${b},.9)`; ctx.stroke(rimPath(polys, L)); });
+  // light sources
+  lights.forEach((L, i) => {
+    const [r, g, b] = LCOL[i];
+    const gl = ctx.createRadialGradient(L.x, L.y, 0, L.x, L.y, 46);
+    gl.addColorStop(0, `rgba(${r},${g},${b},.9)`); gl.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(L.x, L.y, 46, 0, 7); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(L.x, L.y, 7, 0, 7); ctx.fill();
+  });
+  ctx.globalCompositeOperation = 'difference'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+  lights.forEach(L => { ctx.beginPath(); ctx.arc(L.x, L.y, 13, 0, 7); ctx.stroke(); });
+
+  // HUD (difference: readable on white floor and in shadow)
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.font = '500 20px "Spline Sans Mono"'; ctx.textBaseline = 'middle';
+  const tag = (s, x, y, al) => { const w = ctx.measureText(s).width, x0 = al === 'right' ? x - w : x; ctx.fillStyle = '#0b0b0d'; ctx.fillRect(x0 - 12, y - 17, w + 24, 34); ctx.fillStyle = '#f4f4f0'; ctx.textAlign = 'left'; ctx.fillText(s, x0, y + 1); };
+  tag('MIDDLE STUDIES  REEL — 011', 48, 56, 'left');
+  const scene = t < 2.6 ? '01  ONE LIGHT' : t < 4.95 ? '02  R + G + B' : t < 9.55 ? '03  36 SLATS' : t < 13.9 ? '04  CAST AGAIN' : '05  ONE LIGHT';
+  tag(scene, W - 48, 56, 'right');
+  tag('Claude', W - 48, H - 50, 'right');
+  let edges = 0; for (const c of polys) edges += c.length;
+  const note = polys.length === 0 ? 'nothing in the way  ·  R+G+B = white' : nL === 1 ? 'white light  ·  shadow = nothing' : 'shadow of R = G+B  ·  of G = R+B  ·  of B = R+G';
+  tag(`lights ${nL}  ·  edges ${String(edges).padStart(4, '0')}  ·  ${note}`, 48, H - 50, 'left');
+  if (nL === 3) {
+    ctx.globalCompositeOperation = 'difference'; ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.font = '500 18px "Spline Sans Mono"';
+    lights.forEach((L, i) => ctx.fillText(LNAME[i], L.x + 16, L.y - 14));
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+(async () => {
+  const font = await opentype.load('https://cdn.jsdelivr.net/npm/@fontsource/big-shoulders-display@5/files/big-shoulders-display-latin-900-normal.woff');
+  buildGlyphs(font);
+  await document.fonts.load('500 20px "Spline Sans Mono"');
+  window.__glyphInfo = GLYPHS.map(g => [Math.round(g.w), Math.round(g.h)]);
+  window.__seek = seek;
+  if (!location.search.includes('render')) { const t0 = performance.now(); const loop = () => { seek((performance.now() - t0) / 1000 % 15); requestAnimationFrame(loop); }; loop(); }
+  else seek(0);
+})();
+</script></body></html>
