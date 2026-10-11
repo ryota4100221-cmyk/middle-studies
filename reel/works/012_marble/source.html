@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MIDDLE STUDIES REEL — 012 Marble</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@144,900&family=IBM+Plex+Mono:wght@400;600&family=Shippori+Mincho:wght@600&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #e8e1cf; overflow: hidden; }
+  #stage { position: relative; width: 1920px; height: 1080px; }
+  #gl, #fx { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+  .hud { position: absolute; font-family: 'IBM Plex Mono', monospace; font-size: 18px; letter-spacing: .04em;
+         color: #1b1a16; white-space: nowrap; }
+  .hud b { font-weight: 600; }
+  .tag { background: #1b1a16; color: #efe8d8; padding: 3px 9px 4px; }
+  #tl { left: 40px; top: 34px; }
+  #tr { right: 40px; top: 34px; text-align: right; }
+  #tr .jp { font-family: 'Shippori Mincho', serif; font-size: 22px; margin-left: 12px; }
+  #bl { left: 40px; bottom: 34px; background: #efe8d8; padding: 3px 9px 4px; }
+  #br { background: #efe8d8; padding: 3px 9px 4px; }
+  #br { right: 40px; bottom: 34px; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="gl" width="1920" height="1080"></canvas>
+  <canvas id="fx" width="1920" height="1080"></canvas>
+  <div class="hud" id="tl"><span class="tag">MIDDLE STUDIES REEL — 012</span></div>
+  <div class="hud" id="tr"><span class="tag" id="phase">01 DROP</span><span class="jp" id="jp">置き</span></div>
+  <div class="hud" id="bl"></div>
+  <div class="hud" id="br">Claude</div>
+</div>
+<script>
+'use strict';
+const W = 1920, H = 1080, DUR = 15;
+window.__duration = DUR;
+window.__poster = 10.6;
+
+// ---------- seeded PRNG ----------
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const rnd = mulberry32(12012);
+
+// ---------- easing ----------
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const easeOutCubic = x => 1 - Math.pow(1 - clamp(x), 3);
+const easeInOutCubic = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const easeInOutSine = x => -(Math.cos(Math.PI * clamp(x)) - 1) / 2;
+
+// ---------- palette (ebru inks) ----------
+const PAL = [
+  [0.133, 0.188, 0.431], // 0 indigo
+  [0.722, 0.196, 0.169], // 1 madder
+  [0.863, 0.635, 0.235], // 2 ochre
+  [0.086, 0.078, 0.059], // 3 sumi
+  [0.561, 0.722, 0.651], // 4 celadon
+  [0.969, 0.949, 0.906], // 5 white
+  [0.122, 0.361, 0.353], // 6 deep teal
+  [0.910, 0.663, 0.627], // 7 rose
+];
+const HEX = ['#22306e', '#b8322b', '#dca23c', '#16140f', '#8fb8a6', '#f7f2e7', '#1f5c5a', '#e8a9a0'];
+
+// ---------- the score: every operation on the water ----------
+// type 0 drop {t, cx, cy, R, col, d}
+// type 1 tine {t, px, py, ang, Z, lam, d, L}
+// type 2 comb {t, ang, cx, cy, Z, per, kap, d, L, phase}
+// type 3 swirl {t, cx, cy, A, R, d}
+const OPS = [];
+const drop = (t, cx, cy, R, col, d = 0.55) => OPS.push({ type: 0, t, cx, cy, R, col, d });
+
+// 01 DROP — scattered drops, accelerating
+drop(0.06, 960, 540, 250, 0, 0.62);
+{
+  const spots = [[430, 300], [1500, 760], [1460, 250], [380, 820], [1010, 170], [930, 900], [210, 520], [1720, 520],
+                 [660, 640], [1250, 430], [760, 260], [1180, 820], [560, 980], [1560, 1000], [1700, 90]];
+  const cols = [1, 2, 6, 3, 4, 7, 1, 0, 2, 6, 3, 1, 4, 2, 7];
+  let t = 0.42;
+  spots.forEach((s, i) => {
+    const R = 70 + rnd() * 130;
+    drop(t, s[0] + (rnd() - .5) * 60, s[1] + (rnd() - .5) * 60, R, cols[i], 0.5);
+    t += lerp(0.27, 0.1, i / spots.length);
+  });
+}
+// 02 STONE — concentric drops at two centres, alternating fast
+{
+  const A = [600, 470], B = [1340, 610];
+  const seq = [3, 5, 1, 5, 2, 0, 5, 1, 6, 5, 3, 2, 5, 0, 7, 5, 1, 3, 5, 2];
+  seq.forEach((c, i) => {
+    const P = i % 2 ? B : A;
+    drop(2.9 + i * 0.095, P[0], P[1], 64 + (i % 4) * 9, c, 0.42);
+  });
+}
+// 03 TINE — stylus strokes back and forth (gel-git)
+[150, 330, 510, 690, 870, 1040].forEach((y, i) => {
+  OPS.push({ type: 1, t: 4.85 + i * 0.3, px: 960, py: y, ang: i % 2 ? Math.PI : 0, Z: 150, lam: 85, d: 0.62, L: 1150 });
+});
+// 04 COMB — two passes of a fine comb (nonpareil → bouquet)
+OPS.push({ type: 2, t: 6.85, ang: Math.PI / 2, cx: 960, cy: 540, Z: 88, per: 64, kap: 12, d: 0.85, L: 700, phase: 0 });
+OPS.push({ type: 2, t: 7.75, ang: -Math.PI / 2, cx: 960, cy: 540, Z: 52, per: 64, kap: 10, d: 0.85, L: 700, phase: 0.5 });
+// 05 SWIRL — a counter-rotating vortex pair
+OPS.push({ type: 3, t: 8.65, cx: 650, cy: 540, A: 3.6, R: 360, d: 2.05 });
+OPS.push({ type: 3, t: 8.75, cx: 1270, cy: 540, A: -3.6, R: 360, d: 1.95 });
+// flowers into the eyes
+drop(10.72, 650, 540, 66, 5, 0.4); drop(10.80, 1270, 540, 66, 5, 0.4);
+drop(10.92, 650, 540, 26, 1, 0.3); drop(11.0, 1270, 540, 26, 1, 0.3);
+drop(11.1, 960, 540, 40, 3, 0.35);
+
+const MAXOP = 64;
+if (OPS.length > MAXOP) throw new Error('too many ops ' + OPS.length);
+
+// ---------- the sheet ----------
+const ANG = 0.32;                         // direction the sheet is laid & pulled
+const DU = [Math.cos(ANG), Math.sin(ANG)];
+const corners = [[0, 0], [W, 0], [0, H], [W, H]].map(p => p[0] * DU[0] + p[1] * DU[1]);
+const UMIN = Math.min(...corners) - 30, UMAX = Math.max(...corners) + 30;
+const RHO = 46;
+const LAY0 = 11.45, LAY1 = 12.2, PEEL0 = 12.5, PEEL1 = 14.5;
+
+// ---------- GL ----------
+const gl = document.getElementById('gl').getContext('webgl2', { preserveDrawingBuffer: true, antialias: false });
+const VS = `#version 300 es
+in vec2 p; void main(){ gl_Position = vec4(p,0.,1.); }`;
+const FS = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+#define MAXOP ${MAXOP}
+uniform vec4 uA[MAXOP];
+uniform vec4 uB[MAXOP];
+uniform vec4 uC[MAXOP];
+uniform int uN;
+uniform vec3 uPal[8];
+uniform sampler2D uWord;
+uniform float uT;
+uniform vec4 uRip[8];
+uniform int uNR;
+uniform vec2 uDU;
+uniform float uLayC, uPeelC, uRho, uUmin, uSoakT0, uMode;
+const vec3 WATER = vec3(0.910, 0.882, 0.812);
+const vec3 PAPER = vec3(0.965, 0.945, 0.902);
+
+vec3 pal(float f){ return uPal[int(f+.5)]; }
+float hash(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p+45.32); return fract(p.x*p.y); }
+float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x), f.y); }
+
+float g(float x){ x = clamp(x, 0., 1.); return x*x*(3.-2.*x); }
+
+// marbling: walk the operations backwards; return ink colour at water point p
+vec3 pattern(vec2 p, int n){
+  for (int k = n-1; k >= 0; k--){
+    vec4 a = uA[k]; vec4 b = uB[k]; vec4 c = uC[k];
+    int ty = int(a.x + .5);
+    if (ty == 0){                     // drop: centre a.yz, radius a.w, colour b.x
+      vec2 q = p - a.yz; float r2 = dot(q,q); float R2 = a.w*a.w;
+      if (r2 < R2){
+        vec3 col = pal(b.x);
+        float r = sqrt(r2);
+        float rim = smoothstep(a.w*0.86, a.w, r);
+        float grain = vnoise(q*0.045 + b.x*17.) * 0.6 + vnoise(q*0.16 + b.y) * 0.4;
+        col *= 0.93 + 0.12*grain - 0.10*rim;
+        return col;
+      }
+      p = a.yz + q*sqrt(1. - R2/r2);
+    } else if (ty == 1){              // tine: line through a.yz along angle a.w; b = (Z, lam, head, w)
+      vec2 M = vec2(cos(a.w), sin(a.w)); vec2 N = vec2(-M.y, M.x);
+      vec2 q = p - a.yz; float d = abs(dot(q,N)); float sy = dot(q,M);
+      float amp = b.x*exp(-d/b.y);
+      float s = sy;
+      for (int i = 0; i < 8; i++) s = sy - amp*g((b.z - s)/b.w + .5);
+      p = a.yz + N*dot(q,N) + M*s;
+    } else if (ty == 2){              // comb: periodic tines across N, drag along M; a=(2, ang, per, kap) b=(Z, head, w, phase) c=(cx,cy)
+      vec2 M = vec2(cos(a.y), sin(a.y)); vec2 N = vec2(-M.y, M.x);
+      vec2 q = p - c.xy; float nn = dot(q,N); float sy = dot(q,M);
+      float f = fract(nn/a.z + b.w); float dist = min(f, 1.-f)*a.z;
+      float amp = b.x*exp(-dist/a.w);
+      float s = sy;
+      for (int i = 0; i < 8; i++) s = sy - amp*g((b.y - s)/b.z + .5);
+      p = c.xy + N*nn + M*s;
+    } else {                          // swirl: centre a.yz, angle a.w, radius b.x
+      vec2 q = p - a.yz; float r = length(q);
+      float th = -a.w*exp(-(r*r)/(b.x*b.x));
+      float cs = cos(th), sn = sin(th);
+      p = a.yz + vec2(cs*q.x - sn*q.y, sn*q.x + cs*q.y);
+    }
+  }
+  // the first ink: the word
+  vec2 uv = p / vec2(${W}., ${H}.);
+  float w = 0.;
+  if (uv.x > 0. && uv.x < 1. && uv.y > 0. && uv.y < 1.) w = texture(uWord, uv).a;
+  float grain = vnoise(p*0.05)*0.6 + vnoise(p*0.21)*0.4;
+  vec3 water = WATER * (0.985 + 0.03*grain);
+  return mix(water, uPal[3]*(0.9+0.2*grain), w);
+}
+
+float ripples(vec2 p){
+  float h = 0.;
+  for (int k = 0; k < uNR; k++){
+    vec4 a = uRip[k];
+    float age = a.w;
+    float r = length(p - a.xy);
+    float front = a.z + age*420.;
+    float x = (r - front)/14.;
+    h += exp(-x*x) * (1. - age/1.1) * 0.5;
+  }
+  return h;
+}
+
+vec3 paperBack(vec2 p, float u){
+  float fib = vnoise(p*vec2(0.9,0.12))*0.5 + vnoise(p*0.03)*0.5;
+  vec3 col = PAPER*(0.975 + 0.035*fib);
+  // ink soaking through from the face, following the laying roll
+  float laidAt = uSoakT0 + (u - uUmin) / 2400.;
+  float soak = smoothstep(0., 0.7, uT - laidAt);
+  float edge = vnoise(p*0.012 + 3.)*0.5;
+  soak *= smoothstep(0., 1., soak*1.6 - edge*0.5);
+  vec3 ink = pattern(p, uN);
+  float lum = dot(ink, vec3(.3,.59,.11));
+  vec3 thru = mix(vec3(lum), ink, 0.45);
+  return mix(col, col*mix(vec3(1.), thru/max(PAPER, vec3(.01)), 0.32), soak);
+}
+vec3 paperFace(vec2 pr){
+  vec3 ink = pattern(pr, uN);
+  float fib = vnoise(pr*vec2(0.9,0.12))*0.5 + vnoise(pr*0.03)*0.5;
+  return mix(ink, PAPER, 0.08) * (0.98 + 0.03*fib);
+}
+
+vec3 water(vec2 p, int n){
+  vec3 col = pattern(p, n);
+  float rp = ripples(p);
+  col += vec3(1.,.98,.94)*rp*0.18;
+  col *= 1. - rp*0.06;
+  return col;
+}
+
+vec3 shade(vec2 p){
+  float u = dot(p, uDU);
+  if (uMode < .5){                    // water only
+    return water(p, uN);
+  } else if (uMode < 1.5){            // laying: paper behind the roll at uLayC
+    float c = uLayC;
+    if (u < c - uRho) return paperBack(p, u);
+    if (u < c + uRho){                // the roll
+      float x = (u - c)/uRho; float h = sqrt(max(0., 1.-x*x));
+      vec3 col = PAPER*(0.70 + 0.32*h - 0.12*x);
+      float fib = vnoise(vec2(u*0.2, dot(p, vec2(-uDU.y,uDU.x))*0.02));
+      col *= 0.97 + 0.04*fib;
+      return col;
+    }
+    vec3 w = water(p, uN);
+    float sh = exp(-(u - c - uRho)/38.);
+    return w*(1. - 0.32*sh);
+  } else if (uMode < 2.5){            // whole sheet down
+    return paperBack(p, u);
+  } else {                            // peeling: fold-back curl at uPeelC
+    float c = uPeelC, R = uRho;
+    float PI = 3.14159265;
+    if (u < c - R){
+      vec3 w = water(p, 0);
+      float sh = exp(-((c - R) - u)/60.);
+      return w*(1. - 0.22*sh);
+    }
+    if (u <= c){
+      float phi = PI - asin(clamp((c-u)/R, 0., 1.));
+      float s = R*phi; float up = c - s;
+      float lit = 0.6 + 0.4*(-cos(phi));
+      if (up >= uUmin) return paperFace(p + uDU*(up - u))*lit;
+      float phi2 = asin(clamp((c-u)/R, 0., 1.)); float s2 = R*phi2; float up2 = c - s2;
+      if (up2 >= uUmin) return paperBack(p + uDU*(up2-u), up2)*(0.75 + 0.25*cos(phi2));
+      return water(p, 0);
+    }
+    float s = PI*R + (u - c); float up = c - s;
+    if (up >= uUmin){
+      float crease = exp(-(u - c)/26.);
+      return paperFace(p + uDU*(up - u))*(1. - 0.18*crease);
+    }
+    float uf = c + (c - uUmin) - PI*R;
+    float sh = exp(-(u - uf)/34.);
+    return paperBack(p, u)*(1. - 0.28*sh);
+  }
+}
+
+void main(){
+  vec2 p = vec2(gl_FragCoord.x, ${H}. - gl_FragCoord.y);
+  vec3 col = vec3(0.);
+  col += shade(p + vec2(-0.125, -0.375));
+  col += shade(p + vec2( 0.375, -0.125));
+  col += shade(p + vec2(-0.375,  0.125));
+  col += shade(p + vec2( 0.125,  0.375));
+  col *= 0.25;
+  vec2 v = p/vec2(${W}., ${H}.) - .5;
+  col *= 1. - 0.16*dot(v,v);
+  col += (hash(p + uT*0.) - .5)/255.;
+  fragColor = vec4(col, 1.);
+}`;
+function sh(type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+const U = n => gl.getUniformLocation(prog, n);
+const uA = U('uA'), uB = U('uB'), uC = U('uC'), uN = U('uN'), uPal = U('uPal'), uT = U('uT'), uDU = U('uDU'),
+      uLayC = U('uLayC'), uPeelC = U('uPeelC'), uRho = U('uRho'), uUmin = U('uUmin'), uSoakT0 = U('uSoakT0'), uMode = U('uMode'), uRip = U('uRip'), uNR = U('uNR');
+gl.uniform3fv(uPal, new Float32Array(PAL.flat()));
+gl.uniform2f(uDU, DU[0], DU[1]); gl.uniform1f(uRho, RHO); gl.uniform1f(uUmin, UMIN);
+gl.uniform1f(uSoakT0, LAY0 + 0.1);
+
+function makeWord() {
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  x.fillStyle = '#000'; x.textAlign = 'center'; x.textBaseline = 'alphabetic';
+  x.font = '900 300px Fraunces';
+  x.letterSpacing = '-6px';
+  x.fillText('MARBLE', W / 2, H / 2 + 105);
+  const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+}
+
+// operation parameters at time t
+function opState(o, t) {
+  const k = (t - o.t) / o.d;
+  if (o.type === 0) return { r: o.R * easeOutCubic(k) };
+  if (o.type === 1 || o.type === 2) return { head: lerp(-o.L, o.L, easeInOutSine(k)) };
+  return { A: o.A * easeInOutCubic(k) };
+}
+const A = new Float32Array(MAXOP * 4), B = new Float32Array(MAXOP * 4), C = new Float32Array(MAXOP * 4);
+function upload(t) {
+  let n = 0;
+  for (const o of OPS) {
+    if (t < o.t) continue;
+    const s = opState(o, t), i = n * 4;
+    if (o.type === 0) { A.set([0, o.cx, o.cy, Math.max(0.01, s.r)], i); B.set([o.col, OPS.indexOf(o) * 7.3, 0, 0], i); C.set([o.t, o.R * 0.4, 0, 0], i); }
+    else if (o.type === 1) { A.set([1, o.px, o.py, o.ang], i); B.set([o.Z, o.lam, s.head, o.Z * 2.2], i); C.set([o.t, 0, 0, 0], i); }
+    else if (o.type === 2) { A.set([2, o.ang, o.per, o.kap], i); B.set([o.Z, s.head, o.Z * 2.2, o.phase], i); C.set([o.cx, o.cy, 0, 0], i); }
+    else { A.set([3, o.cx, o.cy, s.A], i); B.set([o.R, 0, 0, 0], i); C.set([o.t, 0, 0, 0], i); }
+    n++;
+  }
+  gl.uniform4fv(uA, A); gl.uniform4fv(uB, B); gl.uniform4fv(uC, C); gl.uniform1i(uN, n);
+  const rip = new Float32Array(32); let nr = 0;
+  for (const o of OPS) {
+    if (o.type !== 0 || t < o.t || t - o.t > 1.1 || nr >= 8) continue;
+    rip.set([o.cx, o.cy, o.R * 0.4, t - o.t], nr * 4); nr++;
+  }
+  gl.uniform4fv(uRip, rip); gl.uniform1i(uNR, t >= LAY0 ? 0 : nr);
+  return n;
+}
+
+// ---------- tools drawn above the water ----------
+const fx = document.getElementById('fx').getContext('2d');
+function drawTools(t) {
+  fx.clearRect(0, 0, W, H);
+  const wrap = t > DUR - 0.3;
+  if (t > LAY0 && !wrap) return;
+  // falling drops (anticipation: shadow converges, bead shrinks)
+  for (const o of OPS) {
+    if (o.type !== 0) continue;
+    let pre = o.t - t; if (pre < -DUR / 2) pre += DUR; const LEAD = 0.24;
+    if (pre <= 0 || pre > LEAD) continue;
+    const k = pre / LEAD;               // 1 → 0
+    const off = 70 * k;
+    fx.fillStyle = `rgba(20,18,12,${0.22 * (1 - k * 0.6)})`;
+    fx.beginPath(); fx.arc(o.cx + off, o.cy + off * 1.3, 10 + 16 * k, 0, 7); fx.fill();
+    const rb = 11 + 15 * k;
+    fx.fillStyle = HEX[o.col];
+    fx.beginPath(); fx.arc(o.cx, o.cy, rb, 0, 7); fx.fill();
+    fx.fillStyle = 'rgba(255,255,255,.55)';
+    fx.beginPath(); fx.arc(o.cx - rb * .35, o.cy - rb * .35, rb * .28, 0, 7); fx.fill();
+  }
+  const stylus = (x, y, r = 7) => {
+    fx.fillStyle = 'rgba(20,18,12,.22)'; fx.beginPath(); fx.arc(x + 9, y + 13, r + 3, 0, 7); fx.fill();
+    fx.fillStyle = '#16140f'; fx.beginPath(); fx.arc(x, y, r, 0, 7); fx.fill();
+    fx.fillStyle = 'rgba(255,255,255,.5)'; fx.beginPath(); fx.arc(x - r * .35, y - r * .35, r * .3, 0, 7); fx.fill();
+  };
+  for (const o of OPS) {
+    const k = (t - o.t) / o.d;
+    if (k <= 0 || k >= 1) continue;
+    const s = opState(o, t);
+    if (o.type === 1) {
+      stylus(o.px + Math.cos(o.ang) * s.head, o.py + Math.sin(o.ang) * s.head);
+    } else if (o.type === 2) {
+      const M = [Math.cos(o.ang), Math.sin(o.ang)], N = [-M[1], M[0]];
+      const cx = o.cx + M[0] * s.head, cy = o.cy + M[1] * s.head;
+      // a wooden comb: spine behind the pins (seen from above, it trails the pins)
+      const back = 54, bar = 26;
+      const bx = cx - M[0] * back, by = cy - M[1] * back;
+      // the comb runs across the screen (N is horizontal), so the spine is a plain bar
+      fx.fillStyle = 'rgba(20,18,12,.16)'; fx.fillRect(0, by - bar / 2 + 16, W, bar);
+      const gr = fx.createLinearGradient(0, by - bar / 2, 0, by + bar / 2);
+      gr.addColorStop(0, '#a87442'); gr.addColorStop(.45, '#7a4e28'); gr.addColorStop(1, '#4f3018');
+      fx.fillStyle = gr; fx.fillRect(0, by - bar / 2, W, bar);
+      for (let j = -16; j <= 16; j++) {
+        const nn = (j - o.phase) * o.per;
+        const x = cx + N[0] * nn, y = cy + N[1] * nn;
+        fx.strokeStyle = 'rgba(20,18,12,.2)'; fx.lineWidth = 4;
+        fx.beginPath(); fx.moveTo(bx + N[0] * nn + 8, by + N[1] * nn + 12); fx.lineTo(x + 8, y + 12); fx.stroke();
+        fx.strokeStyle = '#2a2722'; fx.lineWidth = 3;
+        fx.beginPath(); fx.moveTo(bx + N[0] * nn, by + N[1] * nn); fx.lineTo(x, y); fx.stroke();
+        fx.fillStyle = '#16140f'; fx.beginPath(); fx.arc(x, y, 4, 0, 7); fx.fill();
+      }
+    } else if (o.type === 3) {
+      const ang = s.A * 1.0, r = 150;
+      for (const ph of [0, Math.PI]) {
+        const a = -ang * 1.15 + ph;
+        stylus(o.cx + Math.cos(a) * r, o.cy + Math.sin(a) * r, 6);
+      }
+    }
+  }
+}
+
+// ---------- HUD ----------
+const PH = [[0, '01 DROP', '置き'], [2.85, '02 STONE', '石'], [4.8, '03 TINE', '引き'], [6.8, '04 COMB', '櫛'],
+            [8.6, '05 SWIRL', '渦'], [10.65, '06 FLOWER', '花'], [LAY0, '07 LAY', '敷き'], [PEEL0 - 0.15, '08 PULL', '写し'], [PEEL1 - 0.1, '01 DROP', '置き']];
+const elPhase = document.getElementById('phase'), elJp = document.getElementById('jp'), elBl = document.getElementById('bl');
+function hud(t, n) {
+  let cur = PH[0]; for (const p of PH) if (t >= p[0]) cur = p;
+  elPhase.textContent = cur[1]; elJp.textContent = cur[2];
+  let drops = 0, tines = 0, swirls = 0;
+  for (let i = 0; i < OPS.length; i++) if (OPS[i].t <= t) { const ty = OPS[i].type; if (ty === 0) drops++; else if (ty === 3) swirls++; else tines++; }
+  if (t >= PEEL1 - 0.1) { drops = tines = swirls = 0; }
+  elBl.innerHTML = `drops <b>${String(drops).padStart(2, '0')}</b> · tines <b>${String(tines).padStart(2, '0')}</b> · swirls <b>${swirls}</b> · every pixel walks ${String(t >= PEEL1 - 0.1 ? 0 : n).padStart(2, '0')} maps back to the word`;
+}
+
+function seek(t) {
+  t = ((t % DUR) + DUR) % DUR;
+  const n = upload(Math.min(t, LAY0 + 5));
+  gl.uniform1f(uT, t);
+  let mode = 0, layC = 0, peelC = 0;
+  if (t >= LAY0 && t < LAY1) { mode = 1; layC = lerp(UMIN - RHO, UMAX + RHO * 2, easeInOutCubic((t - LAY0) / (LAY1 - LAY0))); }
+  else if (t >= LAY1 && t < PEEL0) mode = 2;
+  else if (t >= PEEL0 && t < PEEL1) { mode = 3; peelC = lerp(UMIN, UMAX + RHO + 40, easeInOutSine((t - PEEL0) / (PEEL1 - PEEL0))); }
+  else if (t >= PEEL1) { mode = 0; gl.uniform1i(uN, 0); }
+  gl.uniform1f(uMode, mode); gl.uniform1f(uLayC, layC); gl.uniform1f(uPeelC, peelC);
+  gl.viewport(0, 0, W, H);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  gl.finish();
+  drawTools(t);
+  hud(t, n);
+}
+
+document.fonts.load('900 300px Fraunces').then(() => document.fonts.ready).then(() => {
+  makeWord();
+  window.__seek = seek;
+  seek(0);
+  if (!location.search.includes('render')) {
+    const t0 = performance.now();
+    const loop = () => { seek(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  }
+});
+</script>
+</body>
+</html>
