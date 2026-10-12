@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MIDDLE STUDIES REEL — 013 Gravity</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,800&family=JetBrains+Mono:wght@500;700&display=block" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/matter-js@0.20.0/build/matter.min.js"></script>
+<style>
+  html, body { margin: 0; background: #0f3b2e; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 56.25vw; max-height: 100vh; max-width: 177.78vh; margin: auto; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+/*
+ * REEL 013 — GRAVITY
+ * 箱は画面そのもの。中身は剛体（matter.js）。重力の向きだけが場面をつくる。
+ * 読み込み時に T=-1〜15s を固定刻み（1/180s）で全部シミュレーションして記録し、
+ * __seek(t) は記録を引いて描くだけ（純関数）。ループの継ぎ目は「同じ記録の T-15」を重ねて描く。
+ */
+const W = 1920, H = 1080, FPS = 60, SUB = 3, T0 = -2.0, T1 = 15;
+const NF = (T1 - T0) * FPS + 1;
+const GREEN = '#0f3b2e', CREAM = '#f2ead8', CORAL = '#ff5b35', PINK = '#f6a7c1', INK = '#0b0b0b';
+const FONT = "800 300px 'Bricolage Grotesque'";
+const MONO = "'JetBrains Mono', monospace";
+const WORD = 'GRAVITY';
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const sm = (a, b, x) => { const k = clamp((x - a) / (b - a), 0, 1); return k * k * (3 - 2 * k); };
+const eo3 = k => 1 - Math.pow(1 - clamp(k, 0, 1), 3);
+const ei3 = k => Math.pow(clamp(k, 0, 1), 3);
+
+// ---- タイムライン（秒） ----
+const P = {
+  right: 2.3, up: 3.2, left: 3.95, orbit: 4.75, burst: 6.95, zero: 7.2,
+  drop: 10.35, open: 12.8, opened: 13.15, close0: 13.85, close1: 14.2,
+};
+function gravityAt(T) {
+  // 戻り値：{mode:'dir', x, y, g} | {mode:'radial'} | {mode:'burst'} | {mode:'zero'}
+  if (T < P.right) return { mode: 'dir', x: 0, y: 1, g: 3.2, ang: 90 };
+  if (T < P.up) return { mode: 'dir', x: 1, y: 0, g: 4.6, ang: 0 };
+  if (T < P.left) return { mode: 'dir', x: 0, y: -1, g: 4.6, ang: 270 };
+  if (T < P.orbit) return { mode: 'dir', x: -1, y: 0, g: 4.6, ang: 180 };
+  if (T < P.burst) return { mode: 'radial' };
+  if (T < P.zero) return { mode: 'burst' };
+  if (T < P.drop) return { mode: 'zero' };
+  return { mode: 'dir', x: 0, y: 1, g: 3.6, ang: 90 };
+}
+function floorAngle(T) {
+  if (T < P.open) return 0;
+  if (T < P.close0) return 1.75 * ei3((T - P.open) / (P.opened - P.open)) ;
+  if (T < P.close1) { const k = (T - P.close0) / (P.close1 - P.close0); return 1.75 * (1 - eo3(k)) - 0.06 * Math.sin(Math.PI * clamp(k * 1.25, 0, 1)); }
+  return 0;
+}
+
+// ---- 形 ----
+const rnd = mulberry32(1308);
+const pieces = [];   // {kind, size, color, verts(local), body, spawn, vx, vy, target}
+const KINDS = ['circle', 'square', 'tri', 'half', 'bar', 'quarter'];
+const COLS = [0, 0, 0, 1, 1, 1, 2, 2, 3, 3]; // 0=地と反対 1=coral 2=pink 3=ink
+
+function glyphHull(ch) {
+  const oc = document.createElement('canvas'); oc.width = 520; oc.height = 520;
+  const o = oc.getContext('2d'); o.font = FONT; o.fontStretch = 'condensed'; o.fillStyle = '#000';
+  o.fillText(ch, 100, 400);
+  const d = o.getImageData(0, 0, 520, 520).data, pts = [];
+  for (let y = 0; y < 520; y += 2) {
+    let l = -1, r = -1;
+    for (let x = 0; x < 520; x++) if (d[(y * 520 + x) * 4 + 3] > 110) { if (l < 0) l = x; r = x; }
+    if (l >= 0) { pts.push({ x: l - 100, y: y - 400 }, { x: r + 1 - 100, y: y - 400 }); }
+  }
+  pts.sort((a, b) => a.x - b.x || a.y - b.y);
+  const cr = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lo = [], up = [];
+  for (const p of pts) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
+  for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
+  up.pop(); lo.pop();
+  return { hull: lo.concat(up), adv: o.measureText(ch).width };
+}
+
+let engine, walls = {}, frames, impacts = [], shake, contacts, capY = 424;
+// 三角は頂点を上に向けて組む：最寄りの「上向き」角（3回対称）へ
+const tri0 = a => { const up = Math.PI / 2; let d = (up - a) % (2 * Math.PI / 3); if (d > Math.PI / 3) d -= 2 * Math.PI / 3; if (d < -Math.PI / 3) d += 2 * Math.PI / 3; return d; };
+
+function build() {
+  const { Engine, Bodies, Body, Composite, Events, Vertices } = Matter;
+  engine = Engine.create({ positionIterations: 10, velocityIterations: 8 });
+  engine.gravity.scale = 0.001;
+  const wopt = { isStatic: true, friction: 0.3, restitution: 0.2 };
+  walls.left = Bodies.rectangle(-100, H / 2 - 400, 200, H + 1800, wopt);
+  walls.right = Bodies.rectangle(W + 100, H / 2 - 400, 200, H + 1800, wopt);
+  walls.fl = Bodies.rectangle(W / 4, H + 30, W / 2, 60, wopt);
+  walls.fr = Bodies.rectangle(W * 3 / 4, H + 30, W / 2, 60, wopt);
+  walls.ceil = Bodies.rectangle(W / 2, -100, W + 400, 200, wopt);
+  Composite.add(engine.world, [walls.left, walls.right, walls.fl, walls.fr]);
+
+  // 文字：GRAVITY を1字ずつ剛体に（凸包）。組んだときの位置＝実際の字送り
+  const gl = [...WORD].map(glyphHull);
+  capY = 640 + Math.min(...gl[WORD.indexOf('I')].hull.map(v => v.y));
+  const track = 18, total = gl.reduce((s, g) => s + g.adv, 0) + track * (WORD.length - 1);
+  let pen = (W - total) / 2;
+  [...WORD].forEach((ch, i) => {
+    const g = gl[i], c = Vertices.centre(g.hull);
+    const tx = pen + c.x, ty = 640 + c.y; // ベースライン y=640
+    pen += g.adv + track;
+    const x0 = lerp(260, W - 260, i / 6) + (rnd() - 0.5) * 80;
+    const b = Bodies.fromVertices(x0, -260, [g.hull.map(p => ({ x: p.x, y: p.y }))], { friction: 0.35, restitution: 0.18, density: 0.0016 });
+    Body.setAngle(b, (rnd() - 0.5) * 1.6);
+    pieces.push({ kind: 'glyph', ch, off: { x: -c.x, y: -c.y }, body: b, spawn: -0.22 + 0.105 * i + (i === 0 ? 0 : 0),
+      v: { x: (rnd() - 0.5) * 300, y: 1900 }, av: (rnd() - 0.5) * 6, target: { x: tx, y: ty }, color: 0, order: 1, idx: i });
+  });
+
+  // 形：48個、4段×12列の見本帳に組めるよう種類→大きさ順に目標を振る
+  const shapes = [];
+  for (let i = 0; i < 48; i++) {
+    const kind = KINDS[i % 6], size = Math.round(lerp(42, 98, Math.pow(rnd(), 0.8)));
+    shapes.push({ kind, size, color: COLS[Math.floor(rnd() * COLS.length)] });
+  }
+  const sorted = shapes.slice().sort((a, b) => KINDS.indexOf(a.kind) - KINDS.indexOf(b.kind) || b.size - a.size);
+  const rowsY = [150, 278, 832, 960];
+  sorted.forEach((s, k) => {
+    const row = Math.floor(k / 12), col = k % 12;
+    s.target = { x: W / 2 + (col - 5.5) * 136, y: rowsY[row] };
+    s.row = row; s.col = col;
+  });
+  shapes.forEach((s, i) => {
+    const r = s.size / 2, o = { friction: 0.4, restitution: 0.3, density: 0.001, chamfer: null };
+    let b;
+    const x0 = 120 + rnd() * (W - 240), y0 = -90 - rnd() * 260;
+    if (s.kind === 'circle') b = Bodies.circle(x0, y0, r, o, 28);
+    else if (s.kind === 'square') b = Bodies.rectangle(x0, y0, s.size * 0.86, s.size * 0.86, { ...o, chamfer: { radius: 3 } });
+    else if (s.kind === 'bar') b = Bodies.rectangle(x0, y0, s.size * 1.25, s.size * 0.42, { ...o, chamfer: { radius: 3 } });
+    else if (s.kind === 'tri') b = Bodies.polygon(x0, y0, 3, r * 0.95, o);
+    else {
+      const v = [], n = 16;
+      if (s.kind === 'half') { for (let k = 0; k <= n; k++) { const a = Math.PI * k / n; v.push({ x: Math.cos(a) * r, y: -Math.sin(a) * r }); } }
+      else { v.push({ x: 0, y: 0 }); for (let k = 0; k <= n; k++) { const a = Math.PI / 2 * k / n; v.push({ x: Math.cos(a) * r * 1.1, y: -Math.sin(a) * r * 1.1 }); } }
+      b = Bodies.fromVertices(x0, y0, [v], o);
+    }
+    Body.setAngle(b, rnd() * Math.PI * 2);
+    // 出だし：-1.4〜1.35s に降る（0秒目には既に何個かが落ちている＝ループの終わりで降り始める）
+    const spawn = -1.8 + 3.15 * (i / 47) + (rnd() - 0.5) * 0.12;
+    pieces.push({ ...s, body: b, spawn, v: { x: (rnd() - 0.5) * 240, y: 500 + rnd() * 500 }, av: (rnd() - 0.5) * 8, order: s.row < 2 ? 2 : 0 });
+  });
+  pieces.forEach((p, i) => {
+    p.id = i;
+    p.local = p.body.vertices.map(v => ({ x: v.x - p.body.position.x, y: v.y - p.body.position.y }));
+    // local は「今の角度」で取っているので、角度0の形に戻す
+    const a = -p.body.angle, c = Math.cos(a), s = Math.sin(a);
+    p.local = p.local.map(v => ({ x: v.x * c - v.y * s, y: v.x * s + v.y * c }));
+    p.r = Math.max(...p.local.map(v => Math.hypot(v.x, v.y)));
+    p.body.isSleeping = false;
+  });
+  const byBody = new Map(pieces.map(p => [p.body.id, p]));
+
+  // ---- シミュレーション ----
+  const dt = 1 / (FPS * SUB);
+  frames = new Float32Array(NF * pieces.length * 3).fill(NaN);
+  shake = new Float32Array(NF); contacts = new Uint16Array(NF);
+  let stepImpacts = [];
+  Events.on(engine, 'collisionStart', e => {
+    for (const pr of e.pairs) {
+      const a = pr.bodyA, b = pr.bodyB, n = pr.collision.normal;
+      const rv = Math.abs((a.velocity.x - b.velocity.x) * n.x + (a.velocity.y - b.velocity.y) * n.y) * 60;
+      if (rv > 700) {
+        const s = pr.collision.supports[0] || a.position;
+        const big = (byBody.get(a.id)?.kind === 'glyph' || byBody.get(b.id)?.kind === 'glyph');
+        stepImpacts.push({ x: s.x, y: s.y, s: rv, big });
+      }
+    }
+  });
+  let ceilOn = false, compose = null;
+  const held = new Set();
+  let fi = 0, amp = 0;
+  const nSteps = (T1 - T0) * FPS * SUB;
+  for (let st = 0; st <= nSteps; st++) {
+    const T = T0 + st * dt;
+    for (const p of pieces) if (!p.added && T >= p.spawn) {
+      p.added = true; Composite.add(engine.world, p.body);
+      Body.setVelocity(p.body, { x: p.v.x / 60, y: p.v.y / 60 }); Body.setAngularVelocity(p.body, p.av / 60);
+    }
+    if (!ceilOn && T >= 2.2) { ceilOn = true; Composite.add(engine.world, walls.ceil); }
+    // 床：中央から割れる跳ね上げ戸（蝶番は左右の端）
+    const fa = floorAngle(T);
+    Body.setAngle(walls.fl, fa); Body.setPosition(walls.fl, { x: Math.cos(fa) * W / 4 - Math.sin(fa) * 30, y: H + Math.sin(fa) * W / 4 + Math.cos(fa) * 30 });
+    Body.setAngle(walls.fr, -fa); Body.setPosition(walls.fr, { x: W - Math.cos(fa) * W / 4 + Math.sin(fa) * 30, y: H + Math.sin(fa) * W / 4 + Math.cos(fa) * 30 });
+
+    const g = gravityAt(T);
+    if (g.mode === 'dir') { engine.gravity.x = g.x * g.g; engine.gravity.y = g.y * g.g; }
+    else { engine.gravity.x = 0; engine.gravity.y = 0; }
+    // 渦は群れの重心のまわりに回す（画面中心まわりだと群れごと公転して片寄る）
+    let gx = 0, gy = 0, gn = 0;
+    for (const p of pieces) if (p.added) { gx += p.body.position.x; gy += p.body.position.y; gn++; }
+    gx /= Math.max(1, gn); gy /= Math.max(1, gn);
+    for (const p of pieces) {
+      const b = p.body; if (!p.added || held.has(p)) continue;
+      const dx = W / 2 - b.position.x, dy = H / 2 - b.position.y, d = Math.hypot(dx, dy) + 1e-6;
+      const ex = gx - b.position.x, ey = gy - b.position.y, ed = Math.hypot(ex, ey) + 1e-6;
+      if (g.mode === 'radial') {
+        const k = sm(P.orbit, P.orbit + 0.35, T);
+        const sw = 1.9 * sm(P.orbit + 0.2, P.orbit + 0.9, T) * (1 - 1.6 * sm(5.85, 6.2, T));
+        Matter.Body.applyForce(b, b.position, { x: b.mass * 0.001 * (4.2 * k * dx / d - sw * ey / ed), y: b.mass * 0.001 * (4.2 * k * dy / d + sw * ex / ed) });
+        b.frictionAir = 0.02 + 0.05 * sm(P.orbit + 0.3, P.orbit + 0.9, T);
+      } else if (g.mode === 'burst') {
+        Matter.Body.applyForce(b, b.position, { x: -b.mass * 0.001 * 9 * dx / d, y: -b.mass * 0.001 * 9 * dy / d });
+      } else b.frictionAir = 0.01;
+    }
+
+    // 無重力：その瞬間の姿勢と速度から、目標へのばね（解析解）で組む。衝突は切る
+    if (T >= P.zero && !compose) {
+      compose = new Map();
+      const f = fi - 1;
+      for (const p of pieces) {
+        const b = p.body, i3 = (f * pieces.length + p.id) * 3, j3 = ((f - 1) * pieces.length + p.id) * 3;
+        const v0x = (frames[i3] - frames[j3]) * FPS, v0y = (frames[i3 + 1] - frames[j3 + 1]) * FPS, w0 = (frames[i3 + 2] - frames[j3 + 2]) * FPS;
+        const ta = b.angle - Math.round(b.angle / (2 * Math.PI)) * 2 * Math.PI;
+        const om = 2 * Math.PI * (p.kind === 'glyph' ? 0.95 + 0.06 * p.idx : 0.85 + 0.6 * rnd());
+        compose.set(p, { T: T, x0: b.position.x, y0: b.position.y, a0: b.angle, v0x, v0y, w0, aT: p.kind === 'tri' ? b.angle + tri0(b.angle) : b.angle - ta, om, ze: p.kind === 'glyph' ? 0.62 : 0.5 });
+        // 戻すときの順：下の2段→文字（左から）→上の2段
+        p.release = P.drop + (p.kind === 'glyph' ? 0.16 + 0.07 * p.idx : p.order === 0 ? 0.04 * rnd() + (3 - p.row) * 0.03 : 0.72 + p.col * 0.035 + (1 - p.row) * 0.05);
+        p.body.collisionFilter.mask = 0; held.add(p);
+      }
+    }
+    if (compose) for (const p of pieces) {
+      if (!held.has(p)) continue;
+      const q = pose(p, compose.get(p), T);
+      if (T >= p.release) {
+        held.delete(p); p.body.collisionFilter.mask = 0xFFFFFFFF;
+        Body.setPosition(p.body, { x: q.x, y: q.y }); Body.setAngle(p.body, q.a);
+        Body.setVelocity(p.body, { x: 0, y: 0 }); Body.setAngularVelocity(p.body, 0);
+      } else {
+        Body.setPosition(p.body, { x: q.x, y: q.y }); Body.setAngle(p.body, q.a);
+        Body.setVelocity(p.body, { x: 0, y: 0 }); Body.setAngularVelocity(p.body, 0);
+      }
+    }
+
+    Engine.update(engine, dt * 1000);
+
+    if (st % SUB === 0) {
+      for (const p of pieces) {
+        if (!p.added) continue;
+        const i3 = (fi * pieces.length + p.id) * 3;
+        frames[i3] = p.body.position.x; frames[i3 + 1] = p.body.position.y; frames[i3 + 2] = p.body.angle;
+      }
+      let e = 0;
+      for (const im of stepImpacts) { e += im.s * (im.big ? 2.2 : 0.5); if (impacts.length < 4000 && (im.big || im.s > 1300)) impacts.push({ f: fi, x: im.x, y: im.y, s: im.s, big: im.big }); }
+      stepImpacts = [];
+      amp = Math.max(amp * 0.82, Math.min(22, e * 0.0016));
+      shake[fi] = amp; contacts[fi] = engine.pairs.list.filter(pr => pr.isActive).length;
+      fi++;
+    }
+  }
+}
+
+// 無重力のばね：x(τ) = x* + e^{-ζωτ}(A cos ω_d τ + B sin ω_d τ) ＋ 着いたあとの呼吸
+function pose(p, c, T) {
+  const tau = T - c.T, z = c.ze, w = c.om, wd = w * Math.sqrt(1 - z * z), e = Math.exp(-z * w * tau);
+  const cs = Math.cos(wd * tau), sn = Math.sin(wd * tau);
+  const tgt = p.target;
+  const breath = sm(8.6, 9.3, T) * (p.kind === 'glyph' ? 5 : 7) * Math.sin(2 * Math.PI * 0.55 * (T - 8.6) - (tgt.x / W) * 4.2);
+  const ty = tgt.y + breath;
+  const Ax = c.x0 - tgt.x, Ay = c.y0 - tgt.y, Aa = c.a0 - c.aT;
+  const Bx = (c.v0x + z * w * Ax) / wd, By = (c.v0y + z * w * Ay) / wd, Ba = (c.w0 + z * w * Aa) / wd;
+  return { x: tgt.x + e * (Ax * cs + Bx * sn), y: ty + e * (Ay * cs + By * sn), a: c.aT + e * (Aa * cs + Ba * sn) };
+}
+
+// ---- 描画 ----
+function palette(bgIsCream) {
+  return bgIsCream ? [GREEN, CORAL, PINK, INK] : [CREAM, CORAL, PINK, INK];
+}
+function getPose(f, p) {
+  if (f < 0 || f >= NF) return null;
+  const i3 = (f * pieces.length + p.id) * 3, x = frames[i3];
+  if (x !== x) return null;
+  return { x, y: frames[i3 + 1], a: frames[i3 + 2] };
+}
+function shapePath(p) {
+  ctx.beginPath();
+  if (p.kind === 'circle') { ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2); return; }
+  p.local.forEach((v, k) => k ? ctx.lineTo(v.x, v.y) : ctx.moveTo(v.x, v.y));
+  ctx.closePath();
+}
+function drawPiece(p, q, col, alpha) {
+  if (q.y - p.r > H + 40 || q.y + p.r < -40) return;
+  ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(q.a); ctx.globalAlpha = alpha;
+  ctx.fillStyle = col;
+  if (p.kind === 'glyph') { ctx.font = FONT; ctx.fontStretch = 'condensed'; ctx.fillText(p.ch, p.off.x, p.off.y); }
+  else { shapePath(p); ctx.fill(); }
+  ctx.restore();
+}
+function drawWorld(fs, pal) {
+  // fs = 描く記録のフレーム番号の組（継ぎ目では2つ）
+  for (const f of fs) {
+    // 速いものに残像
+    for (const p of pieces) {
+      const q = getPose(f, p); if (!q) continue;
+      const q1 = getPose(f - 1, p); if (!q1) continue;
+      const sp = Math.hypot(q.x - q1.x, q.y - q1.y);
+      if (sp > 14) for (let k = 3; k >= 1; k--) { const qk = getPose(f - k, p); if (qk) drawPiece(p, qk, pal[p.color], 0.11 * (4 - k) * clamp((sp - 14) / 20, 0, 1)); }
+    }
+    for (const p of pieces) { const q = getPose(f, p); if (q) drawPiece(p, q, pal[p.color], 1); }
+  }
+}
+function drawImpacts(fs, pal) {
+  ctx.save(); ctx.strokeStyle = pal[0]; ctx.lineCap = 'round';
+  for (const f of fs) for (const im of impacts) {
+    const age = (f - im.f) / FPS; if (age < 0 || age > 0.42) continue;
+    const k = age / 0.42, R = (im.big ? 30 : 14) + eo3(k) * (im.big ? 120 : 60) * clamp(im.s / 2200, 0.5, 1.4);
+    ctx.globalAlpha = (1 - k) * (im.big ? 0.9 : 0.55); ctx.lineWidth = (im.big ? 5 : 3) * (1 - k) + 0.5;
+    ctx.beginPath(); ctx.arc(im.x, im.y, R, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawFloor(T, pal) {
+  // 床（跳ね上げ戸）と、重力の向いている壁の光る帯
+  const fa = floorAngle(T);
+  ctx.save(); ctx.fillStyle = pal[0];
+  ctx.save(); ctx.translate(0, H); ctx.rotate(fa); ctx.fillRect(0, -10, W / 2 - 2, 10); ctx.restore();
+  ctx.save(); ctx.translate(W, H); ctx.rotate(-fa); ctx.fillRect(-W / 2 + 2, -10, W / 2 - 2, 10); ctx.restore();
+  ctx.restore();
+}
+function edgeGlow(T) {
+  const g = gravityAt(T);
+  if (g.mode !== 'dir' || T < 0.1) return;
+  const since = T - (T < P.right ? -9 : T < P.up ? P.right : T < P.left ? P.up : T < P.orbit ? P.left : P.drop);
+  const k = clamp(since / 0.22, 0, 1), a = 0.25 + 0.75 * Math.exp(-since * 2.5);
+  ctx.save(); ctx.fillStyle = CORAL; ctx.globalAlpha = a;
+  const th = 14;
+  if (g.x > 0) ctx.fillRect(W - th, H / 2 - H / 2 * k, th, H * k);
+  else if (g.x < 0) ctx.fillRect(0, H / 2 - H / 2 * k, th, H * k);
+  else if (g.y < 0) ctx.fillRect(W / 2 - W / 2 * k, 0, W * k, th);
+  ctx.restore();
+}
+function phaseLabel(T) {
+  if (T < P.right) return ['01', 'FALL'];
+  if (T < P.orbit) return ['02', 'TILT'];
+  if (T < P.zero) return ['03', 'ORBIT'];
+  if (T < P.drop) return ['04', 'ZERO-G'];
+  if (T < P.open) return ['05', 'DROP'];
+  if (T < P.close1 - 0.15) return ['06', 'OPEN'];
+  return ['01', 'FALL'];
+}
+function gaugeAngle(T) {
+  // 矢印の角度を、切り替わりで素早く回す（ばね）
+  const keys = [[-9, 90], [P.right, 0], [P.up, -90], [P.left, -180], [P.drop, -270]];
+  let a = 90;
+  for (let i = 0; i < keys.length; i++) {
+    const [t0, ang] = keys[i]; if (T < t0) break;
+    const prev = i ? keys[i - 1][1] : ang, s = T - t0;
+    const r = 1 - Math.exp(-9 * s) * (Math.cos(14 * s) + 0.64 * Math.sin(14 * s));
+    a = prev + (ang - prev) * r;
+  }
+  return a * Math.PI / 180;
+}
+function drawHUD(T, fs, pal, bgCream) {
+  const f = fs[0];
+  const fg = bgCream ? INK : CREAM;
+  ctx.save(); ctx.fillStyle = fg; ctx.font = `700 18px ${MONO}`; ctx.textBaseline = 'top';
+  ctx.fillText('MIDDLE STUDIES REEL — 013', 40, 36);
+  const [n, name] = phaseLabel(T);
+  ctx.textAlign = 'right'; ctx.fillText(`${n}  ${name}`, W - 40, 36);
+  ctx.font = `500 18px ${MONO}`; ctx.textBaseline = 'alphabetic';
+  ctx.fillText('Claude', W - 40, H - 36);
+  ctx.textAlign = 'left';
+  const g = gravityAt(T);
+  let gs;
+  if (g.mode === 'dir') gs = `g ${(g.g * 1000).toFixed(0).padStart(4)} px/s²  ∠ ${String(g.ang).padStart(3, '0')}°`;
+  else if (g.mode === 'radial') gs = `g → centre  4200 px/s²  + swirl`;
+  else if (g.mode === 'burst') gs = `g ← centre  9000 px/s²`;
+  else gs = `g 0 px/s²  springs only`;
+  let live = 0; for (const ff of fs) live += pieces.filter(p => { const q = getPose(ff, p); return q && q.y < H + 60 && q.y > -60; }).length;
+  let con = 0; for (const ff of fs) con += ff >= 0 && ff < NF ? contacts[ff] : 0;
+  ctx.fillText(`${gs}   bodies ${String(live).padStart(2, '0')}   contacts ${String(con).padStart(3, '0')}`, 40, H - 36);
+  // 重力計
+  const cx = W - 92, cy = 128, R = 40;
+  ctx.strokeStyle = fg; ctx.lineWidth = 2; ctx.globalAlpha = 0.9;
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+  const rad = sm(P.orbit - 0.05, P.orbit + 0.15, T) * (1 - sm(P.burst - 0.05, P.burst + 0.05, T));
+  const bur = sm(P.burst - 0.05, P.burst + 0.05, T) * (1 - sm(P.zero - 0.05, P.zero + 0.1, T));
+  const zer = sm(P.zero - 0.05, P.zero + 0.15, T) * (1 - sm(P.drop - 0.12, P.drop, T));
+  const dirA = 1 - Math.max(rad, bur, zer);
+  if (dirA > 0.01) {
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(gaugeAngle(T)); ctx.globalAlpha = dirA; ctx.fillStyle = CORAL; ctx.strokeStyle = CORAL; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(-R * 0.55, 0); ctx.lineTo(R * 0.35, 0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(R * 0.72, 0); ctx.lineTo(R * 0.22, -15); ctx.lineTo(R * 0.22, 15); ctx.fill(); ctx.restore();
+  }
+  for (const [amt, sgn] of [[rad, 1], [bur, -1]]) if (amt > 0.01) {
+    ctx.save(); ctx.translate(cx, cy); ctx.globalAlpha = amt; ctx.fillStyle = CORAL;
+    for (let k = 0; k < 4; k++) { ctx.save(); ctx.rotate(k * Math.PI / 2 + T * 3); ctx.beginPath();
+      if (sgn > 0) { ctx.moveTo(R * 0.25, 0); ctx.lineTo(R * 0.75, -9); ctx.lineTo(R * 0.75, 9); }
+      else { ctx.moveTo(R * 0.85, 0); ctx.lineTo(R * 0.35, -9); ctx.lineTo(R * 0.35, 9); }
+      ctx.fill(); ctx.restore(); }
+    ctx.restore();
+  }
+  if (zer > 0.01) { ctx.save(); ctx.globalAlpha = zer; ctx.fillStyle = CORAL; ctx.beginPath(); ctx.arc(cx, cy, 8, 0, Math.PI * 2); ctx.fill(); ctx.restore(); }
+  ctx.restore();
+}
+function drawGuides(T, pal) {
+  // 組み上がったときだけ出る版面の罫（見本帳）
+  const a = sm(8.25, 8.75, T) * (1 - sm(P.drop - 0.05, P.drop + 0.2, T));
+  if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = CORAL; ctx.lineWidth = 1.5; ctx.fillStyle = CORAL;
+  const grow = eo3((T - 8.25) / 0.7);
+  for (const y of [640, capY]) { ctx.beginPath(); ctx.moveTo(W / 2 - 900 * grow, y); ctx.lineTo(W / 2 + 900 * grow, y); ctx.stroke(); }
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 12; c++) {
+    const x = W / 2 + (c - 5.5) * 136, y = [150, 278, 832, 960][r];
+    ctx.beginPath(); ctx.moveTo(x - 6, y); ctx.lineTo(x + 6, y); ctx.moveTo(x, y - 6); ctx.lineTo(x, y + 6); ctx.stroke();
+  }
+  ctx.font = `500 18px ${MONO}`; ctx.textBaseline = 'alphabetic';
+  ctx.fillText('baseline', W / 2 - 900 * grow + 4, 666);
+  ctx.textAlign = 'right'; ctx.fillText('cap height', W / 2 + 900 * grow - 4, capY - 12);
+  ctx.textAlign = 'left';
+  ctx.fillText('55 bodies · g = 0 · every one set by a spring', W / 2 - 900 * grow + 4, 718);
+  ctx.restore();
+}
+function renderAt(t) {
+  t = ((t % 15) + 15) % 15;
+  const f = Math.round((t - T0) * FPS);
+  const fs = [f];
+  if (t >= 15 + T0) fs.push(Math.round((t - 15 - T0) * FPS));
+  // 地の色：無重力の間だけ反転（中心から円で広がり、縁から戻る）
+  const rIn = eo3((t - P.zero + 0.08) / 0.5) * 1150;
+  const rOut = (1 - ei3((t - P.drop + 0.05) / 0.4)) * 1150;
+  const radius = t < P.drop - 0.05 ? (t >= P.zero - 0.08 ? rIn : 0) : (t < P.drop + 0.4 ? rOut : 0);
+  let amp = 0; for (const ff of fs) amp = Math.max(amp, ff >= 0 && ff < NF ? shake[ff] : 0);
+  const sx = amp * Math.sin(t * 91.7) * Math.cos(t * 23.3), sy = amp * Math.cos(t * 77.1) * Math.sin(t * 31.9 + 1);
+
+  const layer = (cream) => {
+    const pal = palette(cream);
+    ctx.fillStyle = cream ? CREAM : GREEN; ctx.fillRect(0, 0, W, H);
+    ctx.save(); ctx.translate(sx, sy);
+    drawGuides(t, pal);
+    drawImpacts(fs, pal);
+    drawWorld(fs, pal);
+    drawFloor(t, pal);
+    ctx.restore();
+    edgeGlow(t);
+    drawHUD(t, fs, pal, cream);
+  };
+  ctx.save(); layer(false); ctx.restore();
+  if (radius > 0) { ctx.save(); ctx.beginPath(); ctx.arc(W / 2, H / 2, radius, 0, Math.PI * 2); ctx.clip(); layer(true); ctx.restore(); }
+}
+
+const ready = (async () => {
+  await document.fonts.load(FONT); await document.fonts.load('condensed ' + FONT); await document.fonts.load(`700 18px ${MONO}`); await document.fonts.load(`500 18px ${MONO}`);
+  await document.fonts.ready;
+  build();
+})();
+window.__duration = 15;
+window.__poster = 9.4;
+// __seek は前計算が終わってから公開する（計算中にページへ問い合わせが来ないように）
+ready.then(() => { window.__seek = t => { renderAt(t); }; });
+if (!location.search.includes('render')) {
+  ready.then(() => { const s = performance.now(); const loop = () => { renderAt(((performance.now() - s) / 1000) % 15); requestAnimationFrame(loop); }; loop(); });
+}
+</script>
+</body>
+</html>

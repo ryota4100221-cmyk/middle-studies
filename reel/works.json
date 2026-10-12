@@ -446,5 +446,42 @@
     },
     "review_rounds": 4,
     "review": "1周目：字が上下逆（テクスチャの y を二重に反転していた）→直した。櫛の振れが強すぎて全面が鋸歯になる→振幅120→88・ピッチ76→64。剥がしが後半で一気に終わる→紙の工程を前に詰め、イーズをサインに変えた。ループ境目で最初の滴の予兆が出ていない→時刻を折り返して15秒手前から玉を落とす。SwiftShader で1コマ6秒→WebGL2 に移して操作数ぶんだけループするよう変え、波紋は生きている8個だけ渡す。2周目：下段のHUDが模様に埋もれて読めない→生成りの下地を敷いた。0秒目の玉が小さく目に入らない→半径1.5倍に。櫛が画面を横切る細い線に見えて不具合のよう→木の背と針の櫛として描いた。3周目：櫛の影が背の上側に出ていた→画面座標で描き直した。等倍で見ると、針先が羽根の頂点と一致している。4周目（本番の書き出し）：9コマとコンタクトを確認し、0秒目と14.9秒目が同じ字と同じ玉でつながる。直すことは見つからなかった。許容した差：12.3〜12.6秒は紙の裏に染みが進むだけの静かな区間だが、止まってはいない（動きは染みの前進）。前の7本と比べて、生成りの多色で操作が積もっていく構成はほかに無い。"
+  },
+  {
+    "id": "013",
+    "slug": "gravity",
+    "title": "Gravity",
+    "date": "2026-10-12",
+    "concept": "箱は画面そのもので、中身は GRAVITY の7字（字形の凸包で剛体化）と48個の形。読み込み時に matter.js で全尺を1/180秒刻みで計算して記録し、重力の向きだけで場面を作る：下に降り積もり、右・上・左の壁へ叩きつけられ、中心への引力と群れの重心まわりの渦で1つの玉になって回る。7.0秒で玉が弾けると重力が消え、地が中心から反転して、全員がばねの解析解で見本帳の版面に組み上がる（見せ場は8.5秒、GRAVITY がベースラインに揃う瞬間）。重力が戻ると下の段→文字→上の段の順に落ちて山になり、床が中央から割れて全部こぼれ、次の雨が0秒目へつながる。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/013_gravity.mp4",
+    "techniques": [
+      "rigid-body-physics-matterjs",
+      "precomputed-fixed-step-simulation",
+      "glyph-convex-hull-colliders",
+      "switching-gravity-direction",
+      "radial-gravity-with-centroid-swirl",
+      "analytic-damped-spring-layout",
+      "collision-impact-rings-and-shake",
+      "trapdoor-kinematic-floor",
+      "radial-palette-inversion-wipe",
+      "seamless-loop-by-time-offset-overlay"
+    ],
+    "look": {
+      "palette": [
+        "#0f3b2e",
+        "#f2ead8",
+        "#ff5b35",
+        "#f6a7c1",
+        "#0b0b0b"
+      ],
+      "type": [
+        "Bricolage Grotesque Condensed 800",
+        "JetBrains Mono"
+      ],
+      "structure": "one box / gravity in 7 states (down → right → up → left → centre+swirl → zero-g typeset → down) → floor opens → next rain",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：9.0秒で字がまだ揺れて G と R が重なる→ばねを速く（0.95Hz・ζ0.62）。cap height の罫が字の頭とずれる→ I の凸包から取る。三角が左向き→頂点を上へ。13.0〜13.5秒が空→床が開くのを12.8秒へ遅らせる。書き出しが Execution context destroyed で落ちる→__seek を前計算の後に公開。2周目：まだ13.0〜13.5秒が空→次の雨を T=-1.8 から降らせる。玉が画面中心まわりに公転して右へ片寄る→渦を群れの重心まわりに。3周目：玉が中心を行き来して6.2秒に右上で切れる→回転中の空気抵抗を上げて中心で回る玉に。継ぎ目の bodies が00になる→2つの記録を合算。許容した差：4.6秒前後で左上の題字に形が重なる一瞬は、壁に叩きつける勢いとして残した。"
   }
 ]
