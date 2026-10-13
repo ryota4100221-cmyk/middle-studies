@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 014 Epicycle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Martian+Mono:wght@400;600&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #0e0d12; overflow: hidden; }
+  canvas { display: block; width: 1920px; height: 1080px; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// REEL — 014 EPICYCLE
+// 1本のペンが、回る円の鎖（フーリエ級数）だけで EPICYCLE の字を一筆で書き、
+// 項を減らして（ローパス）また1つの円に戻る。絵は全部 t の純関数。
+window.__duration = 15;
+window.__poster = 7.0;
+
+const W = 1920, H = 1080;
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const BG = '#0e0d12', INK = '#ecebf2', PEN = '#ff3d7f', GHOST = '#3fd8ff', DIM = '#6b6878';
+const MONO = '"Martian Mono", ui-monospace, monospace';
+const K = 360;                 // ±K までの係数
+const M = 4096;                // 一周の標本数
+const TAU = Math.PI * 2;
+
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, u) => a + (b - a) * u;
+const smooth = (a, b, x) => { const u = clamp((x - a) / (b - a)); return u * u * (3 - 2 * u); };
+const ease = u => u < .5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+const seg = (a, b, x) => ease(clamp((x - a) / (b - a)));
+
+// ---------- 1. 字の輪郭を取る（オフスクリーンに描いて marching squares） ----------
+function traceWord(word) {
+  const ow = 3000, oh = 520, step = 2;
+  const oc = document.createElement('canvas'); oc.width = ow; oc.height = oh;
+  const o = oc.getContext('2d');
+  o.fillStyle = '#000'; o.fillRect(0, 0, ow, oh);
+  o.fillStyle = '#fff'; o.textBaseline = 'alphabetic'; o.textAlign = 'center';
+  o.font = '340px "Dela Gothic One"';
+  if ('letterSpacing' in o) o.letterSpacing = '18px';
+  o.fillText(word, ow / 2, 400);
+  const img = o.getImageData(0, 0, ow, oh).data;
+  const gw = Math.floor(ow / step), gh = Math.floor(oh / step);
+  const v = new Float32Array((gw + 1) * (gh + 1));
+  for (let y = 0; y <= gh; y++) for (let x = 0; x <= gw; x++) {
+    const px = Math.min(ow - 1, x * step), py = Math.min(oh - 1, y * step);
+    v[y * (gw + 1) + x] = (x === 0 || y === 0 || x === gw || y === gh) ? 0 : img[(py * ow + px) * 4] / 255;
+  }
+  const th = 0.5, V = (x, y) => v[y * (gw + 1) + x];
+  const pts = new Map(), adj = new Map();
+  const key = (t, x, y) => t + x * 4096 + y * 16777216 * 0 + y * 8192 * 4096;
+  function ep(t, x, y) { // t=0 横の辺 (x,y)-(x+1,y) / t=1 縦の辺 (x,y)-(x,y+1)
+    const k = (y * (gw + 2) + x) * 2 + t;
+    if (!pts.has(k)) {
+      let px, py;
+      if (t === 0) { const a = V(x, y), b = V(x + 1, y); px = x + (th - a) / (b - a); py = y; }
+      else { const a = V(x, y), b = V(x, y + 1); px = x; py = y + (th - a) / (b - a); }
+      pts.set(k, [px * step, py * step]);
+    }
+    return k;
+  }
+  function link(a, b) {
+    if (!adj.has(a)) adj.set(a, []); if (!adj.has(b)) adj.set(b, []);
+    adj.get(a).push(b); adj.get(b).push(a);
+  }
+  for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+    const tl = V(x, y) > th, tr = V(x + 1, y) > th, br = V(x + 1, y + 1) > th, bl = V(x, y + 1) > th;
+    const c = (tl << 3) | (tr << 2) | (br << 1) | bl;
+    if (c === 0 || c === 15) continue;
+    const T = () => ep(0, x, y), B = () => ep(0, x, y + 1), L = () => ep(1, x, y), R = () => ep(1, x + 1, y);
+    switch (c) {
+      case 1: case 14: link(L(), B()); break;
+      case 2: case 13: link(B(), R()); break;
+      case 3: case 12: link(L(), R()); break;
+      case 4: case 11: link(T(), R()); break;
+      case 6: case 9: link(T(), B()); break;
+      case 7: case 8: link(L(), T()); break;
+      case 5: link(L(), T()); link(B(), R()); break;
+      case 10: link(T(), R()); link(L(), B()); break;
+    }
+  }
+  const used = new Set(), loops = [];
+  for (const start of adj.keys()) {
+    if (used.has(start)) continue;
+    const loop = []; let prev = -1, cur = start;
+    while (cur !== undefined && !used.has(cur)) {
+      used.add(cur); loop.push(pts.get(cur));
+      const n = adj.get(cur); const nx = n[0] !== prev ? n[0] : n[1];
+      prev = cur; cur = nx;
+    }
+    if (loop.length > 40) loops.push(loop);
+  }
+  // 中心をそろえ、幅 1500px に
+  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+  for (const l of loops) for (const p of l) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }
+  const s = 1500 / (x1 - x0), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  return loops.map(l => l.map(p => [(p[0] - cx) * s, (p[1] - cy) * s]));
+}
+
+// ---------- 2. 全部の輪郭を1本の道にする（橋でつなぐ・橋はあとで隠す） ----------
+function buildTour(loops) {
+  const info = loops.map(l => { let mx = 1e9; for (const p of l) mx = Math.min(mx, p[0]); return { l, mx }; });
+  info.sort((a, b) => a.mx - b.mx);
+  const path = []; // [x, y, isBridge]
+  let exit = null;
+  for (const { l } of info) {
+    let si = 0;
+    if (exit) { let bd = 1e18; l.forEach((p, i) => { const d = (p[0] - exit[0]) ** 2 + (p[1] - exit[1]) ** 2; if (d < bd) { bd = d; si = i; } }); }
+    else { l.forEach((p, i) => { if (p[0] < l[si][0]) si = i; }); }
+    if (exit) path.push([exit[0], exit[1], 1]);
+    for (let j = 0; j <= l.length; j++) { const p = l[(si + j) % l.length]; path.push([p[0], p[1], j === 0 && exit ? 1 : 0]); }
+    exit = l[si];
+  }
+  path.push([path[0][0], path[0][1], 1]); // 最後の橋で始点へ戻る
+  // 弧長で M 点に標本化
+  const cum = [0];
+  for (let i = 1; i < path.length; i++) cum.push(cum[i - 1] + Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]));
+  const total = cum[cum.length - 1];
+  const re = new Float64Array(M), im = new Float64Array(M), bridge = new Uint8Array(M);
+  let j = 1;
+  for (let i = 0; i < M; i++) {
+    const d = total * i / M;
+    while (cum[j] < d && j < path.length - 1) j++;
+    const u = (d - cum[j - 1]) / Math.max(1e-9, cum[j] - cum[j - 1]);
+    re[i] = lerp(path[j - 1][0], path[j][0], u); im[i] = lerp(path[j - 1][1], path[j][1], u);
+    bridge[i] = path[j][2];
+  }
+  return { re, im, bridge };
+}
+
+// ---------- 3. DFT ----------
+function dft(re, im) {
+  const cr = new Float64Array(2 * K + 1), ci = new Float64Array(2 * K + 1);
+  const cs = new Float64Array(M), sn = new Float64Array(M);
+  for (let i = 0; i < M; i++) { cs[i] = Math.cos(TAU * i / M); sn[i] = Math.sin(TAU * i / M); }
+  for (let k = -K; k <= K; k++) {
+    let sr = 0, si = 0;
+    for (let i = 0; i < M; i++) {
+      const m = ((k * i) % M + M) % M; // e^{-iθ}
+      const c = cs[m], s = -sn[m];
+      sr += re[i] * c - im[i] * s; si += re[i] * s + im[i] * c;
+    }
+    cr[k + K] = sr / M; ci[k + K] = si / M;
+  }
+  return { cr, ci };
+}
+
+let WR, WI, SR, SI, rank, rankOf, chainOrder, bridgeMask, ghosts, S1K, dominant;
+const GHOST_N = [240, 120, 60, 30, 15, 8, 4, 2];
+const T_GHOST = [];
+
+// ---------- 4. 時間の設計 ----------
+// 項の数：A で星の7項、B で語の 360 項へ、D で 1 項まで下げる
+function nWord(t) {
+  if (t < 2.25) return 0;
+  if (t < 4.9) { const u = seg(2.25, 4.9, t); return Math.pow(2, u * Math.log2(2 * K + 2)) - 1; }
+  if (t < 8.5) return 2 * K + 1;
+  if (t < 13.9) { const u = (t - 8.5) / 5.4; const e = 1 - Math.pow(1 - u, 1.35); return Math.max(1, Math.pow(2, (1 - e) * Math.log2(2 * K + 1))); }
+  return 1;
+}
+const morph = t => seg(2.3, 4.7, t);
+// ペンの速さ（周/秒）→ 積分して 15 秒でちょうど整数周に
+function penSpeed(t) {
+  const A = 1.15, B = 0.32, Z = 0.06;
+  if (t < 2.4) return A;
+  if (t < 4.9) return lerp(A, B, seg(2.4, 4.9, t));
+  if (t < 8.6) { const z = zoomAmt(t); return lerp(B, Z, z); }
+  if (t < 14) return lerp(B, A, seg(9.2, 13.6, t));
+  return A;
+}
+const PHI = new Float64Array(15 * 600 + 2);
+function buildPhase() {
+  for (let i = 1; i < PHI.length; i++) PHI[i] = PHI[i - 1] + penSpeed((i - 0.5) / 600) / 600;
+  const total = PHI[15 * 600], target = Math.round(total);
+  for (let i = 0; i < PHI.length; i++) PHI[i] *= target / total;
+}
+function phase(t) { const x = clamp(t, 0, 15) * 600, i = Math.floor(x); return lerp(PHI[i], PHI[Math.min(PHI.length - 1, i + 1)], x - i); }
+// ペン先への潜り込み
+const zoomAmt = t => seg(5.5, 6.7, t) * (1 - seg(7.6, 8.6, t));
+
+function weights(t) {
+  // 係数 c_k(t) = w_k · mix(S1_k, W_k, m)
+  const n = nWord(t), m = morph(t);
+  const cr = new Float64Array(2 * K + 1), ci = new Float64Array(2 * K + 1), w = new Float32Array(2 * K + 1);
+  // 星の項（A）：1本ずつばねで出る
+  if (t < 4.9) S1K.forEach((k, i) => {
+    const t0 = 0.08 + i * 0.2, u = t - t0;
+    let pop = u <= 0 ? 0 : 1 - Math.exp(-u * 7) * Math.cos(u * 15);
+    if (i === 0) pop = 1;
+    w[k + K] = Math.max(w[k + K], pop);
+  });
+  for (let r = 0; r < rank.length; r++) {
+    const ww = clamp(n - r); const j = rank[r] + K;
+    if (t >= 4.9) w[j] = ww; else w[j] = Math.max(w[j], ww);
+  }
+  w[K] = 1; // 直流（中心）
+  for (let j = 0; j <= 2 * K; j++) {
+    cr[j] = w[j] * lerp(SR[j], WR[j], m);
+    ci[j] = w[j] * lerp(SI[j], WI[j], m);
+  }
+  return { cr, ci, w, n };
+}
+
+// z(s) = Σ c_k e^{2πiks}
+function evalAt(cr, ci, s, kmax) {
+  const c = Math.cos(TAU * s), sn = Math.sin(TAU * s);
+  let x = cr[K], y = ci[K], pr = 1, pi = 0;
+  for (let k = 1; k <= kmax; k++) {
+    const nr = pr * c - pi * sn; pi = pr * sn + pi * c; pr = nr;
+    const a = cr[K + k], b = ci[K + k], d = cr[K - k], e = ci[K - k];
+    x += a * pr - b * pi + d * pr + e * pi;
+    y += a * pi + b * pr - d * pi + e * pr;
+  }
+  return [x, y];
+}
+function curve(cr, ci, s0, len, N) {
+  let kmax = 0; for (let k = K; k > 0; k--) if (cr[K + k] || ci[K + k] || cr[K - k] || ci[K - k]) { kmax = k; break; }
+  const out = new Float32Array(N * 2);
+  for (let i = 0; i < N; i++) { const p = evalAt(cr, ci, s0 + len * i / (N - 1), kmax); out[2 * i] = p[0]; out[2 * i + 1] = p[1]; }
+  return out;
+}
+
+function prepare() {
+  const loops = traceWord('EPICYCLE');
+  const tour = buildTour(loops);
+  bridgeMask = tour.bridge;
+  ({ cr: WR, ci: WI } = dft(tour.re, tour.im));
+  WR[K] = 0; WI[K] = 0; // 中心＝画面中央
+  rank = [];
+  for (let k = -K; k <= K; k++) if (k) rank.push(k);
+  rank.sort((a, b) => Math.hypot(WR[b + K], WI[b + K]) - Math.hypot(WR[a + K], WI[a + K]));
+  dominant = rank[0];
+  rankOf = new Map(rank.map((k, i) => [k, i]));
+  // 星（5回対称のエピトロコイド）：最大の項をそのまま共有＝0秒目と15秒目が同じ円
+  const R0 = Math.hypot(WR[dominant + K], WI[dominant + K]), a0 = Math.atan2(WI[dominant + K], WR[dominant + K]);
+  const mult = [1, -4, 6, -9, 11, -14, 16], amp = [1, 0.34, 0.15, 0.085, 0.05, 0.03, 0.02];
+  SR = new Float64Array(2 * K + 1); SI = new Float64Array(2 * K + 1);
+  S1K = [];
+  mult.forEach((m, i) => {
+    const k = dominant * m; if (Math.abs(k) > K) return;
+    S1K.push(k);
+    const ph = a0 + (m - 1) * 0.0;
+    SR[k + K] = i === 0 ? WR[dominant + K] : R0 * amp[i] * Math.cos(ph);
+    SI[k + K] = i === 0 ? WI[dominant + K] : R0 * amp[i] * Math.sin(ph);
+  });
+  // 鎖の順：星の項を先に、残りは大きい順
+  chainOrder = [...S1K, ...rank.filter(k => !S1K.includes(k))];
+  buildPhase();
+  // ローパスで残る輪郭（D の残像）を先に計算
+  ghosts = GHOST_N.map(n => {
+    const cr = new Float64Array(2 * K + 1), ci = new Float64Array(2 * K + 1);
+    for (let r = 0; r < n; r++) { const j = rank[r] + K; cr[j] = WR[j]; ci[j] = WI[j]; }
+    return curve(cr, ci, 0, 1, 2400);
+  });
+  // 各残像が生まれる時刻
+  GHOST_N.forEach((n, i) => { let tt = 8.5; while (tt < 14 && nWord(tt) > n) tt += 0.005; T_GHOST[i] = tt; });
+}
+
+// ---------- 5. 描く ----------
+function camera(t, tip) {
+  const zA = 1.22;
+  let zoom = lerp(zA, 0.96, seg(0.05, 1.05, t));
+  zoom = lerp(zoom, zA, seg(13.4, 15.0, t));
+  const za = zoomAmt(t);
+  zoom = zoom * Math.pow(7.5, za);
+  const cx = tip[0] * za, cy = tip[1] * za;
+  // わずかな傾き
+  const rot = 0.06 * Math.sin(TAU * t / 15) * (1 - za);
+  return { zoom, cx, cy, rot };
+}
+
+function drawStroke(pts, cam, color, lw, alphaFn, hideBridges, s0, len) {
+  const N = pts.length / 2;
+  ctx.strokeStyle = color; ctx.lineWidth = lw / cam.zoom; ctx.lineCap = 'butt'; ctx.lineJoin = 'round';
+  const CH = 16;
+  for (let a = 0; a < N - 1; a += CH) {
+    const b = Math.min(N - 1, a + CH);
+    const al = alphaFn((a + b) / 2 / (N - 1));
+    if (al <= 0.004) continue;
+    ctx.globalAlpha = al;
+    ctx.beginPath(); let open = false;
+    for (let i = a; i <= b; i++) {
+      let br = false;
+      if (hideBridges > 0) {
+        const s = ((s0 + len * i / (N - 1)) % 1 + 1) % 1;
+        br = bridgeMask[Math.floor(s * M) % M] === 1;
+      }
+      if (br) { open = false; continue; }
+      if (!open) { ctx.moveTo(pts[2 * i], pts[2 * i + 1]); open = true; } else ctx.lineTo(pts[2 * i], pts[2 * i + 1]);
+    }
+    ctx.stroke();
+    if (hideBridges < 1) { // 橋は消えていく途中だけ薄く
+      ctx.globalAlpha = al * (1 - hideBridges) ; ctx.beginPath();
+      for (let i = a; i <= b; i++) { if (i === a) ctx.moveTo(pts[2 * i], pts[2 * i + 1]); else ctx.lineTo(pts[2 * i], pts[2 * i + 1]); }
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+function render(t) {
+  t = clamp(t, 0, 15 - 1e-9);
+  const { cr, ci, w, n } = weights(t);
+  const ph = phase(t), s = ((ph % 1) + 1) % 1;
+  let kmax = 0; for (let k = K; k > 0; k--) if (w[K + k] || w[K - k]) { kmax = k; break; }
+  const tip = evalAt(cr, ci, s, kmax);
+  const cam = camera(t, tip);
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
+
+  // 方眼（カメラと一緒に動く＝ズームの手がかり）
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.translate(W / 2, H / 2); ctx.rotate(cam.rot); ctx.scale(cam.zoom, cam.zoom); ctx.translate(-cam.cx, -cam.cy);
+  drawGrid(cam);
+
+  // D：残像（ローパスで通った輪郭）
+  const ghostOut = 1 - seg(13.4, 14.6, t);
+  ghosts.forEach((g, i) => {
+    const age = t - T_GHOST[i];
+    if (age < 0 || t < 8.5) return;
+    const a = (0.16 + 0.5 * Math.exp(-age * 1.6)) * ghostOut * smooth(0, 0.12, age);
+    drawStroke(g, cam, GHOST, 1.6, () => a, i < 3 ? 1 : 0, 0, 1);
+  });
+
+  // 軌跡
+  const L = t < 4.9 ? lerp(0.82, 1, seg(3.6, 4.9, t)) : t < 13.6 ? 1 : lerp(1, 0.82, seg(13.6, 15, t));
+  const tail = t < 4.9 ? lerp(0.85, 0.04, seg(3.4, 4.9, t)) : t < 13.6 ? 0.04 : lerp(0.04, 0.85, seg(13.6, 15, t));
+  const NT = Math.round(lerp(700, 3200, smooth(2.6, 4.6, t) * (1 - smooth(13.2, 14.8, t))) * (1 + 2.5 * zoomAmt(t)));
+  const trail = curve(cr, ci, s - L, L, NT);
+  const hide = smooth(2.4, 4.4, t) * (1 - smooth(10.2, 11.6, t));
+  const af = u => (u < tail ? Math.pow(u / tail, 1.6) : 1);
+  ctx.globalCompositeOperation = 'lighter';
+  drawStroke(trail, cam, PEN, 9, u => af(u) * 0.16, hide, s - L, L);
+  ctx.globalCompositeOperation = 'source-over';
+  drawStroke(trail, cam, PEN, 3.2, af, hide, s - L, L);
+
+  // 円の鎖
+  drawChain(cr, ci, s, cam, t);
+
+  // ペン先
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(tip[0], tip[1], 6 / cam.zoom, 0, TAU); ctx.fill();
+  ctx.globalAlpha = 0.25; ctx.beginPath(); ctx.arc(tip[0], tip[1], 16 / cam.zoom, 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  drawHUD(t, w, n, cr, ci, cam);
+}
+
+function drawGrid(cam) {
+  const step = cam.zoom > 3 ? 20 : 100;
+  const half = { x: W / 2 / cam.zoom + step * 2, y: H / 2 / cam.zoom + step * 2 };
+  const x0 = Math.floor((cam.cx - half.x) / step) * step, x1 = cam.cx + half.x;
+  const y0 = Math.floor((cam.cy - half.y) / step) * step, y1 = cam.cy + half.y;
+  ctx.lineWidth = 1 / cam.zoom; ctx.strokeStyle = '#1d1b25';
+  ctx.beginPath();
+  for (let x = x0; x <= x1; x += step) { ctx.moveTo(x, y0); ctx.lineTo(x, y1); }
+  for (let y = y0; y <= y1; y += step) { ctx.moveTo(x0, y); ctx.lineTo(x1, y); }
+  ctx.stroke();
+  ctx.strokeStyle = '#2a2735'; ctx.beginPath();
+  ctx.moveTo(x0, 0); ctx.lineTo(x1, 0); ctx.moveTo(0, y0); ctx.lineTo(0, y1); ctx.stroke();
+}
+
+function drawChain(cr, ci, s, cam, t) {
+  let x = cr[K], y = ci[K];
+  const vis = 0.35 / cam.zoom;
+  ctx.lineCap = 'round';
+  let drawn = 0;
+  const arms = [];
+  for (const k of chainOrder) {
+    const j = k + K, a = cr[j], b = ci[j];
+    const r = Math.hypot(a, b); if (r < 1e-6) continue;
+    const th = TAU * k * s, c = Math.cos(th), sn = Math.sin(th);
+    const nx = x + a * c - b * sn, ny = y + a * sn + b * c;
+    if (r > vis) arms.push([x, y, nx, ny, r, drawn++]);
+    x = nx; y = ny;
+  }
+  // 円
+  ctx.strokeStyle = INK;
+  for (const [ax, ay, , , r, i] of arms) {
+    ctx.globalAlpha = Math.max(0.06, 0.42 * Math.pow(0.985, i));
+    ctx.lineWidth = (i < 3 ? 1.6 : 1.1) / cam.zoom;
+    ctx.beginPath(); ctx.arc(ax, ay, r, 0, TAU); ctx.stroke();
+  }
+  // 腕
+  for (const [ax, ay, bx, by, r, i] of arms) {
+    ctx.globalAlpha = Math.max(0.35, 0.95 * Math.pow(0.99, i));
+    ctx.lineWidth = (i < 3 ? 3 : 1.6) / cam.zoom;
+    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+    if (i < 8) { ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(ax, ay, 3.6 / cam.zoom, 0, TAU); ctx.fill(); }
+  }
+  ctx.globalAlpha = 1;
+}
+
+function sceneOf(t) {
+  if (t < 2.3) return ['01', 'ONE CIRCLE, THEN SIX'];
+  if (t < 4.9) return ['02', 'ADD HARMONICS'];
+  if (t < 8.5) return ['03', 'ONE PEN, NEVER LIFTED'];
+  if (t < 13.9) return ['04', 'LOW-PASS'];
+  return ['05', 'ONE CIRCLE'];
+}
+
+function drawHUD(t, w, n, cr, ci, cam) {
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = `600 18px ${MONO}`; ctx.fillStyle = INK; ctx.textAlign = 'left';
+  ctx.fillText('MIDDLE STUDIES  REEL — 014', 56, 70);
+  const [no, name] = sceneOf(t);
+  ctx.textAlign = 'right';
+  ctx.fillText(name, W - 56, 70);
+  ctx.fillStyle = PEN; ctx.fillText(no + '  ', W - 56 - ctx.measureText(name).width, 70);
+
+  // 項の数
+  let active = 0; for (let j = 0; j <= 2 * K; j++) if (j !== K && w[j] > 0.5) active++;
+  ctx.textAlign = 'left'; ctx.fillStyle = INK; ctx.font = `600 18px ${MONO}`;
+  ctx.fillText(`${String(active).padStart(3, '0')} circles`, 56, H - 56);
+  ctx.fillStyle = DIM; ctx.font = `400 18px ${MONO}`;
+  ctx.fillText('z(s) = Σ cₖ · e^(2πiks)     pen ' + penSpeed(t).toFixed(2) + ' rev/s' + (cam.zoom > 1.5 ? `     zoom ×${cam.zoom.toFixed(1)}` : ''), 260, H - 56);
+  ctx.textAlign = 'right'; ctx.fillStyle = INK; ctx.font = `600 18px ${MONO}`;
+  ctx.fillText('Claude', W - 56, H - 56);
+
+  // スペクトル：大きい順に 720 本、点いている項はピンク
+  const x0 = 56, x1 = W - 56, base = H - 96, hmax = 56;
+  const bw = (x1 - x0) / rank.length;
+  for (let r = 0; r < rank.length; r++) {
+    const j = rank[r] + K;
+    const mag = Math.hypot(WR[j], WI[j]);
+    const h = Math.max(1, hmax * clamp((Math.log10(mag + 1e-3) + 0.6) / 3.4));
+    const on = w[j];
+    ctx.fillStyle = on > 0.02 ? PEN : '#2e2b38';
+    ctx.globalAlpha = on > 0.02 ? 0.35 + 0.65 * on : 1;
+    ctx.fillRect(x0 + r * bw, base - h, Math.max(1, bw - 0.6), h);
+  }
+  ctx.globalAlpha = 1;
+  // カットオフの目盛り
+  if (n >= 1 && t < 13.95) {
+    const nn = Math.min(rank.length, n);
+    const xc = x0 + nn * bw;
+    ctx.fillStyle = INK; ctx.fillRect(xc, base - hmax - 14, 1.5, hmax + 18);
+    ctx.font = `600 18px ${MONO}`; ctx.textAlign = xc > W - 260 ? 'right' : 'left';
+    ctx.fillText(`n = ${Math.round(nn)}`, xc + (xc > W - 260 ? -10 : 10), base - hmax - 2);
+  }
+
+  // 03 の添え書き
+  const cap = smooth(4.7, 5.3, t) * (1 - smooth(5.5, 5.9, t)) + smooth(8.1, 8.6, t) * (1 - smooth(9.4, 9.9, t));
+  if (cap > 0.01) {
+    ctx.globalAlpha = cap; ctx.textAlign = 'center'; ctx.fillStyle = INK; ctx.font = `400 22px ${MONO}`;
+    ctx.fillText('one line, one pen, 720 circles turning at whole-number speeds', W / 2, 810);
+    ctx.globalAlpha = 1;
+  }
+  // 05 の題
+  const end = smooth(13.7, 14.2, t) * (1 - smooth(14.5, 14.95, t));
+  if (end > 0.01) {
+    ctx.globalAlpha = end; ctx.textAlign = 'center';
+    ctx.fillStyle = INK; ctx.font = `64px "Dela Gothic One"`;
+    ctx.fillText('EPICYCLE', W / 2, H / 2 + 22);
+    ctx.font = `400 18px ${MONO}`; ctx.fillStyle = DIM;
+    ctx.fillText('every line is a sum of circles', W / 2, H / 2 + 66);
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ---------- 起動 ----------
+const ready = (async () => {
+  await document.fonts.load('340px "Dela Gothic One"', 'EPICYCLE');
+  await document.fonts.load('600 18px "Martian Mono"');
+  await document.fonts.load('400 18px "Martian Mono"');
+  await document.fonts.ready;
+  prepare();
+})();
+
+ready.then(() => {
+  window.__seek = t => render(t);
+  render(0);
+  if (!location.search.includes('render')) {
+    const start = performance.now();
+    const loop = now => { render(((now - start) / 1000) % 15); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  }
+});
+</script>
+</body>
+</html>

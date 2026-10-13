@@ -483,5 +483,42 @@
     },
     "review_rounds": 3,
     "review": "1周目：9.0秒で字がまだ揺れて G と R が重なる→ばねを速く（0.95Hz・ζ0.62）。cap height の罫が字の頭とずれる→ I の凸包から取る。三角が左向き→頂点を上へ。13.0〜13.5秒が空→床が開くのを12.8秒へ遅らせる。書き出しが Execution context destroyed で落ちる→__seek を前計算の後に公開。2周目：まだ13.0〜13.5秒が空→次の雨を T=-1.8 から降らせる。玉が画面中心まわりに公転して右へ片寄る→渦を群れの重心まわりに。3周目：玉が中心を行き来して6.2秒に右上で切れる→回転中の空気抵抗を上げて中心で回る玉に。継ぎ目の bodies が00になる→2つの記録を合算。許容した差：4.6秒前後で左上の題字に形が重なる一瞬は、壁に叩きつける勢いとして残した。"
+  },
+  {
+    "id": "014",
+    "slug": "epicycle",
+    "title": "Epicycle",
+    "date": "2026-10-13",
+    "concept": "回る円の鎖（フーリエ級数）だけで描く15秒。1つの円から始まり、整数倍の速さで回る円を足すたびに5回対称の星が咲き、係数を語の側へ寄せていくと、720個の円が1本のペンで一度も紙を離れずに EPICYCLE の輪郭を書く。ペン先へ7.5倍まで潜ると、字の線を引いているのは小さな円の群れだと見える（見せ場は7.0秒）。そこから項を大きい順に残して減らす（ローパス）と、字は崩れて輪の列になり、楕円になり、通った輪郭がシアンの残像として積もったまま1つの円へ戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/014_epicycle.mp4",
+    "techniques": [
+      "fourier-series-epicycles",
+      "discrete-fourier-transform",
+      "marching-squares-glyph-outline",
+      "single-stroke-tour-with-hidden-bridges",
+      "coefficient-interpolation-morph",
+      "low-pass-truncation-by-magnitude",
+      "ghost-contour-accumulation",
+      "pen-tip-tracking-zoom",
+      "live-spectrum-readout",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#0e0d12",
+        "#ecebf2",
+        "#ff3d7f",
+        "#3fd8ff",
+        "#6b6878"
+      ],
+      "type": [
+        "Dela Gothic One",
+        "Martian Mono"
+      ],
+      "structure": "one pen / one circle → star (7 terms) → word (720 terms) → dive to the pen tip → low-pass back to one circle",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目（試写）：先頭の E の縦画が消えていた→オフスクリーンの幅が足りず字の左端が切れていたので 3000px に広げた。分割描画の丸い線端が重なってピンクの粒が並ぶ→butt に。ズーム中の軌跡が角張る→ズーム量に応じて標本数を3.5倍に。書いている最中の軌跡の欠けが大きい→尾の減衰を12%→4%に。2周目（本番）：0秒目の円が小さく、最初の1秒が弱い→0秒目を1.22倍に寄せて1秒で引く（終わりも1.22倍に戻してループを保つ）。2.6秒の『n = 0』表示を消した。3周目：14.95秒に題字が残っていて0秒目へ戻るときに飛ぶ→14.5〜14.95秒で消す。1.0秒で星の先が上端を越える→引きを早めた。許容した差：最後の字から最初の字へ戻る見えない橋が一周の14%あり、ローパスの途中の形に下線のような直線が残る。4.2秒、書いている途中の軌跡に字1つぶんの欠けが出る（ペンが進んでいる証として残した）。"
   }
 ]
