@@ -520,5 +520,41 @@
     },
     "review_rounds": 3,
     "review": "1周目（試写）：先頭の E の縦画が消えていた→オフスクリーンの幅が足りず字の左端が切れていたので 3000px に広げた。分割描画の丸い線端が重なってピンクの粒が並ぶ→butt に。ズーム中の軌跡が角張る→ズーム量に応じて標本数を3.5倍に。書いている最中の軌跡の欠けが大きい→尾の減衰を12%→4%に。2周目（本番）：0秒目の円が小さく、最初の1秒が弱い→0秒目を1.22倍に寄せて1秒で引く（終わりも1.22倍に戻してループを保つ）。2.6秒の『n = 0』表示を消した。3周目：14.95秒に題字が残っていて0秒目へ戻るときに飛ぶ→14.5〜14.95秒で消す。1.0秒で星の先が上端を越える→引きを早めた。許容した差：最後の字から最初の字へ戻る見えない橋が一周の14%あり、ローパスの途中の形に下線のような直線が残る。4.2秒、書いている途中の軌跡に字1つぶんの欠けが出る（ペンが進んでいる証として残した）。"
+  },
+  {
+    "id": "015",
+    "slug": "ribbon",
+    "title": "Ribbon",
+    "date": "2026-10-14",
+    "concept": "表が白・裏が黄の1本のサテンのリボンだけで見せる15秒。画面を斜めに渡ってねじれ続ける帯が、先頭から順に引き込まれるようにして円筒に巻かれたコイル、三葉結び目へと形を変え、4秒の手前ではコイルを軸方向から覗いてトンネルにする。結び目がほどけるとリボンは平らな面の向きを一定に保ったまま筆記体の ribbon を一筆で書く（見せ場は8秒、平ペンと同じ太細がリボンのねじれだけで出るところ）。カメラが回り込んで字が空間に立つリボンだと明かし、半ひねりのメビウスの帯（readout は faces 1）になってから、また1本の帯に戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/015_ribbon.mp4",
+    "techniques": [
+      "two-sided-ribbon-quad-strip",
+      "custom-3d-projection-canvas",
+      "painter-sorted-quads",
+      "satin-specular-shading",
+      "lead-end-staggered-shape-morph",
+      "width-vector-rotation-about-tangent",
+      "broad-nib-calligraphy-by-fixed-frame",
+      "mobius-band",
+      "torus-knot",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#2420c8",
+        "#17139a",
+        "#f6f2e9",
+        "#e4ff40"
+      ],
+      "type": [
+        "Instrument Serif Italic",
+        "DM Mono"
+      ],
+      "structure": "one ribbon / 5 shapes (twisting band → coil → trefoil knot → cursive word → Möbius band → band), each pulled through from the lead end; camera orbits to reveal the word stands in space",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：文字→メビウスの変形で幅ベクトルの線形補間が0を通って帯が折り紙状に潰れる／筆記体の折り返しで小三角が出る／文字の白が灰色→幅ベクトルを接線まわりの回転で補間し、接線を±3点で取り、光を正面寄りに。2周目：13.4秒で帯が縦に折れる＝回転角の符号が隣どうしで反転していた→角度を帯に沿ってアンラップ、幅は広がるときは遅く・狭まるときは早く変えてきつい曲線に太い帯を乗せない。3周目：b・o の結びの折り返しを丸め、n の縦画を細いループに、文字の停止区間に平ペンの角度の揺らぎを入れ、正面光（|n·v|）で白を戻した。許容した差：11.2秒のメビウスへの変形中に手前側の帯に小さな折れが残る／コイルを軸方向から見る3.75秒は裏面が斜めで黄が沈む。"
   }
 ]

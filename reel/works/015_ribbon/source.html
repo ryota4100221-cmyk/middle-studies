@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 015 Ribbon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #2420c8; overflow: hidden; }
+  canvas { display: block; width: 1920px; height: 1080px; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// MIDDLE STUDIES REEL — 015 "Ribbon" — Claude
+// One satin ribbon, two faces. Every frame is a pure function of t:
+// five shapes (band → coil → knot → calligraphy → Möbius → band), each morph pulled through from the lead end.
+const W = 1920, H = 1080, DUR = 15;
+const cv = document.getElementById('c'), g = cv.getContext('2d');
+const N = 1100;
+
+const BG = '#2420c8', SHADOW = '#17139a', FRONT = [246, 242, 233], BACK = [228, 255, 64], INK = '#f6f2e9';
+
+// ---------- math ----------
+const clamp01 = x => x < 0 ? 0 : x > 1 ? 1 : x;
+const smooth = x => (x = clamp01(x), x * x * (3 - 2 * x));
+const ease = x => (x = clamp01(x), x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const expoOut = x => (x = clamp01(x), x === 1 ? 1 : 1 - Math.pow(2, -10 * x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const TAU = Math.PI * 2;
+function norm(v) { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; }
+function cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+function rotX(v, a) { const c = Math.cos(a), s = Math.sin(a); return [v[0], v[1] * c - v[2] * s, v[1] * s + v[2] * c]; }
+function rotY(v, a) { const c = Math.cos(a), s = Math.sin(a); return [v[0] * c + v[2] * s, v[1], -v[0] * s + v[2] * c]; }
+function rotZ(v, a) { const c = Math.cos(a), s = Math.sin(a); return [v[0] * c - v[1] * s, v[0] * s + v[1] * c, v[2]]; }
+
+// resample a dense curve f(u) (u∈[0,1]) to N points evenly spaced by arc length; returns u per point
+function arcParams(f, dense = 6000) {
+  const pts = [], cum = [0];
+  for (let k = 0; k <= dense; k++) pts.push(f(k / dense));
+  for (let k = 1; k <= dense; k++) cum.push(cum[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1], pts[k][2] - pts[k - 1][2]));
+  const L = cum[dense], us = new Float64Array(N);
+  let k = 0;
+  for (let i = 0; i < N; i++) {
+    const target = L * i / (N - 1);
+    while (k < dense - 1 && cum[k + 1] < target) k++;
+    const seg = cum[k + 1] - cum[k] || 1;
+    us[i] = (k + (target - cum[k]) / seg) / dense;
+  }
+  return { us, L };
+}
+
+// ---------- shapes ----------
+// each shape: at(i, t) → { p:[x,y,z], w:[width dir], h: half width }
+
+// S0 — a straight band, twisting
+const LINE_L = 15;
+const S0 = {
+  h: 0.5,
+  at(i, t) {
+    const s = i / (N - 1);
+    const th = 5 * Math.PI * s - TAU * 0.8 * t;            // 0.8 Hz × 15 s = 12 whole turns → loops
+    const sag = 0.35 * Math.sin(TAU * (s * 1.5 - 0.2 * t)); // 0.2 × 15 = 3 → loops
+    return { p: [(s - 0.5) * LINE_L, sag, 0.6 * Math.sin(TAU * (s - 0.2 * t))], w: [0, Math.cos(th), Math.sin(th)] };
+  }
+};
+
+// S1 — a coil (band wound on a cylinder, axis = x)
+const COIL = { turns: 5.5, R: 1.35, len: 7.4 };
+const S1 = {
+  h: 0.36,
+  at(i, t) {
+    const s = i / (N - 1); // coil is uniform in arc length already
+    const a = TAU * COIL.turns * s + 1.4 * t;
+    const p = [(s - 0.5) * COIL.len, COIL.R * Math.cos(a), COIL.R * Math.sin(a)];
+    return { p, w: [1, 0, 0] };
+  }
+};
+
+// S2 — a trefoil knot, band lying on its tube
+const knotF = u => { const f = TAU * u, r = 2 + Math.cos(3 * f); return [0.95 * r * Math.cos(2 * f), 0.95 * r * Math.sin(2 * f), -0.95 * Math.sin(3 * f) * 1.2]; };
+const KNOT = arcParams(u => knotF(0.004 + 0.992 * u));
+const S2 = {
+  h: 0.34,
+  at(i, t) {
+    const u = 0.004 + 0.992 * KNOT.us[i], f = TAU * u;
+    const p = knotF(u), core = [1.9 * Math.cos(2 * f), 1.9 * Math.sin(2 * f), 0];
+    let w = norm([p[0] - core[0], p[1] - core[1], p[2] - core[2]]);
+    const ry = 0.55 * (t - 5.6), rx = -0.5 + 0.25 * Math.sin(t * 0.9);
+    return { p: rotX(rotY(p, ry), rx), w: rotX(rotY(w, ry), rx) };
+  }
+};
+
+// S3 — cursive "ribbon", one stroke, written with the flat of the band (broad-nib calligraphy)
+const SCRIPT = [
+  [-0.75, -0.15], [-0.35, 0.25], [0.02, 0.8], [0.12, 1.04], [0.26, 0.94], [0.4, 0.98], [0.5, 0.9], [0.48, 0.5], [0.53, 0.1],
+  [0.78, 0.02], [1.02, 0.45], [1.16, 0.98], [1.15, 0.3], [1.3, 0.02], [1.58, 0.35],
+  [1.82, 1.25], [1.98, 2.0], [1.9, 2.32], [1.7, 2.18], [1.62, 1.55], [1.62, 0.55], [1.72, 0.08], [1.98, 0.0], [2.24, 0.38], [2.18, 0.8], [2.36, 0.88], [2.56, 0.84],
+  [2.82, 1.25], [2.98, 2.0], [2.9, 2.32], [2.7, 2.18], [2.62, 1.55], [2.62, 0.55], [2.72, 0.08], [2.98, 0.0], [3.24, 0.38], [3.18, 0.8], [3.36, 0.88], [3.62, 0.86],
+  [3.98, 0.98], [3.72, 0.92], [3.5, 0.6], [3.52, 0.14], [3.8, -0.02], [4.1, 0.2], [4.2, 0.6], [4.1, 0.9], [4.26, 0.88], [4.45, 0.8],
+  [4.6, 0.78], [4.62, 0.3], [4.64, 0.04], [4.72, 0.1], [4.76, 0.5], [4.92, 0.92], [5.12, 0.86], [5.18, 0.45], [5.22, 0.08], [5.45, 0.0], [5.8, 0.28], [6.15, 0.6]
+];
+function catmull(pts, u) {
+  const n = pts.length - 1, x = u * n, k = Math.min(n - 1, Math.floor(x)), f = x - k;
+  const p0 = pts[Math.max(0, k - 1)], p1 = pts[k], p2 = pts[k + 1], p3 = pts[Math.min(n, k + 2)];
+  const c = j => 0.5 * (2 * p1[j] + (-p0[j] + p2[j]) * f + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * f * f + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * f * f * f);
+  return [c(0), c(1)];
+}
+const SC = { s: 1.48, ox: -2.8, oy: -1.0 };
+const scriptF = u => { const q = catmull(SCRIPT, u); return [(q[0] + SC.ox) * SC.s, (q[1] + SC.oy) * SC.s, 0.3 * Math.sin(u * 9)]; };
+const SCR = arcParams(scriptF, 12000);
+const NIB = norm([0.42, 0.55, 0.72]);
+const S3 = {
+  h: 0.23,
+  // the nib angle breathes a little, so the thick/thin pattern keeps moving while the word holds
+  at(i, t) { const u = SCR.us[i]; return { p: scriptF(u), w: norm([NIB[0] + 0.16 * Math.sin(2.2 * t - 7 * u), NIB[1], NIB[2] + 0.1 * Math.cos(1.7 * t - 5 * u)]) }; }
+};
+
+// S4 — Möbius band
+const S4 = {
+  h: 0.78,
+  at(i, t) {
+    const s = 0.003 + 0.994 * i / (N - 1), f = TAU * s, R = 2.25;
+    const rad = [Math.cos(f), Math.sin(f), 0];
+    let p = [R * rad[0], R * rad[1], 0];
+    let w = [Math.cos(f / 2) * rad[0], Math.cos(f / 2) * rad[1], Math.sin(f / 2)];
+    const rz = 0.7 * (t - 11), rx = -1.05;
+    return { p: rotX(rotZ(p, rz), rx), w: rotX(rotZ(w, rz), rx) };
+  }
+};
+
+// ---------- timeline ----------
+// [shape, from, to] ; morphs happen between consecutive holds
+const SEQ = [
+  { s: S0, in: 0.0 }, { s: S1, in: 1.55, d: 1.15 }, { s: S2, in: 4.25, d: 1.1 },
+  { s: S3, in: 6.55, d: 1.45 }, { s: S4, in: 10.25, d: 1.15 }, { s: S0, in: 13.15, d: 1.25 }
+];
+const SPREAD = 1.3;
+function shapeAt(i, t) {
+  let k = 0;
+  for (let j = 1; j < SEQ.length; j++) if (t >= SEQ[j].in) k = j;
+  const cur = SEQ[k], nxt = SEQ[k + 1];
+  const a = cur.s.at(i, t);
+  // still finishing the morph into `cur`?
+  if (k > 0 && t < cur.in + cur.d) {
+    const prev = SEQ[k - 1].s.at(i, t);
+    return blend(prev, SEQ[k - 1].s.h, a, cur.s.h, i, (t - cur.in) / cur.d);
+  }
+  return { p: a.p, w: a.w, w2: a.w, b: 0, h: cur.s.h };
+}
+function blend(A, hA, B, hB, i, p) {
+  const s = i / (N - 1);
+  const b = ease(p * (1 + SPREAD) - s * SPREAD);
+  const lift = Math.sin(Math.PI * b);
+  return {
+    p: [lerp(A.p[0], B.p[0], b), lerp(A.p[1], B.p[1], b) + lift * 0.5, lerp(A.p[2], B.p[2], b) + lift * 1.4],
+    w: A.w, w2: B.w, b, // width dir turns about the tangent from A to B (never passes through zero)
+    h: hB > hA ? lerp(hA, hB, b * b * b) : lerp(hA, hB, 1 - (1 - b) ** 3) // widen late, narrow early: a wide band never rides a tight curve
+  };
+}
+
+// ---------- camera (non-uniform Catmull–Rom over keys, wraps at 15 s) ----------
+const KEYS = [
+  [0.0, [-3.4, 0.2, 4.1], [0.6, -0.9, 0.0], 52, -0.32],
+  [1.5, [1.2, 1.9, 6.2], [0.2, 0.0, 0.0], 48, -0.08],
+  [2.7, [3.2, 2.8, 7.6], [0.0, 0.0, 0.0], 46, 0.06],
+  [3.75, [6.6, 0.25, 0.45], [0.0, 0.0, 0.0], 52, 0.6],
+  [4.7, [4.5, 3.2, 7.4], [0.0, 0.0, 0.0], 46, 0.1],
+  [5.8, [0.4, 1.2, 8.0], [0.0, 0.0, 0.0], 46, -0.05],
+  [6.8, [-1.8, -0.6, 8.6], [0.0, 0.0, 0.0], 46, 0.04],
+  [8.0, [0.0, 0.05, 9.4], [0.05, 0.0, 0.0], 44, 0.0],
+  [9.25, [0.2, 0.1, 9.2], [0.05, 0.0, 0.0], 44, 0.0],
+  [10.4, [6.8, 2.4, 5.6], [0.4, 0.0, 0.0], 46, -0.1],
+  [11.6, [0.5, 1.2, 7.4], [0.0, 0.0, 0.0], 46, 0.0],
+  [12.8, [-3.0, 1.6, 6.8], [0.0, 0.0, 0.0], 48, 0.08],
+  [13.9, [-4.2, 0.6, 5.0], [0.4, -0.7, 0.0], 50, -0.2],
+];
+function camAt(t) {
+  const K = KEYS.length;
+  const key = j => { const r = Math.floor(j / K), k = ((j % K) + K) % K, e = KEYS[k]; return { t: e[0] + r * DUR, v: [...e[1], ...e[2], e[3], e[4]] }; };
+  let j = 0; while (j < K - 1 && KEYS[j + 1][0] <= t) j++;
+  const k0 = key(j - 1), k1 = key(j), k2 = key(j + 1), k3 = key(j + 2);
+  const dt = k2.t - k1.t, f = (t - k1.t) / dt;
+  const h00 = 2 * f ** 3 - 3 * f ** 2 + 1, h10 = f ** 3 - 2 * f ** 2 + f, h01 = -2 * f ** 3 + 3 * f ** 2, h11 = f ** 3 - f ** 2;
+  const v = k1.v.map((_, n) => {
+    const m1 = (k2.v[n] - k0.v[n]) / (k2.t - k0.t) * dt, m2 = (k3.v[n] - k1.v[n]) / (k3.t - k1.t) * dt;
+    return h00 * k1.v[n] + h10 * m1 + h01 * k2.v[n] + h11 * m2;
+  });
+  return { pos: v.slice(0, 3), tgt: v.slice(3, 6), fov: v[6], roll: v[7] };
+}
+
+// ---------- render ----------
+const sx = new Float32Array(N * 2), sy = new Float32Array(N * 2), sz = new Float32Array(N * 2);
+const nrm = new Float32Array(N * 3), wp = new Float32Array(N * 3);
+const order = new Uint32Array(N - 1), depth = new Float32Array(N - 1);
+const LIGHT = norm([-0.35, 0.6, 0.75]);
+
+function renderAt(t) {
+  t = ((t % DUR) + DUR) % DUR;
+  const cam = camAt(t);
+  const fwd = norm([cam.tgt[0] - cam.pos[0], cam.tgt[1] - cam.pos[1], cam.tgt[2] - cam.pos[2]]);
+  let right = norm(cross(fwd, [0, 1, 0])), up = cross(right, fwd);
+  const cr = Math.cos(cam.roll), sr = Math.sin(cam.roll);
+  [right, up] = [[right[0] * cr + up[0] * sr, right[1] * cr + up[1] * sr, right[2] * cr + up[2] * sr], [up[0] * cr - right[0] * sr, up[1] * cr - right[1] * sr, up[2] * cr - right[2] * sr]];
+  const F = (H / 2) / Math.tan(cam.fov * Math.PI / 360);
+
+  // positions + width dirs
+  const P = new Array(N), Wd = new Array(N), Wd2 = new Array(N), Bl = new Float32Array(N), Hh = new Float32Array(N);
+  for (let i = 0; i < N; i++) { const a = shapeAt(i, t); P[i] = a.p; Wd[i] = a.w; Wd2[i] = a.w2; Bl[i] = a.b; Hh[i] = a.h; }
+  let backCount = 0;
+  // pass 1: tangent, width dir of the outgoing shape, and the turn (about the tangent) toward the incoming one
+  const TG = new Array(N), WA = new Array(N), TH = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    const ia = P[Math.max(0, i - 3)], ib = P[Math.min(N - 1, i + 3)];
+    const tg = norm([ib[0] - ia[0], ib[1] - ia[1], ib[2] - ia[2]]);
+    const perp = v => { const d = dot(v, tg); const q = [v[0] - d * tg[0], v[1] - d * tg[1], v[2] - d * tg[2]]; return Math.hypot(q[0], q[1], q[2]) < 1e-4 ? norm(cross(tg, [0, 0, 1])) : norm(q); };
+    TG[i] = tg; WA[i] = perp(Wd[i]);
+    if (Bl[i] > 0) { const w2 = perp(Wd2[i]), bn = cross(tg, WA[i]); TH[i] = Math.atan2(dot(w2, bn), dot(w2, WA[i])); }
+  }
+  // unwrap along the band so neighbours never turn opposite ways (that creases it)
+  for (let i = 1; i < N; i++) { while (TH[i] - TH[i - 1] > Math.PI) TH[i] -= TAU; while (TH[i] - TH[i - 1] < -Math.PI) TH[i] += TAU; }
+  for (let i = 0; i < N; i++) {
+    const p = P[i], tg = TG[i];
+    let w = WA[i];
+    if (Bl[i] > 0) {
+      const bn = cross(tg, w), ang = TH[i] * Bl[i];
+      w = norm([w[0] * Math.cos(ang) + bn[0] * Math.sin(ang), w[1] * Math.cos(ang) + bn[1] * Math.sin(ang), w[2] * Math.cos(ang) + bn[2] * Math.sin(ang)]);
+    }
+    // taper the two ends into a dovetail
+    const s = i / (N - 1), endT = Math.min(s, 1 - s) * N;
+    const hh = Hh[i] * (endT < 3 ? 0.999 : 1);
+    const n = cross(tg, w);
+    nrm[i * 3] = n[0]; nrm[i * 3 + 1] = n[1]; nrm[i * 3 + 2] = n[2];
+    wp[i * 3] = p[0]; wp[i * 3 + 1] = p[1]; wp[i * 3 + 2] = p[2];
+    for (let e = 0; e < 2; e++) {
+      const sg = e ? -1 : 1;
+      const q = [p[0] + sg * w[0] * hh - cam.pos[0], p[1] + sg * w[1] * hh - cam.pos[1], p[2] + sg * w[2] * hh - cam.pos[2]];
+      const zc = Math.max(0.05, dot(q, fwd));
+      sx[i * 2 + e] = W / 2 + F * dot(q, right) / zc;
+      sy[i * 2 + e] = H / 2 - F * dot(q, up) / zc;
+      sz[i * 2 + e] = zc;
+    }
+  }
+  for (let i = 0; i < N - 1; i++) { order[i] = i; depth[i] = sz[i * 2] + sz[i * 2 + 1] + sz[i * 2 + 2] + sz[i * 2 + 3]; }
+  const ord = Array.from(order).sort((a, b) => depth[b] - depth[a]);
+
+  // background
+  g.fillStyle = BG; g.fillRect(0, 0, W, H);
+  const vg = g.createRadialGradient(W * 0.5, H * 0.45, 200, W * 0.5, H * 0.5, 1250);
+  vg.addColorStop(0, 'rgba(70,64,255,0.35)'); vg.addColorStop(1, 'rgba(10,6,90,0.55)');
+  g.fillStyle = vg; g.fillRect(0, 0, W, H);
+
+  // flat drop shadow (offset grows as the band comes closer)
+  g.fillStyle = SHADOW; g.strokeStyle = SHADOW; g.lineWidth = 1.5; g.lineJoin = 'round';
+  g.beginPath();
+  const near = i => Math.min(sz[i * 2], sz[i * 2 + 1], sz[i * 2 + 2], sz[i * 2 + 3]) < 0.4; // cull what crosses the camera plane
+  for (let i = 0; i < N - 1; i++) {
+    if (near(i)) continue;
+    const z = (sz[i * 2] + sz[i * 2 + 2]) * 0.5, o = Math.min(70, 190 / z);
+    const ox = o * 0.55, oy = o;
+    g.moveTo(sx[i * 2] + ox, sy[i * 2] + oy); g.lineTo(sx[i * 2 + 2] + ox, sy[i * 2 + 2] + oy);
+    g.lineTo(sx[i * 2 + 3] + ox, sy[i * 2 + 3] + oy); g.lineTo(sx[i * 2 + 1] + ox, sy[i * 2 + 1] + oy); g.closePath();
+  }
+  g.fill(); g.stroke();
+
+  // ribbon quads, far → near
+  const flow = 16 * t;
+  for (const i of ord) {
+    if (near(i)) continue;
+    const n = [(nrm[i * 3] + nrm[i * 3 + 3]) / 2, (nrm[i * 3 + 1] + nrm[i * 3 + 4]) / 2, (nrm[i * 3 + 2] + nrm[i * 3 + 5]) / 2];
+    const v = norm([cam.pos[0] - wp[i * 3], cam.pos[1] - wp[i * 3 + 1], cam.pos[2] - wp[i * 3 + 2]]);
+    const nn = norm(n);
+    const facing = dot(nn, v);
+    const front = facing >= 0;
+    if (!front) backCount++;
+    const ns = front ? nn : [-nn[0], -nn[1], -nn[2]];
+    const diff = Math.max(0, dot(ns, LIGHT));
+    const hv = norm([LIGHT[0] + v[0], LIGHT[1] + v[1], LIGHT[2] + v[2]]);
+    const spec = Math.pow(Math.max(0, dot(ns, hv)), 38);
+    const rim = Math.pow(1 - Math.abs(facing), 3);
+    const base = front ? FRONT : BACK;
+    const stripe = front && Hh[i] > 0.3 && ((i + flow) % 30) < 2.2;
+    let r, gg, b;
+    if (stripe) { r = 36; gg = 32; b = 200; }
+    else {
+      const sh = 0.5 + 0.3 * diff + 0.28 * Math.abs(facing) - 0.15 * rim;
+      r = base[0] * sh; gg = base[1] * sh; b = base[2] * sh;
+      if (!front) { b = b * 0.85; }
+    }
+    r += spec * 210; gg += spec * 210; b += spec * 200;
+    const col = `rgb(${Math.min(255, r | 0)},${Math.min(255, gg | 0)},${Math.min(255, b | 0)})`;
+    g.fillStyle = col; g.strokeStyle = col; g.lineWidth = 1.1;
+    g.beginPath();
+    g.moveTo(sx[i * 2], sy[i * 2]); g.lineTo(sx[i * 2 + 2], sy[i * 2 + 2]);
+    g.lineTo(sx[i * 2 + 3], sy[i * 2 + 3]); g.lineTo(sx[i * 2 + 1], sy[i * 2 + 1]); g.closePath();
+    g.fill(); g.stroke();
+  }
+  drawHud(t, backCount / (N - 1));
+}
+
+// ---------- type ----------
+const CHAPTERS = [
+  { t: 0.0, no: '01', name: 'BAND', cap: 'one band, two faces' },
+  { t: 1.55, no: '02', name: 'COIL', cap: 'wound round a cylinder' },
+  { t: 4.25, no: '03', name: 'KNOT', cap: 'tied, without ends meeting' },
+  { t: 6.55, no: '04', name: 'NIB', cap: 'written with its flat edge' },
+  { t: 10.25, no: '05', name: 'MÖBIUS', cap: 'half a turn — and only one face' },
+  { t: 13.15, no: '01', name: 'BAND', cap: 'one band, two faces' },
+];
+function drawHud(t, backFrac) {
+  let k = 0; for (let j = 0; j < CHAPTERS.length; j++) if (t >= CHAPTERS[j].t) k = j;
+  const ch = CHAPTERS[k], last = CHAPTERS.length - 1;
+  // chapter 01 wraps across the loop point: its caption stays up through 15 s → 0 s
+  const since = k === 0 ? t + DUR - CHAPTERS[last].t : t - ch.t, next = (k === last ? DUR + CHAPTERS[1].t : CHAPTERS[k + 1].t) - t;
+  g.textBaseline = 'alphabetic';
+  g.fillStyle = INK;
+  g.font = '500 19px "DM Mono"';
+  if (g.letterSpacing !== undefined) g.letterSpacing = '2px';
+  g.textAlign = 'left'; g.fillText('MIDDLE STUDIES  REEL — 015', 56, 70);
+  g.textAlign = 'right'; g.fillText(`${ch.no}  ${ch.name}`, W - 56, 70);
+  g.fillText('Claude', W - 56, H - 52);
+  // readouts
+  g.textAlign = 'left';
+  g.font = '400 19px "DM Mono"';
+  const sides = ch.name === 'MÖBIUS' && since > 0.9 ? '1' : '2';
+  g.fillText(`faces ${sides}   front ${String(Math.round((1 - backFrac) * 100)).padStart(3, ' ')}%   back ${String(Math.round(backFrac * 100)).padStart(3, ' ')}%   t ${t.toFixed(2).padStart(5, '0')}s`, 56, H - 52);
+  if (g.letterSpacing !== undefined) g.letterSpacing = '0px';
+  // caption — rises in, sinks out
+  const inA = expoOut(since / 0.6), outA = smooth(next / 0.35);
+  const a = Math.min(inA, outA);
+  g.save();
+  g.globalAlpha = a;
+  g.font = 'italic 400 54px "Instrument Serif"';
+  g.textAlign = 'left';
+  g.fillText(ch.cap, 54, H - 104 + (1 - inA) * 24);
+  g.restore();
+  // progress hairline
+  g.fillStyle = 'rgba(246,242,233,0.28)'; g.fillRect(56, 92, W - 112, 1.5);
+  g.fillStyle = INK; g.fillRect(56, 92, (W - 112) * t / DUR, 1.5);
+}
+
+// ---------- boot ----------
+window.__duration = DUR;
+window.__poster = 8.6;
+const ready = document.fonts.load('italic 54px "Instrument Serif"').then(() => document.fonts.load('500 19px "DM Mono"')).then(() => document.fonts.ready);
+ready.then(() => {
+  window.__seek = t => { renderAt(t); };
+  if (!location.search.includes('render')) {
+    const t0 = performance.now();
+    const loop = () => { renderAt(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(loop); };
+    loop();
+  } else renderAt(0);
+});
+</script>
+</body>
+</html>
