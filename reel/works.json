@@ -556,5 +556,42 @@
     },
     "review_rounds": 3,
     "review": "1周目：文字→メビウスの変形で幅ベクトルの線形補間が0を通って帯が折り紙状に潰れる／筆記体の折り返しで小三角が出る／文字の白が灰色→幅ベクトルを接線まわりの回転で補間し、接線を±3点で取り、光を正面寄りに。2周目：13.4秒で帯が縦に折れる＝回転角の符号が隣どうしで反転していた→角度を帯に沿ってアンラップ、幅は広がるときは遅く・狭まるときは早く変えてきつい曲線に太い帯を乗せない。3周目：b・o の結びの折り返しを丸め、n の縦画を細いループに、文字の停止区間に平ペンの角度の揺らぎを入れ、正面光（|n·v|）で白を戻した。許容した差：11.2秒のメビウスへの変形中に手前側の帯に小さな折れが残る／コイルを軸方向から見る3.75秒は裏面が斜めで黄が沈む。"
+  },
+  {
+    "id": "016",
+    "slug": "slit-scan",
+    "title": "Slit-Scan",
+    "date": "2026-10-15",
+    "concept": "動いているのは1本のアニメーションだけで、画面を数百本のスリットに切り、スリットごとに少しずつ過去の瞬間を見せる（タイム・ディスプレイスメント）。色は「どれだけ過去か」で、今＝墨、遠い過去ほど菫→朱→琥珀になる。縦のスリットで SLIT が波打って伸び、横のスリットで SCAN がねじれ、同心円のスリットでは回る TIME と6本の腕が渦巻銀河になり（見せ場は6.8秒）、扇形のスリットで SPACE が螺旋階段にずれる。最後に遅れが0へ戻って全スリットが同じ瞬間に揃い、SLIT—SCAN が1枚の絵として読めたあと、また縦に裂けて最初へ戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/016_slit-scan.mp4",
+    "techniques": [
+      "slit-scan-time-displacement",
+      "per-slit-clipped-redraw",
+      "delay-field-geometries-x-y-ring-wedge",
+      "delay-as-colour-heat-ramp",
+      "source-atop-tinting",
+      "word-sprite-affine-draw",
+      "content-swap-propagating-through-time",
+      "amplitude-dip-geometry-switch",
+      "live-delay-readout",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#ebe6da",
+        "#141414",
+        "#4628d6",
+        "#ff3c28",
+        "#ffb21e"
+      ],
+      "type": [
+        "Anton",
+        "Geist Mono"
+      ],
+      "structure": "one source animation / 5 slit geometries (vertical → horizontal → rings → wedges → one moment) with the delay dipping to zero at each change → torn again into 01",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：同心円で速く回る棒が5px幅のリングごとに段差になり鋸歯状→リングを440本（2.5px）に。05の題字が「今」でない右側から入るため12.6秒前後でほぼ空の画面→題字を左（今の側）から入れ、遅れたスリットの SPACE と時間のワイプで出会うように。02の横棒が凡例を覆う→振幅470→410。出だしを強く（SLIT を1.18倍・振れ幅700）。題字の静止中は遅れがあっても絵が変わらない→終盤で題字を右へ加速して抜き、裂けながら01へ。2周目：0秒目がまばら→時刻のオフセットを1.0→1.4秒にして最初のフレームを最大の伸びに。凡例の目盛りが「−1.5 s」に重なる→短く。3周目：つなぎ目（3.0/5.6/9.4/11.6/14.9秒）と見せ場を等倍で確認、直すことが言えなくなった。許容した差：02で遅れた円が一瞬だけ左下の凡例に掛かる（0.2秒程度）、斜めの輪郭に4px幅スリットの段が見える（スリットの手触りとして残す）。"
   }
 ]

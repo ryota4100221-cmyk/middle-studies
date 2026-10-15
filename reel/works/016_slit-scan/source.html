@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 016 Slit-Scan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Geist+Mono:wght@400;600&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #ebe6da; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 56.25vw; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// REEL — 016 Slit-Scan / Claude
+// One animation, cut into hundreds of slits; each slit shows it at a different moment.
+// Colour = how far in the past that slit is looking.
+const W = 1920, H = 1080, CX = W / 2, CY = H / 2, D = 15;
+const OFF = 1.4;                 // frame 0 opens mid-smear
+const BG = '#ebe6da', INK = '#141414';
+const RAMP = [[0, [20, 20, 20]], [0.3, [70, 40, 214]], [0.64, [255, 60, 40]], [1, [255, 178, 30]]];
+const DMAX = 1.5;                // colour scale (seconds)
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const L = document.createElement('canvas'); L.width = W; L.height = H; const lx = L.getContext('2d');
+
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const mod = (x, m) => ((x % m) + m) % m;
+const TAU = Math.PI * 2;
+function ramp(f) {
+  f = clamp(f, 0, 1);
+  for (let i = 1; i < RAMP.length; i++) if (f <= RAMP[i][0]) {
+    const [a, ca] = RAMP[i - 1], [b, cb] = RAMP[i], k = (f - a) / (b - a);
+    return `rgb(${ca.map((v, j) => Math.round(v + (cb[j] - v) * k)).join(',')})`;
+  }
+  return 'rgb(255,178,30)';
+}
+
+// ---------- phases (internal time T in [0,15)) ----------
+// mode: geometry of the slits; amp: max delay (s); word: what the source shows
+const PH = [
+  { t0: 0.0,  t1: 3.2,  mode: 'x', amp: 1.4, word: 'SLIT',  name: 'VERTICAL SLITS',   no: '01' },
+  { t0: 3.2,  t1: 6.2,  mode: 'y', amp: 1.0, word: 'SCAN',  name: 'HORIZONTAL SLITS', no: '02' },
+  { t0: 6.2,  t1: 10.0, mode: 'r', amp: 1.2, word: 'TIME',  name: 'RINGS',            no: '03' },
+  { t0: 10.0, t1: 12.6, mode: 'a', amp: 1.5, word: 'SPACE', name: 'WEDGES',           no: '04' },
+  { t0: 12.6, t1: 15.0, mode: 'x', amp: 1.4, word: 'TITLE', name: 'ONE MOMENT',       no: '05' },
+];
+const phaseAt = T => PH.find(p => T >= p.t0 && T < p.t1) || PH[PH.length - 1];
+
+// delay amplitude as a function of T: dips to 0 when the slit geometry changes
+function ampAt(T) {
+  const p = phaseAt(T), u = T - p.t0, len = p.t1 - p.t0;
+  if (p.word === 'TITLE') {   // smear in, settle to one moment, tear again into 01
+    if (u < 0.3) return p.amp * 0.75 * sstep(0, 0.12, u);
+    if (u < 1.15) return p.amp * 0.75 * (1 - sstep(0.3, 1.15, u));
+    if (u < 1.85) return 0;
+    return p.amp * sstep(1.85, 2.4, u);
+  }
+  const inE = p.no === '01' ? 1 : sstep(0, 0.45, u);   // 01 continues from 05 (same geometry)
+  return p.amp * inE * sstep(0, 0.45, len - u);
+}
+
+// slit profiles: u in [0,1] across the slit coordinate -> fraction of amp
+const PROF = {
+  x: u => u,
+  y: u => 0.5 - 0.5 * Math.cos(TAU * 2 * u),
+  r: u => u,
+  a: u => u,
+};
+
+// ---------- slit geometry (built once) ----------
+const GEO = {};
+function buildGeo() {
+  const g = (mode, n, mk) => { GEO[mode] = []; for (let i = 0; i < n; i++) GEO[mode].push({ u: (i + 0.5) / n, path: mk(i, n) }); };
+  g('x', 480, (i, n) => { const p = new Path2D(); const w = W / n; p.rect(i * w - 0.6, 0, w + 1.2, H); return p; });
+  g('y', 270, (i, n) => { const p = new Path2D(); const h = H / n; p.rect(0, i * h - 0.6, W, h + 1.2); return p; });
+  const RM = Math.hypot(CX, CY) + 4;
+  g('r', 440, (i, n) => {
+    const p = new Path2D(), r0 = Math.max(0, i * RM / n - 0.7), r1 = (i + 1) * RM / n + 0.7;
+    p.arc(CX, CY, r1, 0, TAU, false); if (r0 > 0) { p.moveTo(CX + r0, CY); p.arc(CX, CY, r0, 0, TAU, true); }
+    return p;
+  });
+  g('a', 480, (i, n) => {
+    const p = new Path2D(), a0 = -Math.PI / 2 + i * TAU / n - 0.002, a1 = -Math.PI / 2 + (i + 1) * TAU / n + 0.002;
+    p.moveTo(CX, CY); p.arc(CX, CY, 1300, a0, a1, false); p.closePath(); return p;
+  });
+}
+
+// ---------- word sprites ----------
+const SPR = {};
+function sprite(word, px) {
+  const c = document.createElement('canvas'), x = c.getContext('2d');
+  x.font = `${px}px Anton`;
+  const m = x.measureText(word);
+  const asc = m.actualBoundingBoxAscent, des = m.actualBoundingBoxDescent;
+  c.width = Math.ceil(m.width + 40); c.height = Math.ceil(asc + des + 40);
+  x.font = `${px}px Anton`; x.fillStyle = INK; x.textBaseline = 'alphabetic';
+  x.fillText(word, 20, 20 + asc);
+  return { c, w: c.width, h: c.height };
+}
+function buildSprites() {
+  for (const w of ['SLIT', 'SCAN', 'TIME', 'SPACE']) SPR[w] = sprite(w, 640);
+  SPR.TITLE = sprite('SLIT—SCAN', 330);
+}
+
+// ---------- the source animation S(τ): drawn in ink, always the same at the same τ ----------
+const env = p => sstep(0, 0.2, p) * sstep(0, 0.2, 1 - p);
+function word(c, s, x, y, rot, sc) {
+  c.setTransform(sc * Math.cos(rot), sc * Math.sin(rot), -sc * Math.sin(rot), sc * Math.cos(rot), x, y);
+  c.drawImage(s.c, -s.w / 2, -s.h / 2);
+  c.setTransform(1, 0, 0, 1, 0, 0);
+}
+function disc(c, x, y, r) { if (r <= 0.5) return; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); }
+function source(c, tau) {
+  const T = mod(tau, D), p = phaseAt(T), u = T - p.t0, len = p.t1 - p.t0, e = env(u / len);
+  c.fillStyle = INK; c.strokeStyle = INK;
+  if (p.word === 'SLIT') {
+    const a = TAU * u / 1.6;
+    const x = CX + 700 * e * Math.sin(a), y = CY + 130 * e * Math.sin(2 * a);
+    disc(c, CX + 760 * Math.cos(a + 0.6), CY + 330 * Math.sin(a + 0.6), 150 * e);
+    word(c, SPR.SLIT, x, y, 0.14 * e * Math.sin(a), 1.18);
+  } else if (p.word === 'SCAN') {
+    const a = TAU * u / 1.5;
+    for (let k = 0; k < 3; k++) {
+      const y = CY + 410 * e * Math.sin(a + k * TAU / 3);
+      c.fillRect(0, y - 14 * e, W, 28 * e);
+    }
+    word(c, SPR.SCAN, CX + 90 * e * Math.sin(a * 0.5), CY, 0.55 * e * Math.sin(a), 1 + 0.22 * e * Math.sin(2 * a));
+  } else if (p.word === 'TIME') {
+    const q = u / len, turn = TAU * 2 * (q - Math.sin(TAU * q) / TAU);   // two eased turns, rest at both ends
+    c.save(); c.translate(CX, CY); c.rotate(-0.75 * turn);
+    for (let k = 0; k < 6; k++) { c.rotate(TAU / 6); c.fillRect(170, -20 * e, 1100 * e, 40 * e); }
+    c.restore();
+    c.lineWidth = 34 * e;
+    if (e > 0.01) { c.beginPath(); c.arc(CX, CY, 330 + 110 * Math.sin(TAU * u / 1.9), 0, TAU); c.stroke(); }
+    word(c, SPR.TIME, CX, CY, turn, 0.62 + 0.1 * e * Math.sin(TAU * u / 0.95));
+  } else if (p.word === 'SPACE') {
+    const a = TAU * u / 1.3;
+    for (let k = 0; k < 10; k++) {
+      const b = a + k * TAU / 10;
+      disc(c, CX + 640 * e * Math.cos(b * 0.5 + k), CY + 400 * Math.sin(b), 46 * e);
+    }
+    word(c, SPR.SPACE, CX, CY + 300 * e * Math.sin(a), 0, 0.85 - 0.12 * e * Math.cos(a));
+  } else {   // title: slides in from the right, overshoots, then holds
+    const k = clamp(u / 0.55, 0, 1), ob = 1 + 2.4 * Math.pow(k - 1, 3) + 1.4 * Math.pow(k - 1, 2);
+    const x = CX - 1050 * (1 - ob) + 2200 * Math.pow(clamp((u - 1.9) / 0.5, 0, 1), 2.2);
+    word(c, SPR.TITLE, x, CY - 20, 0, 1 + 0.025 * sstep(0.7, 2.4, u));
+  }
+}
+
+// ---------- compose one frame ----------
+function renderAt(t) {
+  const T = mod(t + OFF, D), p = phaseAt(T), A = ampAt(T), geo = GEO[p.mode], prof = PROF[p.mode];
+  lx.setTransform(1, 0, 0, 1, 0, 0); lx.globalCompositeOperation = 'source-over';
+  lx.clearRect(0, 0, W, H);
+  if (A < 1e-4) {
+    source(lx, T);
+  } else {
+    for (const s of geo) {
+      lx.save(); lx.clip(s.path); source(lx, T - A * prof(s.u)); lx.restore();
+    }
+    // tint each slit by its delay
+    lx.globalCompositeOperation = 'source-atop';
+    for (const s of geo) { lx.fillStyle = ramp(A * prof(s.u) / DMAX); lx.fill(s.path); }
+    lx.globalCompositeOperation = 'source-over';
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(L, 0, 0);
+  hud(T, p, A);
+}
+
+function hud(T, p, A) {
+  const c = ctx;
+  c.fillStyle = INK; c.textBaseline = 'alphabetic';
+  c.font = '600 18px "Geist Mono"';
+  c.textAlign = 'left'; c.fillText('MIDDLE STUDIES   REEL — 016', 48, 60);
+  c.textAlign = 'right'; c.fillText(`${p.no}  ${p.name}`, W - 48, 60);
+  c.font = '400 18px "Geist Mono"';
+  c.textAlign = 'right'; c.fillText('Claude', W - 48, H - 48);
+  // delay legend
+  const lx0 = 48, ly = H - 78, lw = 360;
+  for (let i = 0; i < lw; i++) { c.fillStyle = ramp(i / lw); c.fillRect(lx0 + i, ly, 1, 10); }
+  // marker = current max delay
+  const mx = lx0 + lw * clamp(A / DMAX, 0, 1);
+  c.fillStyle = INK; c.fillRect(mx - 1, ly - 8, 2, 18);
+  c.textAlign = 'left'; c.fillText('now', lx0, H - 48);
+  c.textAlign = 'right'; c.fillText(`−${DMAX.toFixed(1)} s`, lx0 + lw, H - 48);
+  c.textAlign = 'left'; c.fillText(`oldest slit  −${A.toFixed(2)} s`, lx0 + lw + 32, H - 66);
+  c.fillText(`slits  ${A < 1e-4 ? 1 : GEO[p.mode].length}`, lx0 + lw + 32, H - 42);
+  // title caption, only while the image is one moment
+  if (p.word === 'TITLE') {
+    const u = T - p.t0, a = sstep(0.9, 1.2, u) * (1 - sstep(1.9, 2.15, u));
+    if (a > 0) {
+      c.globalAlpha = a; c.textAlign = 'center'; c.font = '400 26px "Geist Mono"';
+      c.fillText('one animation, cut into slits — every slit a different moment', CX, CY + 220);
+      c.globalAlpha = 1;
+    }
+  }
+}
+
+window.__duration = D;
+window.__poster = 6.8;
+const ready = Promise.all([
+  document.fonts.load('640px Anton', 'SLITCANMEP—'),
+  document.fonts.load('400 18px "Geist Mono"'), document.fonts.load('600 18px "Geist Mono"'),
+]).then(() => document.fonts.ready).then(() => { buildGeo(); buildSprites(); });
+ready.then(() => {
+  window.__seek = t => renderAt(t);
+  if (!location.search.includes('render')) {
+    const t0 = performance.now();
+    const loop = () => { renderAt(((performance.now() - t0) / 1000) % D); requestAnimationFrame(loop); };
+    loop();
+  }
+});
+</script>
+</body>
+</html>
