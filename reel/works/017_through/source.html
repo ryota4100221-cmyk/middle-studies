@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 017 Through</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@900&family=Space+Mono:wght@400;700&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #000; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; object-fit: contain; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+/*
+ * REEL — 017 THROUGH
+ * One day, cut from 24 sheets of paper. The camera never stops flying forward
+ * through the holes; each sheet is an hour of sky. At sunset six sheets carry the
+ * word cut out of them, they stack into one deep paper word, part like doors,
+ * and the camera goes through into the night — and back to the same dawn.
+ * Everything is a pure function of t.
+ */
+const W = 1920, H = 1080, CX = W / 2, CY = H / 2, DUR = 15;
+const cv = document.getElementById('c'), g = cv.getContext('2d');
+const off = document.createElement('canvas'); off.width = W; off.height = H;
+const o = off.getContext('2d');
+
+// ---------- utils ----------
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const ss = (a, b, x) => { const k = clamp((x - a) / (b - a)); return k * k * (3 - 2 * k); };
+const eio = k => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+const TAU = Math.PI * 2;
+
+// paper grain (static, seeded)
+const grain = document.createElement('canvas'); grain.width = grain.height = 256;
+{
+  const gc = grain.getContext('2d'), id = gc.createImageData(256, 256), r = mulberry32(17);
+  for (let i = 0; i < 256 * 256; i++) {
+    const v = 128 + (r() - .5) * 70 + (r() < .02 ? -60 : 0);
+    id.data[i * 4] = id.data[i * 4 + 1] = id.data[i * 4 + 2] = v; id.data[i * 4 + 3] = 255;
+  }
+  gc.putImageData(id, 0, 0);
+}
+let grainPat = null;
+
+// ---------- the 24 sheets (one per hour) ----------
+// z: depth of the sheet along the flight, h: hour it stands for, col: paper colour
+// kind: shape of the cut, x/y: where the hole sits (world px at distance 1)
+const L = 18.5; // one day of flight; sheet z + L is the same sheet again
+const S = [
+  { z: 1.0, h: 4, col: '#2a1b5c', kind: 'blob', r: 560, seed: 1 },
+  { z: 2.0, h: 5, col: '#5a2f86', kind: 'blob', r: 600, seed: 2 },
+  { z: 2.9, h: 6, col: '#b2457e', kind: 'blob', r: 620, seed: 3 },
+  { z: 3.7, h: 7, col: '#ff7a63', kind: 'rays', r: 600, n: 9, seed: 4 },
+  { z: 4.5, h: 8, col: '#ffb48a', kind: 'cloud', seed: 5 },
+  { z: 5.1, h: 8.6, col: '#fff3e2', kind: 'cloud', seed: 6 },
+  { z: 5.6, h: 9.2, col: '#bfe1ff', kind: 'cloud', seed: 7 },
+  { z: 6.1, h: 9.8, col: '#ffffff', kind: 'cloud', seed: 8 },
+  { z: 6.7, h: 10.5, col: '#72b9ff', kind: 'cloud', seed: 9 },
+  { z: 7.6, h: 11.4, col: '#ffe14a', kind: 'sun', n: 18, r: 640, seed: 10 },
+  { z: 7.85, h: 12, col: '#ffbf1f', kind: 'sun', n: 18, r: 560, seed: 11, rot: TAU / 36 },
+  { z: 8.1, h: 12.6, col: '#ff9a00', kind: 'sun', n: 18, r: 480, seed: 12 },
+  { z: 9.2, h: 14, col: '#2c6fd6', kind: 'arch', seed: 13 },
+  { z: 10.2, h: 15.4, col: '#163f9c', kind: 'arch', seed: 14 },
+  // sunset: the word, six layers (z is animated: they stack)
+  { z: 12.6, h: 16.6, col: '#ffcc3d', kind: 'word', i: 0 },
+  { z: 12.6, h: 17.0, col: '#ff9a2a', kind: 'word', i: 1 },
+  { z: 12.6, h: 17.4, col: '#ff6a2c', kind: 'word', i: 2 },
+  { z: 12.6, h: 17.8, col: '#ef3b4a', kind: 'word', i: 3 },
+  { z: 12.6, h: 18.2, col: '#bf2563', kind: 'word', i: 4 },
+  { z: 12.6, h: 18.6, col: '#7a1f6e', kind: 'word', i: 5 },
+  { z: 14.6, h: 20, col: '#3b2470', kind: 'moon', seed: 20 },
+  { z: 15.6, h: 22, col: '#1a1d4e', kind: 'night', r: 600, seed: 21 },
+  { z: 16.6, h: 0, col: '#10123a', kind: 'night', r: 620, seed: 22 },
+  { z: 17.6, h: 2, col: '#191444', kind: 'night', r: 600, seed: 23 },
+];
+S.forEach((s, k) => {
+  const r = mulberry32(101 + k * 7);
+  s.ox = (r() - .5) * 120; s.oy = (r() - .5) * 90;
+  if (s.kind === 'word' || s.kind === 'sun') { s.ox = 0; s.oy = 0; }
+  s.rot = (s.rot || 0) + (s.kind === 'blob' || s.kind === 'night' ? r() * TAU : 0);
+  s.ph = [r() * TAU, r() * TAU, r() * TAU, r() * TAU];
+  if (s.kind === 'cloud') {
+    // a cloud = union of circles laid around the axis; always one big puff over the centre
+    const n = 7 + Math.floor(r() * 3), puffs = [{ x: 0, y: 30, r: 470 }];
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * TAU + r() * .5;
+      const rr = 220 + r() * 200;
+      puffs.push({ x: Math.cos(a) * (420 + r() * 260) * 1.35, y: Math.sin(a) * (300 + r() * 120) * .8 - 40, r: rr });
+    }
+    s.puffs = puffs;
+  }
+  if (s.kind === 'night') {
+    s.stars = [];
+    for (let i = 0; i < 70; i++) {
+      const a = r() * TAU, d = 760 + r() * 1500;
+      s.stars.push({ x: Math.cos(a) * d * 1.3, y: Math.sin(a) * d, r: 16 + r() * 30, a: r() * TAU });
+    }
+  }
+});
+
+// sheet z can be animated (the word stacks)
+const WORD_T0 = 5.6, WORD_T1 = 7.0; // spread → stacked
+function sheetZ(s, t) {
+  if (s.kind !== 'word') return s.z;
+  const k = eio(ss(WORD_T0, WORD_T1, t));
+  const gap = lerp(0.55, 0.075, k);
+  return 12.35 + s.i * gap;
+}
+// doors: the word splits down the middle, front layer first
+function doorOpen(s, t) {
+  if (s.kind !== 'word') return 0;
+  const k = clamp((t - 9.0 - s.i * 0.07) / 0.95);
+  return Math.pow(k, 2.2) * 2600;
+}
+
+// ---------- camera ----------
+// keyframes (t, z): fast through dawn, slow at noon, almost stops at sunset, rushes into night
+const KEY = [[0, 0], [2.4, 3.9], [4.3, 6.9], [5.8, 9.0], [6.8, 10.55], [8.9, 10.92], [9.6, 11.4], [10.4, 13.3], [12.6, 16.0], [15, 18.5]];
+const ZT = (() => {
+  // monotone cubic through the keys with periodic end tangents
+  const n = KEY.length, m = [];
+  const sl = i => (KEY[i + 1][1] - KEY[i][1]) / (KEY[i + 1][0] - KEY[i][0]);
+  for (let i = 0; i < n; i++) {
+    const a = i === 0 ? sl(n - 2) : sl(i - 1), b = i === n - 1 ? sl(0) : sl(i);
+    m[i] = a * b <= 0 ? 0 : 2 * a * b / (a + b);
+  }
+  return t => {
+    t = ((t % DUR) + DUR) % DUR;
+    let i = 0; while (i < n - 2 && t > KEY[i + 1][0]) i++;
+    const [t0, z0] = KEY[i], [t1, z1] = KEY[i + 1], h = t1 - t0, u = (t - t0) / h;
+    const h00 = 2 * u ** 3 - 3 * u * u + 1, h10 = u ** 3 - 2 * u * u + u, h01 = -2 * u ** 3 + 3 * u * u, h11 = u ** 3 - u * u;
+    return h00 * z0 + h10 * h * m[i] + h01 * z1 + h11 * h * m[i + 1];
+  };
+})();
+function camera(t) {
+  const p = TAU * t / DUR;
+  const hold = ss(5.9, 7.0, t) * (1 - ss(9.0, 9.8, t));
+  // sway: periodic, larger during the sunset hold so the stacked word swings in parallax
+  const cx = 70 * Math.sin(p * 2 + .6) + 40 * Math.sin(p * 3) + hold * 110 * Math.sin((t - 6.2) * 1.6);
+  const cy = 50 * Math.sin(p * 2 + 2.1) + 30 * Math.cos(p * 5) + hold * 70 * Math.sin((t - 6.2) * 1.1 + 1);
+  const roll = (0.2 * Math.sin(TAU * (t - 7.9) / DUR) + 0.06 * Math.sin(2 * TAU * (t - 7.9) / DUR)) * (1 - hold * .85);
+  return { z: ZT(t), cx, cy, roll };
+}
+
+// ---------- hole shapes (world coordinates, sheet origin) ----------
+function blobPath(c, s, d) {
+  const N = 140; c.beginPath();
+  for (let i = 0; i <= N; i++) {
+    const a = i / N * TAU;
+    const rr = s.r * (1 + .1 * Math.sin(3 * a + s.ph[0]) + .07 * Math.sin(5 * a + s.ph[1]) + .04 * Math.sin(8 * a + s.ph[2]));
+    const x = Math.cos(a) * rr * 1.18, y = Math.sin(a) * rr * .92;
+    i ? c.lineTo(x, y) : c.moveTo(x, y);
+  }
+  c.closePath();
+}
+function starPath(c, n, r0, r1, rot) {
+  c.beginPath();
+  for (let i = 0; i <= n * 2; i++) {
+    const a = rot + i / (n * 2) * TAU, r = i % 2 ? r0 : r1;
+    i ? c.lineTo(Math.cos(a) * r, Math.sin(a) * r) : c.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  c.closePath();
+}
+function holes(c, s, t, d) {
+  // the hole turns as the sheet comes near: a twist that only depends on depth (loops cleanly)
+  const tw = s.kind === 'blob' || s.kind === 'night' ? 0.35 * d : s.kind === 'sun' ? 0.22 * d * (s.z === 7.85 ? -1 : 1) : 0;
+  c.rotate(s.rot + tw);
+  switch (s.kind) {
+    case 'blob': case 'night':
+      blobPath(c, s, d); c.fill();
+      break;
+    case 'rays': {
+      // a sunrise: a half-disc hole with rays fanning above the horizon
+      c.beginPath(); c.arc(0, 120, s.r, Math.PI, 0); c.lineTo(s.r, 1600); c.lineTo(-s.r, 1600); c.closePath(); c.fill();
+      for (let i = 0; i < s.n; i++) {
+        const a = Math.PI + (i + .5) / s.n * Math.PI, w = .05;
+        c.beginPath(); c.moveTo(Math.cos(a - w) * (s.r + 60), 120 + Math.sin(a - w) * (s.r + 60));
+        c.lineTo(Math.cos(a - w * .6) * 2600, 120 + Math.sin(a - w * .6) * 2600);
+        c.lineTo(Math.cos(a + w * .6) * 2600, 120 + Math.sin(a + w * .6) * 2600);
+        c.lineTo(Math.cos(a + w) * (s.r + 60), 120 + Math.sin(a + w) * (s.r + 60)); c.closePath(); c.fill();
+      }
+      break;
+    }
+    case 'cloud':
+      c.beginPath(); for (const p of s.puffs) { c.moveTo(p.x + p.r, p.y); c.arc(p.x, p.y, p.r, 0, TAU); } c.fill('nonzero');
+      break;
+    case 'sun':
+      starPath(c, s.n, s.r * .74, s.r * 1.08, 0); c.fill();
+      break;
+    case 'arch': {
+      const w = 760, hh = 1000, top = -hh / 2;
+      const arch = (x, y, w, h) => { c.beginPath(); c.moveTo(x - w / 2, y + h); c.lineTo(x - w / 2, y + w / 2); c.arc(x, y + w / 2, w / 2, Math.PI, 0); c.lineTo(x + w / 2, y + h); c.closePath(); c.fill(); };
+      arch(0, top - 80, w, hh + 900);
+      arch(-900, top + 140, 300, 2000); arch(900, top + 140, 300, 2000);
+      break;
+    }
+    case 'moon':
+      c.beginPath(); c.ellipse(0, 0, 820, 640, 0, 0, TAU); c.fill();
+      break;
+  }
+}
+const WORD = 'THROUGH', WORD_SIZE = 370;
+function wordHole(c) {
+  c.font = `900 ${WORD_SIZE}px Unbounded`;
+  c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+  c.fillText(WORD, 0, WORD_SIZE * .36);
+}
+
+// ---------- one sheet ----------
+function drawSheet(s, z, cam, t, gapBehind) {
+  const d = z - cam.z;
+  const fade = ss(0.09, 0.26, d);
+  if (fade <= 0) return;
+  const sc = 1 / d;
+  const setWorld = (dx = 0) => {
+    o.setTransform(1, 0, 0, 1, 0, 0);
+    o.translate(CX, CY); o.rotate(cam.roll); o.scale(sc, sc);
+    o.translate(s.ox - cam.cx + dx, s.oy - cam.cy);
+  };
+  o.setTransform(1, 0, 0, 1, 0, 0); o.clearRect(0, 0, W, H);
+  const R = 1150 * d + 400;
+  const halves = s.kind === 'word' && doorOpen(s, t) > 0 ? [[-1, doorOpen(s, t)], [1, doorOpen(s, t)]] : [[0, 0]];
+  for (const [side, open] of halves) {
+    o.save();
+    setWorld(side * open);
+    if (side) { o.beginPath(); side < 0 ? o.rect(-R - 4000, -R - 400, R + 4000, 2 * R + 800) : o.rect(0, -R - 400, R + 4000, 2 * R + 800); o.clip(); }
+    o.globalCompositeOperation = 'source-over';
+    o.fillStyle = s.col; o.fillRect(-R - 4000, -R - 400, 2 * R + 8000, 2 * R + 800);
+    o.globalCompositeOperation = 'soft-light'; o.globalAlpha = .55;
+    o.fillStyle = grainPat; o.fillRect(-R - 4000, -R - 400, 2 * R + 8000, 2 * R + 800);
+    o.globalAlpha = 1; o.globalCompositeOperation = 'destination-out'; o.fillStyle = '#000';
+    if (s.kind === 'word') wordHole(o); else holes(o, s, t, d);
+    o.restore();
+  }
+  if (s.kind === 'night') {
+    // paper stars glued onto the night sheet (they turn with the hole)
+    o.save(); setWorld(); o.rotate(s.rot + 0.35 * d); o.globalCompositeOperation = 'source-over';
+    o.shadowColor = 'rgba(4,2,20,.55)'; o.shadowBlur = 14 * sc; o.shadowOffsetX = 6 * sc; o.shadowOffsetY = 8 * sc;
+    o.fillStyle = '#f6edd2';
+    for (const st of s.stars) { o.save(); o.translate(st.x, st.y); starPath(o, 4, st.r * .3, st.r, st.a); o.fill(); o.restore(); }
+    o.restore();
+  }
+  if (s.kind === 'moon') {
+    // a paper moon, glued just in front of the sheet
+    o.save(); setWorld(); o.globalCompositeOperation = 'source-over';
+    o.shadowColor = 'rgba(8,4,30,.45)'; o.shadowBlur = 30 * sc; o.shadowOffsetX = 14 * sc; o.shadowOffsetY = 18 * sc;
+    o.beginPath(); o.arc(330, -250, 190, 0, TAU); o.arc(250, -300, 165, 0, TAU, true); o.fillStyle = '#f6edd2'; o.fill('evenodd');
+    o.restore();
+  }
+  // composite onto the frame with the shadow it casts on the sheet behind
+  const k = Math.min(gapBehind, 1.2) / d;
+  g.save();
+  g.globalAlpha = fade;
+  g.shadowColor = 'rgba(14,6,26,.5)';
+  g.shadowBlur = clamp(6 + k * 70, 4, 90);
+  g.shadowOffsetX = clamp(k * 22, 2, 46); g.shadowOffsetY = clamp(k * 30, 3, 60);
+  g.drawImage(off, 0, 0);
+  g.restore();
+}
+
+// ---------- labels ----------
+const NAMES = [[0, 'night'], [4.5, 'before dawn'], [6.5, 'dawn'], [8, 'morning'], [11, 'noon'], [13.6, 'afternoon'], [16.3, 'sunset'], [19.5, 'dusk'], [21, 'night']];
+function hourAt(cz) {
+  // hour of the sheet the camera is passing, interpolated between sheets
+  const list = [];
+  for (const s of S) list.push([s.kind === "word" ? 11.2 + s.i * .2 : s.z, s.h]);
+  list.sort((a, b) => a[0] - b[0]);
+  const zz = ((cz % L) + L) % L;
+  const ext = [[list[list.length - 1][0] - L, list[list.length - 1][1]], ...list, [list[0][0] + L, list[0][1]]];
+  for (let i = 0; i < ext.length - 1; i++) {
+    const [z0, h0] = ext[i], [z1, h1] = ext[i + 1];
+    let hb = h1; if (hb < h0) hb += 24;
+    if (zz >= z0 && zz <= z1) return ((lerp(h0, hb, (zz - z0) / Math.max(1e-6, z1 - z0)) % 24) + 24) % 24;
+  }
+  return 0;
+}
+function labels(t, cam) {
+  const hr = hourAt(cam.z + 1.0);
+  const hh = Math.floor(hr), mm = Math.floor((hr - hh) * 60);
+  let name = 'night'; for (const [h, n] of NAMES) if (hr >= h) name = n;
+  g.save();
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = 'difference';
+  g.fillStyle = '#fff';
+  g.font = '700 18px "Space Mono"'; g.textBaseline = 'top';
+  g.textAlign = 'left'; g.fillText('MIDDLE STUDIES   REEL — 017', 56, 48);
+  g.textAlign = 'right'; g.fillText(`${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`, W - 56, 48);
+  g.font = '400 18px "Space Mono"';
+  g.fillText(name, W - 56, 74);
+  g.textBaseline = 'alphabetic';
+  g.textAlign = 'left'; g.fillText('24 sheets of paper, one day', 56, H - 48);
+  g.textAlign = 'right'; g.fillText('Claude', W - 56, H - 48);
+  // progress through the day: a thin line
+  g.globalAlpha = .9; g.fillRect(56, 104, 0, 0);
+  g.fillRect(W - 56 - 180, 104, 180 * (hr / 24), 2);
+  g.globalAlpha = .35; g.fillRect(W - 56 - 180, 104, 180, 2);
+  g.restore();
+}
+
+// ---------- frame ----------
+function render(t) {
+  t = ((t % DUR) + DUR) % DUR;
+  const cam = camera(t);
+  // gather visible sheets (with their copies one day ahead/behind)
+  const vis = [];
+  for (const s of S) {
+    const z0 = sheetZ(s, t);
+    for (let n = -1; n <= 2; n++) {
+      const z = z0 + n * L, d = z - cam.z;
+      if (d > 0.09 && d < 9) vis.push({ s, z });
+    }
+  }
+  vis.sort((a, b) => b.z - a.z);
+  // background = the first sheet beyond the far limit
+  let bg = '#10123a', best = 1e9;
+  for (const s of S) for (let n = -1; n <= 2; n++) { const d = sheetZ(s, t) + n * L - cam.z; if (d >= 9 && d < best) { best = d; bg = s.col; } }
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = 'source-over';
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  for (let i = 0; i < vis.length; i++) {
+    const behind = i > 0 ? vis[i - 1].z - vis[i].z : 1;
+    drawSheet(vis[i].s, vis[i].z, cam, t, behind);
+  }
+  // soft vignette for depth
+  const vg = g.createRadialGradient(CX, CY, 300, CX, CY, 1150);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(10,4,20,.28)');
+  g.fillStyle = vg; g.fillRect(0, 0, W, H);
+  labels(t, cam);
+}
+
+// ---------- boot ----------
+window.__duration = DUR;
+window.__poster = 8.2;
+const ready = (async () => {
+  await document.fonts.load(`900 ${WORD_SIZE}px Unbounded`);
+  await document.fonts.load('700 18px "Space Mono"');
+  await document.fonts.load('400 18px "Space Mono"');
+  await document.fonts.ready;
+  grainPat = o.createPattern(grain, 'repeat');
+})();
+ready.then(() => {
+  window.__seek = t => render(t);
+  if (!location.search.includes('render')) {
+    const t0 = performance.now();
+    const loop = () => { render(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(loop); };
+    loop();
+  } else render(0);
+});
+</script>
+</body>
+</html>

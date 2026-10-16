@@ -593,5 +593,47 @@
     },
     "review_rounds": 3,
     "review": "1周目：同心円で速く回る棒が5px幅のリングごとに段差になり鋸歯状→リングを440本（2.5px）に。05の題字が「今」でない右側から入るため12.6秒前後でほぼ空の画面→題字を左（今の側）から入れ、遅れたスリットの SPACE と時間のワイプで出会うように。02の横棒が凡例を覆う→振幅470→410。出だしを強く（SLIT を1.18倍・振れ幅700）。題字の静止中は遅れがあっても絵が変わらない→終盤で題字を右へ加速して抜き、裂けながら01へ。2周目：0秒目がまばら→時刻のオフセットを1.0→1.4秒にして最初のフレームを最大の伸びに。凡例の目盛りが「−1.5 s」に重なる→短く。3周目：つなぎ目（3.0/5.6/9.4/11.6/14.9秒）と見せ場を等倍で確認、直すことが言えなくなった。許容した差：02で遅れた円が一瞬だけ左下の凡例に掛かる（0.2秒程度）、斜めの輪郭に4px幅スリットの段が見える（スリットの手触りとして残す）。"
+  },
+  {
+    "id": "017",
+    "slug": "through",
+    "title": "Through",
+    "date": "2026-10-16",
+    "concept": "1日を24枚の切り絵の紙で作り、カメラが止まらずに紙の穴を次々とくぐり抜ける15秒。1枚が1時間の空の色で、夜明け前の藍の不定形の穴から、朝日の放射、雲、正午の太陽の三重の星形、午後のアーチへと、奥の穴がいつも次の場面を先に見せている。夕方の6枚には THROUGH の字が抜かれていて、ばらばらの深さから詰まって1つの奥行きのある紙の文字になり、カメラが揺れると層がずれる（見せ場は8.2秒）。字は中央から扉のように割れて開き、その奥の月と紙の星の夜を抜けて、0秒目と同じ夜明け前へ戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/017_through.mp4",
+    "techniques": [
+      "layered-paper-cutout-depth",
+      "perspective-fly-through-tunnel",
+      "destination-out-hole-cutting",
+      "per-layer-drop-shadow-on-layer-behind",
+      "periodic-depth-loop-droste",
+      "monotone-cubic-camera-keyframes",
+      "stacked-type-extrusion-by-layers",
+      "camera-sway-parallax",
+      "split-door-reveal-staggered",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#2a1b5c",
+        "#b2457e",
+        "#ff7a63",
+        "#bfe1ff",
+        "#ffe14a",
+        "#2c6fd6",
+        "#ff9a2a",
+        "#bf2563",
+        "#10123a",
+        "#f6edd2"
+      ],
+      "type": [
+        "Unbounded 900",
+        "Space Mono"
+      ],
+      "structure": "one continuous forward flight through 24 cut sheets (= 24 hours): blobs → sunrise rays → clouds → triple sun → arches → the word stacks into 6 layers and holds → doors part → moon and paper stars → back to the same dawn",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 5,
+    "review": "1周目：夕方の字の溜めの間、時刻表示が afternoon 15:54 を指していた（字の層を詰める前のzで時刻を引いていた）→時刻の地図を詰めた後の位置にした。夜の星を紙の穴にしていたら奥も暗くて見えなかった→クリーム色の紙の星を貼る形に変え、数を70に。時刻が日をまたぐ所で12:58と出る補間の誤りも直した。2周目：8.8秒で字が画面より広くなりTとHが端で切れた→字を430→370pxに。3周目：溜めの間の横揺れで右端が近い→揺れ幅150→110。4周目：等倍で見ると、扉が閉じている間も左右半分の継ぎ目が O の上に細い縦線として出ていた→扉が開き始めるまでは1枚で描くようにした。5周目：継ぎ目が消え、14.98秒と0秒が同じ夜明け前でつながることを確認。前の7本（平面上の1技法＋状態が変わる HUD）に対して、今日は奥行きを途切れずに進む1カットで、色も時刻ごとに変わる。許容した差：扉が開いた直後（9.3〜10秒）の文字は層ごとにずれて ROOOO のように重なって見えるが、紙が奥へ順に開く動きとして残した。夕暮れの星は少なめ。"
   }
 ]
