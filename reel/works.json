@@ -635,5 +635,42 @@
     },
     "review_rounds": 5,
     "review": "1周目：夕方の字の溜めの間、時刻表示が afternoon 15:54 を指していた（字の層を詰める前のzで時刻を引いていた）→時刻の地図を詰めた後の位置にした。夜の星を紙の穴にしていたら奥も暗くて見えなかった→クリーム色の紙の星を貼る形に変え、数を70に。時刻が日をまたぐ所で12:58と出る補間の誤りも直した。2周目：8.8秒で字が画面より広くなりTとHが端で切れた→字を430→370pxに。3周目：溜めの間の横揺れで右端が近い→揺れ幅150→110。4周目：等倍で見ると、扉が閉じている間も左右半分の継ぎ目が O の上に細い縦線として出ていた→扉が開き始めるまでは1枚で描くようにした。5周目：継ぎ目が消え、14.98秒と0秒が同じ夜明け前でつながることを確認。前の7本（平面上の1技法＋状態が変わる HUD）に対して、今日は奥行きを途切れずに進む1カットで、色も時刻ごとに変わる。許容した差：扉が開いた直後（9.3〜10秒）の文字は層ごとにずれて ROOOO のように重なって見えるが、紙が奥へ順に開く動きとして残した。夕暮れの星は少なめ。"
+  },
+  {
+    "id": "018",
+    "slug": "chain",
+    "title": "Chain",
+    "date": "2026-10-17",
+    "concept": "赤い玉の1押しから始まるドミノ倒しの15秒。点の目のある黒いドミノの列が曲がりながら倒れ、最後の9枚は1枚ごとに1.32倍ずつ大きくなって、背面の赤い巨大な1枚が倒れ込む。その衝撃で、1,344枚を衝撃点から放射状に向けて並べた面に波が走り、倒れた背面の色が CHAIN の字になる（見せ場は6〜7秒の真上からのショット）。そのあと時間そのものを巻き戻し、カメラが周囲を回るあいだに全部が逆順に起き上がって、玉は坂の上の0秒目の位置へ戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/018_chain.mp4",
+    "techniques": [
+      "domino-toppling-kinematics",
+      "geometric-size-amplification",
+      "radial-wavefront-timing",
+      "painted-backs-reveal-word-mask",
+      "custom-3d-box-projection-canvas",
+      "painter-sorted-faces-with-culling",
+      "projected-hard-shadows-hull",
+      "time-remap-rewind-hermite",
+      "lead-tracking-orbit-camera",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#b9b5ac",
+        "#26262c",
+        "#f4efe3",
+        "#e4221a",
+        "#cfcbc2"
+      ],
+      "type": [
+        "League Gothic (word mask)",
+        "Azeret Mono"
+      ],
+      "structure": "one push → line topples → 9 dominoes ×1.32 → giant slams → radial wave across 1,344 dominoes writes the word → time rewinds, everything stands up → back to the ball on the ramp",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：語が出揃ったあとの真上ショット（7〜8.6秒）がほぼ静止画で、黒いドミノに重なる HUD の文字が読めなかった→保持中もカメラを寄せながら回し、HUD に地色の下敷きを敷いた。冒頭は坂の背面が板に見えて列が画面外だったので、横から坂を見せ、注視点を2枚先へ先行させて列が最初の1秒から見えるようにした。2周目：寄せすぎて C と N が切れた→距離を戻した。HUD の下敷きを文字幅に合わせた。0秒目の速度表示が 0.50× と出ていた→区間ごとに正しく出すよう直した。3周目：巻き戻しの軌道、15秒→0秒のつなぎ、crf 29 で書き出した面のショットの圧縮の荒れを等倍で見た→直すところはなかった。許容した差：衝撃点の近くから見ると、立っているドミノの塗った背面がカメラ側を向くので、倒れる前から字の赤が少し見えている（物理的にはその通りなので、ごまかさずに残した）。"
   }
 ]

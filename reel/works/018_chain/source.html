@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 018 Chain</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=League+Gothic&family=Azeret+Mono:wght@400;600&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #b9b5ac; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; object-fit: contain; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// MIDDLE STUDIES REEL — 018 Chain
+// One push. A ball topples a line of dominoes, each of the last nine 1.32× the one before;
+// the giant slams onto a field of 1,344 dominoes whose painted backs spell the word when down.
+// Then time itself is rewound and everything stands back up.
+// Everything is a pure function of t (sim time τ = remap(t)); no state is carried between frames.
+
+const W = 1920, H = 1080;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const shc = document.createElement('canvas'); shc.width = W; shc.height = H;
+const sctx = shc.getContext('2d');
+window.__duration = 15;
+window.__poster = 8.1;
+
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const rnd = mulberry32(18018);
+
+// ---------- palette ----------
+const FOG = [207, 203, 194], GROUND = [185, 181, 172];
+const BODY = [38, 38, 44], IVORY = [244, 239, 227], RED = [228, 34, 26], RAMP = [233, 227, 212];
+const INK = '#17171b';
+
+// ---------- vectors ----------
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const mul = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const norm = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, u) => a + (b - a) * u;
+const smooth = u => { u = clamp(u, 0, 1); return u * u * (3 - 2 * u); };
+const LIGHT = norm([-0.42, -0.58, 0.78]);
+const DEG = Math.PI / 180;
+
+// ---------- the chain ----------
+const dominoes = [];
+const D_S = 0.10;        // fall duration of a size-1 domino (τ seconds)
+const T0 = 0.55;         // ball hits the first domino
+function uContact(r) { return (-0.12 + Math.sqrt(0.0144 + 3.52 * r)) / 1.76; } // φ(u)=φe(0.12u+0.88u²)
+
+function mkDomino(p, f, s, kind) {
+  return { p, f, sv: [-f[1], f[0], 0], s, T: 0.32 * s, Wd: 1.0 * s, H: 2.0 * s, kind,
+    tf: 0, dur: D_S * Math.sqrt(s), phiEnd: 75 * DEG, bounce: 0.02, back: IVORY, pips: null };
+}
+
+// growth run along +x on y=0, ending in the giant whose top lands at x = -40
+const G = 1.32, NG = 9;
+const growth = [];
+{
+  const sizes = []; for (let k = 1; k <= NG; k++) sizes.push(Math.pow(G, k));
+  const gs = sizes[NG - 1];
+  let px = -40 - 2 * gs;                 // giant pivot
+  const piv = [px];
+  for (let k = NG - 2; k >= 0; k--) { px = px - 0.32 * sizes[k + 1] - 0.62 * 2 * sizes[k]; piv.unshift(px); }
+  for (let k = 0; k < NG; k++) {
+    const s = sizes[k];
+    const d = mkDomino([piv[k] - 0.16 * s, 0, 0], [1, 0, 0], s, 'growth');
+    growth.push(d);
+  }
+}
+// small line: Catmull-Rom path ending just before the first growth domino, heading +x
+const lineEndX = growth[0].p[0] + growth[0].T / 2 - growth[0].T - 0.62 * 2;   // pivot of last small one
+const ctrl = [[-146, -32], [-145, -25], [-140, -18], [-143, -11], [-141, -4], [-134, -1.5], [-128, 0], [lineEndX - 3, 0], [lineEndX, 0], [lineEndX + 3, 0]];
+function catmull(pts, n) {
+  const out = [];
+  for (let i = 0; i < pts.length - 3; i++) {
+    const [p0, p1, p2, p3] = [pts[i], pts[i + 1], pts[i + 2], pts[i + 3]];
+    for (let j = 0; j < n; j++) {
+      const u = j / n, u2 = u * u, u3 = u2 * u;
+      out.push([0, 1].map(c => 0.5 * ((2 * p1[c]) + (-p0[c] + p2[c]) * u + (2 * p0[c] - 5 * p1[c] + 4 * p2[c] - p3[c]) * u2 + (-p0[c] + 3 * p1[c] - 3 * p2[c] + p3[c]) * u3)));
+    }
+  }
+  out.push(pts[pts.length - 2]);
+  return out;
+}
+const pathPts = catmull(ctrl, 60);
+const cum = [0]; for (let i = 1; i < pathPts.length; i++) cum.push(cum[i - 1] + Math.hypot(pathPts[i][0] - pathPts[i - 1][0], pathPts[i][1] - pathPts[i - 1][1]));
+function pathAt(sLen) {
+  let i = 1; while (i < cum.length - 1 && cum[i] < sLen) i++;
+  const u = (sLen - cum[i - 1]) / (cum[i] - cum[i - 1] || 1);
+  const a = pathPts[i - 1], b = pathPts[i];
+  const t = norm([b[0] - a[0], b[1] - a[1], 0]);
+  return { p: [lerp(a[0], b[0], u), lerp(a[1], b[1], u), 0], t };
+}
+const SP = 1.25, pathLen = cum[cum.length - 1];
+const small = [];
+for (let sLen = pathLen; sLen > 6; sLen -= SP) {
+  const q = pathAt(sLen);
+  // p is the footprint centre; pivot (front-bottom edge) = p + f·T/2
+  small.unshift(mkDomino(sub(q.p, mul(q.t, 0.16)), [q.t[0], q.t[1], 0], 1, 'line'));
+}
+const line = small.concat(growth);
+// final lean angles (back to front: each rests on the next), and wave timing (front to back)
+function frontAt(d, phi) { // 2D (along d.f, z) frame helper
+  return { f: Math.cos(phi), z: -Math.sin(phi) };
+}
+{
+  const giant = line[line.length - 1];
+  giant.phiEnd = 90 * DEG; giant.bounce = 3.2 * DEG; giant.dur = D_S * Math.sqrt(giant.s) * 1.55; giant.back = RED;
+  for (let k = line.length - 2; k >= 0; k--) {
+    const d = line[k], n = line[k + 1];
+    // work in d's forward frame; next domino's pivot distance along d.f
+    const pivD = add(d.p, mul(d.f, d.T / 2)), pivN = add(n.p, mul(n.f, n.T / 2));
+    const dist = dot(sub(pivN, pivD), d.f);
+    const psi = n.phiEnd;
+    // next back plane: through pivN - T_n·f'_n, normal f'_n = (cosψ, -sinψ) in (along, z)
+    const Q = [dist - n.T * Math.cos(psi), n.T * Math.sin(psi)];
+    const fn = [Math.cos(psi), -Math.sin(psi)];
+    const fphi = phi => { const P = [d.H * Math.sin(phi), d.H * Math.cos(phi)]; return (P[0] - Q[0]) * fn[0] + (P[1] - Q[1]) * fn[1]; };
+    let lo = 0, hi = 90 * DEG;
+    if (fphi(hi) < 0) d.phiEnd = 88 * DEG;
+    else { for (let it = 0; it < 40; it++) { const m = (lo + hi) / 2; if (fphi(m) < 0) lo = m; else hi = m; } d.phiEnd = lo; }
+    d.contact = Math.asin(clamp((dist - n.T) / d.H, 0, 0.98));
+  }
+  let tf = T0;
+  for (let k = 0; k < line.length; k++) {
+    const d = line[k]; d.tf = tf;
+    if (d.kind === 'growth') d.dur = D_S * 1.2 * Math.sqrt(d.s);
+    if (k < line.length - 1) tf += d.dur * uContact(d.contact / d.phiEnd);
+    const r = mulberry32(k * 7 + 3); d.pips = [Math.floor(r() * 7), Math.floor(r() * 7)];
+  }
+}
+const GIANT = line[line.length - 1];
+const T_GIANT = GIANT.tf, T_LAND = GIANT.tf + GIANT.dur;
+const IMPACT = [-40, 0, 0];
+
+// field: 56 × 24 dominoes, each turned to face away from the impact point
+const FC = 56, FR = 24, FS = 1.4, FV = 30;
+const field = [];
+for (let r = 0; r < FR; r++) for (let c = 0; c < FC; c++) {
+  const x = (c - (FC - 1) / 2) * FS, y = (r - (FR - 1) / 2) * FS;
+  const dir = norm([x - IMPACT[0], y - IMPACT[1], 0]);
+  const d = mkDomino([x, y, 0], dir, 1, 'field');
+  const dist = Math.hypot(x - IMPACT[0], y - IMPACT[1]);
+  d.tf = T_LAND + 0.04 + dist / FV;
+  d.dur = 0.15;
+  d.phiEnd = Math.acos(d.T / d.H) + (rnd() - 0.5) * 3 * DEG;
+  d.bounce = 0.05;
+  field.push(d);
+}
+const T_FIELD_END = Math.max(...field.map(d => d.tf + d.dur));
+const ALL = line.concat(field);
+
+// ramp + ball
+const R_BALL = 0.7;
+const d0 = line[0];
+const dirB = d0.f;
+const C_hit = add(sub(d0.p, mul(dirB, d0.T / 2 + R_BALL)), [0, 0, 0]);
+const B_foot = sub(C_hit, mul(dirB, 2.2));
+const A_top = sub(B_foot, mul(dirB, 6.5));
+const RAMP_H = 2.4, RAMP_W = 2.0;
+const pathA = add(A_top, [0, 0, RAMP_H + R_BALL]), pathB = add(B_foot, [0, 0, R_BALL]), pathC = add(C_hit, [0, 0, R_BALL]);
+const L1 = Math.hypot(...sub(pathA, pathB)), L2 = Math.hypot(...sub(pathB, pathC));
+function ballPos(tau) {
+  let s;
+  if (tau <= 0) s = 0;
+  else if (tau < T0) s = (L1 + L2) * (tau / T0) * (tau / T0);
+  else s = (L1 + L2) - 0.5 * (1 - Math.exp(-(tau - T0) * 7));
+  if (s < L1) return add(pathA, mul(sub(pathB, pathA), s / L1));
+  return add(pathB, mul(sub(pathC, pathB), (s - L1) / L2));
+}
+const rampVerts = (() => {
+  const sv = [-dirB[1], dirB[0], 0], hw = RAMP_W / 2;
+  const Al = add(A_top, mul(sv, -hw)), Ar = add(A_top, mul(sv, hw));
+  const Bl = add(B_foot, mul(sv, -hw)), Br = add(B_foot, mul(sv, hw));
+  const Alt = add(Al, [0, 0, RAMP_H]), Art = add(Ar, [0, 0, RAMP_H]);
+  return { Al, Ar, Bl, Br, Alt, Art };
+})();
+
+// ---------- time remap ----------
+const T_REW0 = 8.6, T_REW1 = 13.9;
+function tauOf(t) {
+  if (t < T_REW0) return t;
+  if (t < T_REW1) {
+    const u = (t - T_REW0) / (T_REW1 - T_REW0), D = T_REW1 - T_REW0;
+    const h00 = 2 * u * u * u - 3 * u * u + 1, h10 = u * u * u - 2 * u * u + u;
+    return h00 * T_REW0 + h10 * D;
+  }
+  return 0;
+}
+
+// ---------- domino state ----------
+function phiOf(d, tau) {
+  const u = (tau - d.tf) / d.dur;
+  if (u <= 0) return 0;
+  if (u < 1) return d.phiEnd * (0.12 * u + 0.88 * u * u);
+  const v = u - 1;
+  return d.phiEnd - d.bounce * Math.exp(-5 * v) * Math.abs(Math.sin(v * 7));
+}
+function frame(d, phi) {
+  const c = Math.cos(phi), s = Math.sin(phi);
+  const fp = [d.f[0] * c, d.f[1] * c, -s];
+  const up = [d.f[0] * s, d.f[1] * s, c];
+  const piv = add(d.p, mul(d.f, d.T / 2));
+  return { fp, up, piv };
+}
+function corners(d, fr) {
+  const out = [];
+  for (let a = 0; a < 2; a++) for (let b = 0; b < 2; b++) for (let c = 0; c < 2; c++) {
+    out.push(add(add(add(fr.piv, mul(fr.fp, a ? 0 : -d.T)), mul(d.sv, (b ? 0.5 : -0.5) * d.Wd)), mul(fr.up, c ? d.H : 0)));
+  }
+  return out;
+}
+const idx = (a, b, c) => a * 4 + b * 2 + c;
+const FACES = [ // [corner indices], normal key
+  [[idx(0, 0, 0), idx(0, 1, 0), idx(0, 1, 1), idx(0, 0, 1)], 'back'],
+  [[idx(1, 0, 0), idx(1, 1, 0), idx(1, 1, 1), idx(1, 0, 1)], 'front'],
+  [[idx(0, 0, 0), idx(1, 0, 0), idx(1, 1, 0), idx(0, 1, 0)], 'bottom'],
+  [[idx(0, 0, 1), idx(1, 0, 1), idx(1, 1, 1), idx(0, 1, 1)], 'top'],
+  [[idx(0, 0, 0), idx(1, 0, 0), idx(1, 0, 1), idx(0, 0, 1)], 'sideA'],
+  [[idx(0, 1, 0), idx(1, 1, 0), idx(1, 1, 1), idx(0, 1, 1)], 'sideB'],
+];
+
+// ---------- camera ----------
+// keys: t, distance, azimuth°, elevation°   (periodic: t=15 ≡ t=0 with az+360)
+const CAM = [
+  [0.0, 17, 22, 12],
+  [1.5, 19, -34, 20],
+  [3.0, 30, -84, 13],
+  [4.3, 44, -70, 15],
+  [5.2, 62, -84, 34],
+  [6.6, 82, -90, 86],
+  [7.2, 84, -91, 86],
+  [8.5, 74, -104, 70],
+  [10.4, 104, -160, 52],
+  [12.3, 62, -255, 32],
+  [13.9, 24, -334, 16],
+  [15.0, 17, -338, 12],
+];
+function camKey(i) {
+  const n = CAM.length - 1; // last == first + period
+  const k = Math.floor(i / n), j = ((i % n) + n) % n;
+  const c = CAM[j];
+  return [c[0] + 15 * k, c[1], c[2] + (CAM[n][2] - CAM[0][2]) * k, c[3]];
+}
+function camAt(t) {
+  let i = 0; while (i < CAM.length - 2 && t >= CAM[i + 1][0]) i++;
+  const p0 = camKey(i - 1), p1 = camKey(i), p2 = camKey(i + 1), p3 = camKey(i + 2);
+  const dt = p2[0] - p1[0], u = (t - p1[0]) / dt;
+  const h00 = 2 * u ** 3 - 3 * u ** 2 + 1, h10 = u ** 3 - 2 * u ** 2 + u, h01 = -2 * u ** 3 + 3 * u ** 2, h11 = u ** 3 - u ** 2;
+  const out = [];
+  for (let c = 1; c < 4; c++) {
+    const m1 = (p2[c] - p0[c]) / (p2[0] - p0[0]) * dt, m2 = (p3[c] - p1[c]) / (p3[0] - p1[0]) * dt;
+    out.push(h00 * p1[c] + h10 * m1 + h01 * p2[c] + h11 * m2);
+  }
+  return out;
+}
+function targetRaw(tau) {
+  const LEAD = 2, last = line.length - 1;
+  if (tau < T0) {
+    const b = ballPos(Math.max(0, tau)), q = line[LEAD].p, v = smooth(Math.max(0, tau) / T0) * 0.5 + 0.5;
+    return [lerp(b[0], q[0], v), lerp(b[1], q[1], v), lerp(1.2, line[LEAD].H * 0.35, v)];
+  }
+  if (tau < T_LAND) {
+    let k = 0; while (k < line.length - 1 && line[k + 1].tf <= tau) k++;
+    const a = line[Math.min(k + LEAD, last)], b = line[Math.min(k + LEAD + 1, last)];
+    const nx = line[Math.min(k + 1, last)];
+    const u = nx === line[k] ? 0 : clamp((tau - line[k].tf) / (nx.tf - line[k].tf), 0, 1);
+    const pa = [a.p[0], a.p[1], a.H * 0.35], pb = [b.p[0], b.p[1], b.H * 0.35];
+    const p = add(pa, mul(sub(pb, pa), u));
+    if (k === line.length - 1) { // giant falling: drift toward the impact point
+      const v = smooth((tau - T_GIANT) / GIANT.dur);
+      return add(mul(p, 1 - v), mul([IMPACT[0], 0, 1], v));
+    }
+    return p;
+  }
+  const v = smooth((tau - T_LAND) / 2.3);
+  return [lerp(IMPACT[0], 0, v), 0, lerp(1, 0, v)];
+}
+function target(tau) {
+  let acc = [0, 0, 0];
+  const n = 9;
+  for (let i = 0; i < n; i++) { const dt = (i / (n - 1) - 0.5) * 0.5; acc = add(acc, targetRaw(Math.max(-0.2, tau + dt))); }
+  return mul(acc, 1 / n);
+}
+const FOV = 34 * DEG, FOC = (H / 2) / Math.tan(FOV / 2);
+let E, Fw, Rt, Up;
+function setCamera(t, tau) {
+  const [dist, az, el] = camAt(t);
+  let T = target(tau);
+  // impact shake
+  const st = tau - T_LAND;
+  if (st > 0 && t < T_REW0) {
+    const a = 0.012 * dist * Math.exp(-st * 5.5);
+    T = add(T, [a * Math.sin(st * 61), a * Math.cos(st * 47), a * 0.6 * Math.sin(st * 73)]);
+  }
+  const ca = Math.cos(az * DEG), sa = Math.sin(az * DEG), ce = Math.cos(el * DEG), se = Math.sin(el * DEG);
+  E = add(T, [dist * ce * ca, dist * ce * sa, dist * se]);
+  Fw = norm(sub(T, E));
+  Rt = norm(cross(Fw, [0, 0, 1]));
+  Up = cross(Rt, Fw);
+}
+function proj(P) {
+  const d = sub(P, E);
+  const z = dot(d, Fw);
+  return [W / 2 + FOC * dot(d, Rt) / z, H / 2 - FOC * dot(d, Up) / z, z];
+}
+
+// ---------- drawing helpers ----------
+const NEAR = 0.6;
+function rgb(c, k, fog) {
+  const r = clamp(c[0] * k, 0, 255), g = clamp(c[1] * k, 0, 255), b = clamp(c[2] * k, 0, 255);
+  return `rgb(${(lerp(r, FOG[0], fog)) | 0},${(lerp(g, FOG[1], fog)) | 0},${(lerp(b, FOG[2], fog)) | 0})`;
+}
+const fogOf = z => clamp((z - 90) / 260, 0, 0.75);
+function poly(c2, pts, fill) {
+  c2.beginPath(); c2.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) c2.lineTo(pts[i][0], pts[i][1]);
+  c2.closePath(); c2.fillStyle = fill; c2.fill(); c2.strokeStyle = fill; c2.stroke();
+}
+function hull(pts) {
+  pts = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lo = [], up = [];
+  for (const p of pts) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
+  for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
+  up.pop(); lo.pop(); return lo.concat(up);
+}
+const toGround = P => [P[0] - LIGHT[0] * P[2] / LIGHT[2], P[1] - LIGHT[1] * P[2] / LIGHT[2], 0];
+function shadowOf(worldPts) {
+  const sp = [];
+  for (const P of worldPts) { const q = proj(toGround(P)); if (q[2] < NEAR) return; sp.push(q); }
+  const h = hull(sp);
+  sctx.beginPath(); sctx.moveTo(h[0][0], h[0][1]); for (let i = 1; i < h.length; i++) sctx.lineTo(h[i][0], h[i][1]); sctx.closePath(); sctx.fill();
+}
+
+// ---------- word mask ----------
+let MASK = null; const MW = 780, MH = 340; // 10 px per world unit, x∈[-39,39], y∈[-17,17]
+function buildMask() {
+  const m = document.createElement('canvas'); m.width = MW; m.height = MH;
+  const g = m.getContext('2d');
+  g.fillStyle = '#000'; g.fillRect(0, 0, MW, MH);
+  g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+  g.font = '400 400px "League Gothic"';
+  const mt = g.measureText('CHAIN');
+  const capH = mt.actualBoundingBoxAscent, wid = mt.width;
+  const sc = Math.min(700 / wid, 262 / capH);
+  g.save(); g.translate(MW / 2, MH / 2 + capH * sc / 2); g.scale(sc * 1.04, sc); g.fillText('CHAIN', 0, 0); g.restore();
+  MASK = g.getImageData(0, 0, MW, MH).data;
+}
+function inMask(x, y) {
+  const px = Math.round((x + 39) * 10), py = Math.round((17 - y) * 10);
+  if (px < 0 || py < 0 || px >= MW || py >= MH) return false;
+  return MASK[(py * MW + px) * 4] > 128;
+}
+
+// ---------- render ----------
+function render(t) {
+  t = ((t % 15) + 15) % 15;
+  const tau = tauOf(t);
+  setCamera(t, tau);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.lineJoin = 'round'; ctx.lineWidth = 0.8;
+
+  // sky/fog + ground with a soft horizon
+  const hz = proj(add(E, mul(norm([Fw[0], Fw[1], 0]), 1e5)))[1];
+  ctx.fillStyle = rgb(FOG, 1, 0); ctx.fillRect(0, 0, W, H);
+  const gTop = Math.max(-H, hz);
+  const grd = ctx.createLinearGradient(0, gTop, 0, gTop + 420);
+  grd.addColorStop(0, rgb(FOG, 1, 0)); grd.addColorStop(1, rgb(GROUND, 1, 0));
+  ctx.fillStyle = grd; ctx.fillRect(0, Math.max(0, gTop), W, H);
+
+  // ground grid (every 5 units), clipped at the near plane
+  ctx.lineWidth = 1.2;
+  for (let pass = 0; pass < 2; pass++) for (let v = -180; v <= 80; v += 5) {
+    const a = pass ? [v, -90, 0] : [-180, v, 0], b = pass ? [v, 70, 0] : [80, v, 0];
+    if (!pass && v > 70) continue;
+    let pa = sub(a, E), pb = sub(b, E);
+    let za = dot(pa, Fw), zb = dot(pb, Fw);
+    if (za < NEAR && zb < NEAR) continue;
+    let A = a, B = b;
+    if (za < NEAR) { const u = (NEAR - za) / (zb - za); A = add(a, mul(sub(b, a), u)); }
+    if (zb < NEAR) { const u = (NEAR - za) / (zb - za); B = add(a, mul(sub(b, a), u)); }
+    const qa = proj(A), qb = proj(B);
+    ctx.strokeStyle = v % 25 === 0 ? 'rgba(23,23,27,0.13)' : 'rgba(23,23,27,0.06)';
+    ctx.beginPath(); ctx.moveTo(qa[0], qa[1]); ctx.lineTo(qb[0], qb[1]); ctx.stroke();
+  }
+  ctx.lineWidth = 0.8;
+
+  // build the scene
+  const items = [];
+  let fallen = 0;
+  for (const d of ALL) {
+    const phi = phiOf(d, tau);
+    if (phi > 45 * DEG) fallen++;
+    const fr = frame(d, phi);
+    const cs = corners(d, fr);
+    const ctr = add(add(fr.piv, mul(fr.up, d.H / 2)), mul(fr.fp, -d.T / 2));
+    const z = dot(sub(ctr, E), Fw);
+    items.push({ type: 'dom', d, fr, cs, z });
+  }
+  const bp = ballPos(tau);
+  items.push({ type: 'ball', c: bp, z: dot(sub(bp, E), Fw) });
+  const rv = rampVerts;
+  const rampCtr = mul(add(add(rv.Al, rv.Br), [0, 0, RAMP_H * 0.6]), 0.5);
+  items.push({ type: 'ramp', z: dot(sub(rampCtr, E), Fw) + 2 });
+
+  // shadows: one opaque layer, composited once
+  sctx.setTransform(1, 0, 0, 1, 0, 0); sctx.clearRect(0, 0, W, H); sctx.fillStyle = '#000';
+  for (const it of items) {
+    if (it.type === 'dom') shadowOf(it.cs);
+    else if (it.type === 'ramp') shadowOf([rv.Al, rv.Ar, rv.Bl, rv.Br, rv.Alt, rv.Art]);
+    else {
+      const e1 = norm(cross(LIGHT, [0, 0, 1])), e2 = cross(LIGHT, e1), pts = [];
+      for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; pts.push(add(it.c, add(mul(e1, R_BALL * Math.cos(a)), mul(e2, R_BALL * Math.sin(a))))); }
+      shadowOf(pts);
+    }
+  }
+  ctx.globalAlpha = 0.30; ctx.drawImage(shc, 0, 0); ctx.globalAlpha = 1;
+
+  // impact ring on the ground
+  const it0 = tau - T_LAND;
+  if (it0 > 0 && it0 < 1.4) {
+    for (let k = 0; k < 2; k++) {
+      const rr = (4 + 48 * Math.pow(it0, 0.6)) * (1 - k * 0.28);
+      const al = 0.9 * Math.pow(1 - it0 / 1.4, 1.4);
+      const pts = [];
+      let ok = true;
+      for (let i = 0; i <= 72; i++) { const a = -Math.PI / 2 + i / 72 * Math.PI; const q = proj([IMPACT[0] + rr * Math.cos(a), rr * Math.sin(a), 0.02]); if (q[2] < NEAR) { ok = false; break; } pts.push(q); }
+      if (!ok) continue;
+      ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]));
+      ctx.strokeStyle = `rgba(228,34,26,${al})`; ctx.lineWidth = 6 - 2 * k; ctx.stroke();
+    }
+    ctx.lineWidth = 0.8;
+  }
+
+  items.sort((a, b) => b.z - a.z);
+  for (const it of items) {
+    if (it.z < NEAR) continue;
+    if (it.type === 'dom') drawDomino(it);
+    else if (it.type === 'ball') drawBall(it.c);
+    else drawRamp();
+  }
+
+  drawHUD(t, tau, fallen);
+}
+
+function drawDomino(it) {
+  const { d, fr, cs } = it;
+  const P = [];
+  for (const c of cs) { const q = proj(c); if (q[2] < NEAR) return; P.push(q); }
+  const fog = fogOf(it.z);
+  const N = { back: mul(fr.fp, -1), front: fr.fp, bottom: mul(fr.up, -1), top: fr.up, sideA: mul(d.sv, -1), sideB: d.sv };
+  for (const [ids, key] of FACES) {
+    const n = N[key];
+    const fc = cs[ids[0]], fc2 = cs[ids[2]];
+    const mid = mul(add(fc, fc2), 0.5);
+    if (dot(n, sub(E, mid)) <= 0) continue;
+    const lam = Math.max(0, dot(n, LIGHT));
+    let col;
+    if (key === 'back') col = rgb(d.back, 0.70 + 0.36 * lam, fog);
+    else col = rgb(BODY, 0.75 + 0.9 * lam, fog);
+    poly(ctx, ids.map(i => P[i]), col);
+    if (key === 'front' && d.pips) drawPips(d, fr, P, fog);
+  }
+}
+const PIPS = [[], [[0, 0]], [[-1, -1], [1, 1]], [[-1, -1], [0, 0], [1, 1]], [[-1, -1], [1, -1], [-1, 1], [1, 1]], [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]], [[-1, -1], [-1, 0], [-1, 1], [1, -1], [1, 0], [1, 1]]];
+function drawPips(d, fr, P, fog) {
+  // only when the face is big enough on screen
+  const hpx = Math.hypot(P[idx(1, 0, 1)][0] - P[idx(1, 0, 0)][0], P[idx(1, 0, 1)][1] - P[idx(1, 0, 0)][1]);
+  if (hpx < 26) return;
+  const base = add(fr.piv, mul(fr.fp, 0.004 * d.s));
+  const pt = (x, y) => proj(add(add(base, mul(d.sv, x)), mul(fr.up, y)));
+  const col = rgb(IVORY, 0.92, fog);
+  // divider
+  const w2 = d.Wd * 0.38, hy = d.H / 2, th = 0.035 * d.s;
+  poly(ctx, [pt(-w2, hy - th), pt(w2, hy - th), pt(w2, hy + th), pt(-w2, hy + th)], col);
+  const r = 0.085 * d.s, g = d.Wd * 0.24;
+  for (let half = 0; half < 2; half++) {
+    const cy = d.H * (half ? 0.75 : 0.25);
+    for (const [px, py] of PIPS[d.pips[half]]) {
+      const pts = [];
+      for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; pts.push(pt(px * g + r * Math.cos(a), cy + py * g + r * Math.sin(a))); }
+      poly(ctx, pts, col);
+    }
+  }
+}
+function drawBall(c) {
+  const q = proj(c);
+  const r = FOC * R_BALL / q[2];
+  const l = proj(add(c, mul(LIGHT, R_BALL * 0.55)));
+  const g = ctx.createRadialGradient(l[0], l[1], r * 0.05, q[0], q[1], r * 1.05);
+  g.addColorStop(0, 'rgb(255,140,120)'); g.addColorStop(0.35, rgb(RED, 1, 0)); g.addColorStop(1, rgb(RED, 0.5, 0));
+  ctx.beginPath(); ctx.arc(q[0], q[1], r, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill();
+}
+function drawRamp() {
+  const rv = rampVerts;
+  const faces = [
+    [rv.Alt, rv.Art, rv.Br, rv.Bl],
+    [rv.Al, rv.Ar, rv.Art, rv.Alt],
+    [rv.Al, rv.Bl, rv.Alt],
+    [rv.Ar, rv.Art, rv.Br],
+  ];
+  const cen = mul(add(add(rv.Al, rv.Br), [0, 0, RAMP_H * 0.4]), 0.5);
+  for (const f of faces) {
+    let n = norm(cross(sub(f[1], f[0]), sub(f[2], f[0])));
+    const mid = mul(f.reduce((a, b) => add(a, b), [0, 0, 0]), 1 / f.length);
+    if (dot(n, sub(mid, cen)) < 0) n = mul(n, -1);
+    if (dot(n, sub(E, mid)) <= 0) continue;
+    const P = f.map(proj); if (P.some(p => p[2] < NEAR)) return;
+    poly(ctx, P, rgb(RAMP, 0.72 + 0.34 * Math.max(0, dot(n, LIGHT)), 0));
+  }
+}
+
+// ---------- HUD ----------
+function plate(x, y, w) { ctx.fillStyle = 'rgba(214,210,201,0.88)'; ctx.fillRect(x, y - 24, w, 36); }
+function drawHUD(t, tau, fallen) {
+  plate(36, 62, 330); plate(36, H - 48, 640);
+  const rev = t >= T_REW0 && t < T_REW1;
+  const spd = !rev ? (t < T_REW0 ? 1 : 0) : (tauOf(t + 0.01) - tauOf(t - 0.01)) / 0.02;
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = INK; ctx.font = '600 18px "Azeret Mono"'; ctx.textAlign = 'left';
+  ctx.fillText('MIDDLE STUDIES', 48, 62);
+  ctx.font = '400 18px "Azeret Mono"';
+  ctx.fillText('REEL — 018', 232, 62);
+
+  let sec;
+  if (rev) sec = '06  REWIND';
+  else if (t >= T_REW1) sec = '07  SET';
+  else if (tau < T0) sec = '01  PUSH';
+  else if (tau < growth[0].tf) sec = '02  TOPPLE';
+  else if (tau < T_LAND) sec = '03  AMPLIFY  ×1.32';
+  else if (tau < T_FIELD_END) sec = '04  FIELD';
+  else sec = '05  CHAIN';
+  ctx.textAlign = 'right'; ctx.font = '600 18px "Azeret Mono"';
+  plate(W - 60 - ctx.measureText(sec).width, 62, ctx.measureText(sec).width + 24);
+  ctx.fillStyle = rev ? rgb(RED, 1, 0) : INK;
+  ctx.fillText(sec, W - 48, 62);
+
+  // bottom readouts
+  ctx.textAlign = 'left'; ctx.fillStyle = INK; ctx.font = '400 18px "Azeret Mono"';
+  const tt = Math.max(0, tau).toFixed(2).padStart(5, '0');
+  ctx.fillText(`τ ${tt} s`, 48, H - 48);
+  const sp = Math.abs(spd) < 0.05 ? '■  0.00×' : (spd > 0 ? '▶  ' : '◀◀ ') + Math.abs(spd).toFixed(2) + '×';
+  ctx.fillStyle = spd < -0.05 ? rgb(RED, 1, 0) : INK;
+  ctx.fillText(sp, 220, H - 48);
+  ctx.fillStyle = INK;
+  ctx.fillText(`down ${String(fallen).padStart(4, '0')} / ${ALL.length}`, 420, H - 48);
+  // progress bar of fallen
+  ctx.fillStyle = 'rgba(23,23,27,0.18)'; ctx.fillRect(48, H - 38, 600, 2);
+  ctx.fillStyle = rgb(RED, 1, 0); ctx.fillRect(48, H - 38, 600 * fallen / ALL.length, 2);
+  ctx.textAlign = 'right';
+  plate(W - 600, H - 48, 564); ctx.fillStyle = INK;
+  ctx.fillText('one push · ' + ALL.length.toLocaleString('en-US') + ' dominoes', W - 160, H - 48);
+  ctx.font = '600 18px "Azeret Mono"';
+  ctx.fillText('Claude', W - 48, H - 48);
+}
+
+// ---------- boot ----------
+const ready = Promise.all([
+  document.fonts.load('400 100px "League Gothic"'),
+  document.fonts.load('400 18px "Azeret Mono"'),
+  document.fonts.load('600 18px "Azeret Mono"'),
+]).then(() => document.fonts.ready).then(() => {
+  buildMask();
+  for (const d of field) {
+    const land = add(d.p, mul(d.f, d.T / 2 + d.H / 2));
+    d.back = inMask(land[0], land[1]) ? RED : IVORY;
+  }
+  window.__seek = t => render(t);
+  window.__timeline = { T_GIANT, T_LAND, T_FIELD_END, nSmall: small.length, growth0: growth[0].tf, pathLen };
+});
+if (!location.search.includes('render')) {
+  ready.then(() => { const t0 = performance.now(); const loop = now => { render(((now - t0) / 1000) % 15); requestAnimationFrame(loop); }; requestAnimationFrame(loop); });
+}
+</script>
+</body>
+</html>
