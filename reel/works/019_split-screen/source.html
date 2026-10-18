@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 019 Split Screen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Fragment+Mono&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #0b0b0c; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; object-fit: contain; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+(() => {
+const W = 1920, H = 1080, DUR = 15, BEAT = 0.5;
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+
+const C = {
+  ink: '#0b0b0c', cell: '#18181b', paper: '#f2efe8', orange: '#ff4d1f',
+  cobalt: '#2340ff', acid: '#d4ff3f'
+};
+const PAIRS = [
+  [C.orange, C.ink], [C.paper, C.ink], [C.ink, C.paper], [C.cobalt, C.paper],
+  [C.acid, C.ink], [C.paper, C.orange], [C.ink, C.orange], [C.cobalt, C.acid],
+  [C.orange, C.paper], [C.ink, C.acid]
+];
+const WORDS = ['SPLIT', 'CUT', 'HALF', 'AGAIN', 'EDIT', 'FRAME', 'PANEL', 'GRID', 'TWICE', 'SPLIT'];
+const MODULES = ['word', 'rings', 'halfmoon', 'stripes', 'orbit', 'bars', 'dots', 'square', 'chevrons', 'truchet', 'halfmoon', 'word'];
+
+// ---------- seeded helpers ----------
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function hashStr(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const easeOutExpo = k => k >= 1 ? 1 : 1 - Math.pow(2, -10 * k);
+const easeOutBack = k => { const c = 1.25; return 1 + (c + 1) * Math.pow(k - 1, 3) + c * Math.pow(k - 1, 2); };
+const easeInOut = k => k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+const smooth = (a, b, x) => { const k = clamp((x - a) / (b - a)); return k * k * (3 - 2 * k); };
+const pulse = t => Math.exp(-(((t % BEAT) + BEAT) % BEAT) * 9);
+
+// ---------- the split tree ----------
+const MAXD = 9;
+const SPLIT_T = [0.40, 0.90, 1.40, 1.90, 2.60, 3.30, 4.05, 4.85, 5.65];
+const MERGE_T = [14.15, 13.40, 12.70, 12.10, 11.55, 11.00, 10.45, 9.90, 9.35];
+const GUT = [0, 16, 14, 12, 10, 8, 6, 5, 4, 3];
+const SDUR = 0.34, MDUR = 0.36;
+
+// static layout (no animation) to find centres for staggering
+function build(path, d, x, y, w, h, parent) {
+  const rnd = mulberry32(hashStr('n' + path));
+  const n = { path, d, parent, kids: null, sx: x + w / 2, sy: y + h / 2 };
+  if (!parent) { n.module = 'count'; n.pair = 0; n.word = 'ONE'; }
+  n.rnd = rnd();
+  if (d < MAXD) {
+    n.vert = w >= h;                     // true = vertical line, children left/right
+    n.r = d < 3 ? [0.5, 0.382, 0.618][Math.floor(rnd() * 3)] : 0.5;
+    n.fromEnd = rnd() < 0.5;             // new child B pushes in from its own side
+    const a = n.vert ? [x, y, w * n.r, h] : [x, y, w, h * n.r];
+    const b = n.vert ? [x + w * n.r, y, w * (1 - n.r), h] : [x, y + h * n.r, w, h * (1 - n.r)];
+    const A = build(path + '0', d + 1, ...a, n);
+    const B = build(path + '1', d + 1, ...b, n);
+    n.kids = [A, B];
+  }
+  return n;
+}
+const ROOT = build('r', 0, 0, 0, W, H, null);
+// content top-down: A inherits the parent's content (it is squeezed, not replaced); B is new
+(function assign(n) {
+  if (!n.kids) return;
+  const [A, B] = n.kids;
+  A.module = n.module; A.pair = n.pair; A.word = n.word;
+  const rb = mulberry32(hashStr('c' + n.path));
+  let m = MODULES[Math.floor(rb() * MODULES.length)];
+  if (n.d + 1 >= 6 && m === 'word') m = 'square';
+  B.module = m;
+  let p = Math.floor(rb() * PAIRS.length);
+  if (PAIRS[p][0] === PAIRS[n.pair][0]) p = (p + 3) % PAIRS.length;
+  B.pair = p;
+  B.word = WORDS[Math.floor(rb() * WORDS.length)];
+  n.kids.forEach(assign);
+})(ROOT);
+ROOT.born = -10;
+const MAXR = Math.hypot(W / 2, H / 2);
+
+// split times top-down, merge times bottom-up so nothing overlaps its parent
+(function times(n) {
+  if (!n.kids) return;
+  const rad = Math.hypot(n.sx - W / 2, n.sy - H / 2) / MAXR;
+  let ts = SPLIT_T[n.d] + (n.d >= 2 ? 0.38 * rad : 0) + (n.d >= 4 ? 0.04 * n.rnd : 0);
+  if (n.parent) ts = Math.max(ts, n.parent.ts + SDUR * 0.85);
+  n.ts = ts;
+  n.kids.forEach(times);
+})(ROOT);
+(function mtimes(n) {
+  if (!n.kids) return -1;
+  const kidEnd = Math.max(...n.kids.map(k => { const e = mtimes(k); return e < 0 ? -1 : e; }));
+  const sweep = n.d >= 2 ? 0.4 * (0.62 * n.sx / W + 0.38 * n.sy / H) : 0;
+  n.tm = Math.max(MERGE_T[n.d] + sweep, kidEnd + 0.02);
+  return n.tm + MDUR;
+})(ROOT);
+
+// ---------- climax image: the 512 cells become pixels of one picture ----------
+function image(px, py, t) {
+  const u = (px - W / 2) / H, v = (py - H / 2) / H;
+  const sw1 = 7.0 + 0.55 * (px / W), sw2 = 8.55 + 0.55 * (1 - py / H);
+  const r = Math.hypot(u, v);
+  if (t < sw1) {
+    // rings breathing out from the centre, on the beat
+    const ph = r * 7.5 - (t - 4.8) * 2.0;
+    const band = 0.5 + 0.5 * Math.cos(ph * Math.PI * 2);
+    const s = smooth(0.3, 0.8, band) * (0.7 + 0.3 * pulse(t - r * 0.4));
+    const col = (Math.floor(ph) & 1) ? C.orange : C.paper;
+    return [col, s];
+  } else if (t < sw2) {
+    // one huge Bauhaus half-moon turning
+    const R = 0.4;
+    const ang = (t - 7.0) * 1.6;
+    if (r < R) {
+      const side = (u * Math.cos(ang) + v * Math.sin(ang)) > 0;
+      const rim = smooth(R, R - 0.06, r);
+      return [side ? C.orange : C.cobalt, 0.35 + 0.65 * rim];
+    }
+    const ring = Math.abs(r - (R + 0.07 + 0.03 * Math.sin(t * 6)));
+    if (ring < 0.025) return [C.acid, 0.75];
+    return [C.paper, 0.10 + 0.08 * pulse(t)];
+  } else {
+    // diagonal bands sliding off
+    const q = (u + v * 0.8) * 3.2 - (t - 8.55) * 2.4;
+    const f = q - Math.floor(q);
+    const col = (Math.floor(q) & 1) ? C.acid : C.cobalt;
+    return [col, smooth(0.0, 0.18, f) * smooth(1.0, 0.72, f)];
+  }
+}
+
+// ---------- modules (content of one panel) ----------
+function fitWord(word, w, h) {
+  ctx.font = '900 100px Archivo';
+  ctx.fontStretch = 'condensed';
+  const m = ctx.measureText(word).width;
+  return Math.min(w * 0.86 / m * 100, h * 0.74 / 0.72);
+}
+function drawWord(word, x, y, w, h, lt, fg, t) {
+  const size = fitWord(word, w, h);
+  ctx.font = `900 ${size}px Archivo`;
+  ctx.fontStretch = 'condensed';
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = fg;
+  const total = ctx.measureText(word).width;
+  let cx = x + (w - total) / 2;
+  const base = y + h / 2 + size * 0.36;
+  for (let i = 0; i < word.length; i++) {
+    const ch = word[i];
+    const cw = ctx.measureText(ch).width;
+    const k = easeOutExpo(clamp((lt - i * 0.035) / 0.4));
+    const dy = (1 - k) * size * 0.95;
+    const bob = Math.sin(t * Math.PI * 4 + i * 0.7) * size * 0.012;
+    ctx.fillText(ch, cx, base + dy + bob);
+    cx += cw;
+  }
+}
+function drawModule(n, x, y, w, h, t, count) {
+  const [bg, fg] = PAIRS[n.pair];
+  const lt = t - (n.born || 0);
+  const s = Math.min(w, h), cx = x + w / 2, cy = y + h / 2;
+  ctx.fillStyle = bg; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = fg; ctx.strokeStyle = fg;
+  const p = pulse(t);
+  switch (n.module) {
+    case 'count': {
+      if (h < 200) {   // too thin to read under the label: the top-right chip carries the count instead
+        const z = s * 0.5 * (1 - 0.12 * p);
+        ctx.fillRect(cx - z / 2, cy - z / 2 + 8, z, z);
+        break;
+      }
+      const str = String(count);
+      // keep clear of the top-left label chip, which always sits on this panel
+      const top = Math.min(64, h * 0.2);
+      const hh = (h - top) * (0.86 + 0.08 * p);
+      drawWord(str, x, y + top + (h - top - hh) / 2, w, hh, lt, fg, t);
+      // a ticking arc so the single panel is never still
+      ctx.lineWidth = Math.max(2, s * 0.012);
+      const a0 = (t / DUR) * Math.PI * 2 * 6;
+      ctx.beginPath(); ctx.arc(x + w - s * 0.09, y + s * 0.13, s * 0.04, a0, a0 + Math.PI * 1.5); ctx.stroke();
+      break;
+    }
+    case 'word': drawWord(n.word, x, y, w, h, lt, fg, t); break;
+    case 'rings': {
+      ctx.lineWidth = Math.max(2, s * 0.035);
+      const ph = (t * 1.2) % 1;
+      for (let i = 0; i < 7; i++) {
+        const r = (i + ph) * s * 0.11;
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+      }
+      break;
+    }
+    case 'halfmoon': {
+      const r = s * 0.36 * (0.92 + 0.08 * p);
+      const a = t * 2.2 + n.rnd * 6;
+      ctx.beginPath(); ctx.arc(cx, cy, r, a, a + Math.PI); ctx.fill();
+      ctx.fillStyle = [C.cobalt, C.orange, C.paper, C.ink].find(c => c !== fg && c !== bg);
+      ctx.beginPath(); ctx.arc(cx, cy, r, a + Math.PI, a + Math.PI * 2); ctx.fill();
+      ctx.fillStyle = fg;
+      ctx.beginPath(); ctx.arc(cx + Math.cos(a + Math.PI / 2) * r * 0.5, cy + Math.sin(a + Math.PI / 2) * r * 0.5, r * 0.16, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+    case 'stripes': {
+      const sp = Math.max(14, s * 0.16);
+      const off = (t * sp * 2.4) % (sp * 2);
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(-Math.PI / 4);
+      const L = Math.hypot(w, h);
+      for (let k = -L - sp * 2; k < L; k += sp * 2) ctx.fillRect(k + off, -L, sp, L * 2);
+      ctx.restore();
+      break;
+    }
+    case 'orbit': {
+      ctx.lineWidth = Math.max(2, s * 0.02);
+      const R = s * 0.32, a = t * Math.PI * 2 * 0.8 + n.rnd * 6;
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+      ctx.lineWidth = Math.max(3, s * 0.07);
+      ctx.beginPath(); ctx.arc(cx, cy, R, a - 1.4, a); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx + Math.cos(a) * R, cy + Math.sin(a) * R, s * 0.09, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+    case 'bars': {
+      const N = 7, bw = w / N;
+      for (let i = 0; i < N; i++) {
+        const v = 0.25 + 0.7 * Math.abs(Math.sin(t * 3.1 + i * 0.75 + n.rnd * 5)) * (0.75 + 0.25 * p);
+        ctx.fillRect(x + i * bw + bw * 0.14, y + h * (1 - v), bw * 0.72, h * v);
+      }
+      break;
+    }
+    case 'dots': {
+      const N = Math.max(3, Math.round(w / s * 5)), M = Math.max(3, Math.round(h / s * 5));
+      const gx = w / N, gy = h / M;
+      for (let i = 0; i < N; i++) for (let j = 0; j < M; j++) {
+        const v = 0.5 + 0.5 * Math.sin(t * 5 - (i + j) * 0.7);
+        ctx.beginPath(); ctx.arc(x + (i + 0.5) * gx, y + (j + 0.5) * gy, Math.min(gx, gy) * 0.42 * v, 0, Math.PI * 2); ctx.fill();
+      }
+      break;
+    }
+    case 'square': {
+      const b = Math.floor(t / BEAT), k = easeOutBack(clamp((t - b * BEAT) / 0.3));
+      const a = (b + k) * Math.PI / 4;
+      const z = s * 0.46 * (1 - 0.12 * p);
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(a); ctx.fillRect(-z / 2, -z / 2, z, z); ctx.restore();
+      break;
+    }
+    case 'chevrons': {
+      ctx.lineWidth = Math.max(3, s * 0.09);
+      ctx.lineJoin = 'miter';
+      const sp = s * 0.34, off = (t * sp * 1.6) % sp;
+      for (let k = -1; k < w / sp + 1; k++) {
+        const px = x + k * sp + off;
+        ctx.beginPath(); ctx.moveTo(px - s * 0.12, cy - s * 0.2); ctx.lineTo(px + s * 0.06, cy); ctx.lineTo(px - s * 0.12, cy + s * 0.2); ctx.stroke();
+      }
+      break;
+    }
+    case 'truchet': {
+      const N = Math.max(2, Math.round(w / s * 3)), M = Math.max(2, Math.round(h / s * 3));
+      const gx = w / N, gy = h / M, g = Math.min(gx, gy);
+      const b = Math.floor(t / BEAT), k = easeOutBack(clamp((t - b * BEAT) / 0.28));
+      for (let i = 0; i < N; i++) for (let j = 0; j < M; j++) {
+        const rr = mulberry32(hashStr(n.path + i + ',' + j))();
+        const turn = (Math.floor(rr * 4) + b + ((i + j + b) % 2 ? k : 1) - 1) * Math.PI / 2;
+        ctx.save(); ctx.translate(x + (i + 0.5) * gx, y + (j + 0.5) * gy); ctx.rotate(turn);
+        ctx.beginPath(); ctx.moveTo(-g / 2, -g / 2); ctx.arc(-g / 2, -g / 2, g * 0.92, 0, Math.PI / 2); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+      break;
+    }
+  }
+}
+
+// ---------- frame ----------
+function layout(n, x, y, w, h, t, out) {
+  if (w < 0.5 || h < 0.5) return;
+  const split = n.kids && t >= n.ts && t < n.tm + MDUR;
+  if (!split) { out.push([n, x, y, w, h]); return; }
+  const ps = easeOutExpo(clamp((t - n.ts) / SDUR));
+  const pm = easeInOut(clamp((t - n.tm) / MDUR));
+  const r0 = n.fromEnd ? 1 : 0;           // ratio before the new panel arrives
+  let r = lerp(r0, n.r, ps);
+  r = lerp(r, 1, pm);                     // on merge, A swallows B again
+  const g = GUT[n.d + 1] * Math.min(clamp((t - n.ts) / 0.12), 1 - pm);
+  const [A, B] = n.kids;
+  A.born = n.born || 0; B.born = n.ts;
+  if (n.vert) {
+    const wa = (w - g) * r;
+    layout(A, x, y, wa, h, t, out);
+    layout(B, x + wa + g, y, w - g - wa, h, t, out);
+  } else {
+    const ha = (h - g) * r;
+    layout(A, x, y, w, ha, t, out);
+    layout(B, x, y + ha + g, w, h - g - ha, t, out);
+  }
+}
+
+function chip(text, x, y, align, color, bgc) {
+  ctx.font = '20px "Fragment Mono"';
+  ctx.fontStretch = 'normal';
+  ctx.textBaseline = 'middle';
+  const tw = ctx.measureText(text).width;
+  const bx = align === 'right' ? x - tw - 20 : x;
+  ctx.fillStyle = bgc || C.ink;
+  ctx.fillRect(bx, y - 17, tw + 20, 34);
+  ctx.fillStyle = color || C.paper;
+  ctx.textAlign = 'left';
+  ctx.fillText(text, bx + 10, y + 1);
+}
+
+function draw(t) {
+  t = ((t % DUR) + DUR) % DUR;
+  ctx.fillStyle = C.ink; ctx.fillRect(0, 0, W, H);
+  const leaves = [];
+  layout(ROOT, 0, 0, W, H, t, leaves);
+  const count = leaves.length;
+  for (const [n, x, y, w, h] of leaves) {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    if (n.d >= 8) {
+      // pixel mode: the cell is one pixel of the big picture
+      ctx.fillStyle = C.cell; ctx.fillRect(x, y, w, h);
+      // 2x2 samples per cell: the grid stays visible, the picture gets twice the resolution
+      const hw = w / 2, hh = h / 2;
+      for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) {
+        const ox = x + i * hw, oy = y + j * hh;
+        const [col, s] = image(ox + hw / 2, oy + hh / 2, t);
+        const k = clamp(s);
+        ctx.fillStyle = col;
+        ctx.fillRect(ox + hw / 2 - hw * k / 2 + 0.5, oy + hh / 2 - hh * k / 2 + 0.5, hw * k - 1, hh * k - 1);
+      }
+    } else {
+      drawModule(n, x, y, w, h, t, count);
+    }
+    ctx.restore();
+  }
+  // overlay
+  const beat = Math.floor(t / BEAT) + 1;
+  chip('MIDDLE STUDIES   REEL — 019', 28, 44, 'left');
+  chip('PANELS ' + String(count).padStart(4, '0'), W - 28, 44, 'right', count >= 256 ? C.acid : C.paper);
+  chip('SPLIT SCREEN · 120 BPM · BEAT ' + String(beat).padStart(2, '0') + '/30', 28, H - 44, 'left');
+  chip('Claude', W - 28, H - 44, 'right');
+}
+
+window.__duration = DUR;
+window.__poster = 7.6;
+const ready = Promise.all([
+  document.fonts.load('900 100px Archivo'),
+  document.fonts.load('20px "Fragment Mono"')
+]).then(() => document.fonts.ready);
+ready.then(() => {
+  window.__seek = t => { draw(t); };
+  draw(0);
+  if (!location.search.includes('render')) {
+    const t0 = performance.now();
+    const loop = () => { draw((performance.now() - t0) / 1000); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  }
+});
+})();
+</script>
+</body>
+</html>

@@ -672,5 +672,42 @@
     },
     "review_rounds": 3,
     "review": "1周目：語が出揃ったあとの真上ショット（7〜8.6秒）がほぼ静止画で、黒いドミノに重なる HUD の文字が読めなかった→保持中もカメラを寄せながら回し、HUD に地色の下敷きを敷いた。冒頭は坂の背面が板に見えて列が画面外だったので、横から坂を見せ、注視点を2枚先へ先行させて列が最初の1秒から見えるようにした。2周目：寄せすぎて C と N が切れた→距離を戻した。HUD の下敷きを文字幅に合わせた。0秒目の速度表示が 0.50× と出ていた→区間ごとに正しく出すよう直した。3周目：巻き戻しの軌道、15秒→0秒のつなぎ、crf 29 で書き出した面のショットの圧縮の荒れを等倍で見た→直すところはなかった。許容した差：衝撃点の近くから見ると、立っているドミノの塗った背面がカメラ側を向くので、倒れる前から字の赤が少し見えている（物理的にはその通りなので、ごまかさずに残した）。"
+  },
+  {
+    "id": "019",
+    "slug": "split-screen",
+    "title": "Split Screen",
+    "date": "2026-10-18",
+    "concept": "1枚のオレンジの画面に大きく「1」とある状態から始まり、120BPMの拍ごとに新しいパネルが横から押し込んで画面を割っていく15秒。押された側は中身ごと潰れて残り、新しい側には文字・同心円・半月・縞・棒グラフ・トルシェなどの別の動きが入って、右上の PANELS が 1→2→4…→512 と数える。512枚になると1枚ずつが1つの大きな絵の画素になり、同心円→回る半月→斜めの帯と、絵が全体で切り替わる（見せ場は7.0秒、半月が左から右へマス単位で現れるところ）。最後に割れ目を逆にたどって閉じ、1枚の「1」に戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/019_split-screen.mp4",
+    "techniques": [
+      "recursive-binary-space-partition",
+      "push-in-split-with-inherited-content",
+      "radial-staggered-subdivision",
+      "diagonal-sweep-merge",
+      "beat-synced-micro-modules",
+      "live-panel-count-typography",
+      "cells-as-pixels-mosaic",
+      "per-cell-image-wipe",
+      "swiss-grid-montage",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#0b0b0c",
+        "#f2efe8",
+        "#ff4d1f",
+        "#2340ff",
+        "#d4ff3f"
+      ],
+      "type": [
+        "Archivo Condensed 900",
+        "Fragment Mono"
+      ],
+      "structure": "one panel / splits on the beat 1 → 2 → 4 … → 512 (new panels push in, old ones squeeze) → 512 cells become pixels of one picture (rings → turning half-moon → bands) → merges back to the single panel",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：数を出すパネルが横長になると数字が上で切れ、左上のラベルとも重なる→上に余白を取って縦に収め、高さ200px未満では数字を出さず四角を出す（数は右上の PANELS が担う）。時計の弧が15秒で満ちてから空に戻り、ループで跳ぶ→長さを固定した弧を回す形にして周期を15秒で割り切れるようにした。2周目：半月のもう半分が前景と同じ色で、ただの黒い円に見えた→前景とも背景とも違う色を選ぶようにした。512マスの絵が粗くて読めなかった→1マスを2×2に分けて標本を取り、大きく塗るようにした（制作中に修正）。3周目：5.1秒（モジュール→画素）と10.15秒（画素→モジュール）を等倍で確認し、中心からの放射と斜めの掃きでつながって見えた。直すことなし。許容した差：分割の途中では PANELS の数が 17・138 のような半端な数になるが、そのとき見えている枚数をそのまま数えているので、そのままにした。"
   }
 ]
