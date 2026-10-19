@@ -709,5 +709,42 @@
     },
     "review_rounds": 3,
     "review": "1周目：数を出すパネルが横長になると数字が上で切れ、左上のラベルとも重なる→上に余白を取って縦に収め、高さ200px未満では数字を出さず四角を出す（数は右上の PANELS が担う）。時計の弧が15秒で満ちてから空に戻り、ループで跳ぶ→長さを固定した弧を回す形にして周期を15秒で割り切れるようにした。2周目：半月のもう半分が前景と同じ色で、ただの黒い円に見えた→前景とも背景とも違う色を選ぶようにした。512マスの絵が粗くて読めなかった→1マスを2×2に分けて標本を取り、大きく塗るようにした（制作中に修正）。3周目：5.1秒（モジュール→画素）と10.15秒（画素→モジュール）を等倍で確認し、中心からの放射と斜めの掃きでつながって見えた。直すことなし。許容した差：分割の途中では PANELS の数が 17・138 のような半端な数になるが、そのとき見えている枚数をそのまま数えているので、そのままにした。"
+  },
+  {
+    "id": "020",
+    "slug": "overprint",
+    "title": "Overprint",
+    "date": "2026-10-19",
+    "concept": "1枚の絵（光の回る球と OVER PRINT の字）を、シアン・マゼンタ・イエロー・墨の4版の網点でその場で刷り続ける15秒。見えている印はすべてどれかの版の網点か線で、紙の上に掛け合わせで重なる。冒頭は4版が1画面ぶん横に流れて色ずれのまま飛び込み、見当が合って1枚の絵になる。網角が揃ってモアレの縞が走り、網点が粗く膨らみ、カメラが球の暗部へ54倍まで潜ると、網点そのものが丸→角→線に変わって紺・赤・墨の大きな面の構成になる（見せ場は7.0秒）。引くと線スクリーンの LINE のポスターになり、4分割の色分解を見せてから、また版が流れて0秒目へ戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/020_overprint.mp4",
+    "techniques": [
+      "procedural-cmyk-halftone-four-plates",
+      "multiply-overprint-compositing",
+      "screen-angle-rotation-moire",
+      "pitch-detune-beat-patterns",
+      "dot-shape-morph-round-square-line",
+      "deep-zoom-into-rosette",
+      "misregistration-wrap-slide-on-lattice-vector",
+      "line-screen-engraving",
+      "colour-separation-split-view",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#f2eee3",
+        "#00a0e2",
+        "#e5097f",
+        "#ffe100",
+        "#26221f"
+      ],
+      "type": [
+        "Syne 800",
+        "IBM Plex Mono"
+      ],
+      "structure": "one picture printed as four halftone plates / plates slide in and register → screen angles converge (moiré) → pitch swells → zoom ×54 into one rosette, dot turns round → square → line → line-screen poster → 2×2 colour separation → plates slide out into the next register",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：網角が揃う2.4秒のモアレがほとんど見えず、角度が回るだけに見えた→収束角を1°以内に詰め、版ごとに網ピッチを最大7%ずらし、青いパネルにマゼンタ版を重ねて広い面で干渉縞が走るようにした。深く潜る先が赤と黄だけだったので狙う点を球の暗部へ移し、紺・墨が入るようにした。色分解のラベルが下の読み出しと重なったので各象限の内側の継ぎ目寄りへ移した。2周目：冒頭1秒の版が流れる場面が8MB上限の2パス圧縮でブロック状に崩れていた→基本ピッチを15→17pxにし、流れている版だけ網点を最大2.1倍に粗くした（見当がずれるあいだは太い網点で読ませる）。格子の平行移動は基本ピッチの格子ベクトルで行い、着地で網が跳ばないようにした。3周目：冒頭の網点が読めるところまで戻り、1秒以上止まる区間もない。許容した差：最速の版が流れる0.2秒前後にわずかな圧縮のにじみが残る／タイトルの絵は冒頭と終盤で同じ構図に戻る（ループのため）。"
   }
 ]

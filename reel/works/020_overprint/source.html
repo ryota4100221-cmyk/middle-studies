@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 020 Overprint</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@800&family=IBM+Plex+Mono:wght@500&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #f2eee3; overflow: hidden; }
+  canvas { display: block; width: 1920px; height: 1080px; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+/*
+ * OVERPRINT — one picture, printed live as four halftone plates (C, M, Y, K).
+ * Every visible mark is a halftone dot (or line) of one plate, multiplied onto paper.
+ * The picture underneath is ordinary; the motion is the press: registration, screen
+ * angles and moiré, the dot itself, line screens, colour separation.
+ * __seek(t) is pure: everything is computed from t.
+ */
+const W = 1920, H = 1080, DUR = 15, CX = W / 2, CY = H / 2;
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+
+// ---------- inks ----------
+const PAPER = '#f2eee3';
+const INK = ['#00a0e2', '#e5097f', '#ffe100', '#26221f'];
+const NAME = ['CYAN', 'MAGENTA', 'YELLOW', 'BLACK'];
+const LETTER = ['C', 'M', 'Y', 'K'];
+const STD = [15, 75, 0, 45];               // classic screen angles (deg)
+
+// ---------- easing ----------
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, u) => a + (b - a) * u;
+const S = x => { x = clamp(x); return x * x * x * (x * (x * 6 - 15) + 10); };
+const ramp = (t, a, b) => S((t - a) / (b - a));
+const bump = (t, a, b, c, d) => ramp(t, a, b) - ramp(t, c, d);
+const io3 = u => u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+
+// ---------- source picture sampling ----------
+// The picture is drawn twice: once with (c,m,y) in rgb, once with k in red.
+const SW = 640, SH = 360;
+const srcA = document.createElement('canvas'); srcA.width = SW; srcA.height = SH;
+const srcB = document.createElement('canvas'); srcB.width = SW; srcB.height = SH;
+const gA = srcA.getContext('2d', { willReadFrequently: true });
+const gB = srcB.getContext('2d', { willReadFrequently: true });
+let MODE = 'cmy';
+const ink = (c, m, y, k) => MODE === 'cmy'
+  ? `rgb(${(c * 255) | 0},${(m * 255) | 0},${(y * 255) | 0})`
+  : `rgb(${(k * 255) | 0},0,0)`;
+
+function fitText(g, str, maxW, px) {
+  g.font = `800 ${px}px Syne`;
+  const w = g.measureText(str).width;
+  return Math.min(px, px * maxW / w);
+}
+
+// --- picture 1: the title sheet (edges stay paper so the plates can wrap) ---
+function lightAngle(t) {
+  return -2.35 + 0.5 * Math.sin(2 * Math.PI * t / DUR) + 2.6 * bump(t, 4.4, 6.4, 6.9, 8.4);
+}
+function picTitle(g, t) {
+  g.fillStyle = ink(0, 0, 0, 0); g.fillRect(-400, -400, W + 800, H + 800);
+  // yellow sun, top left
+  let gr = g.createRadialGradient(300, 250, 0, 300, 250, 120);
+  gr.addColorStop(0, ink(0, 0.05, 1, 0)); gr.addColorStop(0.75, ink(0, 0.25, 1, 0)); gr.addColorStop(1, ink(0, 0, 0.0, 0));
+  g.fillStyle = gr; g.beginPath(); g.arc(300, 250, 120, 0, 7); g.fill();
+  // cyan panel behind the type: a tint ramp, so the dots visibly grow left → right
+  const pan = 0.5 + 0.5 * Math.sin(2 * Math.PI * t / DUR);
+  gr = g.createLinearGradient(980, 0, 1860, 0);
+  const mo = 0.42 * bump(t, 1.6, 2.2, 2.9, 3.5);   // magenta joins the panel while the screens converge → moiré
+  gr.addColorStop(0, ink(0.05, mo * 0.6, 0, 0)); gr.addColorStop(0.35 + 0.3 * pan, ink(0.55, 0.05 + mo, 0, 0)); gr.addColorStop(1, ink(1, 0.35 + mo * 0.5, 0, 0));
+  g.fillStyle = gr; g.fillRect(980, 230, 880, 620);
+  // shadow
+  gr = g.createRadialGradient(610, 905, 0, 610, 905, 360);
+  gr.addColorStop(0, ink(0.3, 0.2, 0, 0.75)); gr.addColorStop(1, ink(0, 0, 0, 0));
+  g.save(); g.translate(610, 905); g.scale(1, 0.14); g.translate(-610, -905);
+  g.fillStyle = gr; g.beginPath(); g.arc(610, 905, 360, 0, 7); g.fill(); g.restore();
+  // sphere, lit from an orbiting light
+  const sx = 560, sy = 540, r = 330, la = lightAngle(t);
+  const hx = sx + r * 0.5 * Math.cos(la), hy = sy + r * 0.5 * Math.sin(la);
+  gr = g.createRadialGradient(hx, hy, 0, sx, sy, r);
+  gr.addColorStop(0, ink(0, 0.05, 0.25, 0));
+  gr.addColorStop(0.28, ink(0, 0.55, 0.95, 0));
+  gr.addColorStop(0.6, ink(0.05, 0.95, 0.45, 0));
+  gr.addColorStop(0.85, ink(0.7, 0.95, 0.1, 0.2));
+  gr.addColorStop(1, ink(0.95, 0.8, 0.05, 0.6));
+  g.fillStyle = gr; g.beginPath(); g.arc(sx, sy, r, 0, 7); g.fill();
+  // type, black plate only
+  g.fillStyle = ink(0, 0, 0, 1);
+  g.textBaseline = 'alphabetic'; g.textAlign = 'left';
+  let px = fitText(g, 'PRINT', 820, 300); g.font = `800 ${px}px Syne`;
+  g.fillText('OVER', 1010, 500);
+  g.fillText('PRINT', 1010, 500 + px * 0.92);
+}
+
+// --- picture 2: the line-screen poster ---
+function picLine(g, t) {
+  let gr = g.createLinearGradient(0, -60, 0, H + 60);
+  gr.addColorStop(0, ink(0, 0.05, 0.95, 0)); gr.addColorStop(0.55, ink(0, 0.6, 0.85, 0)); gr.addColorStop(1, ink(0.2, 1, 0.35, 0.1));
+  g.fillStyle = gr; g.fillRect(-400, -400, W + 800, H + 800);
+  const u = (t - 8.0) / 3.2;
+  const dx = lerp(260, 1660, clamp(u)), dy = 520 - 140 * Math.sin(Math.PI * clamp(u));
+  gr = g.createRadialGradient(dx - 90, dy - 90, 0, dx, dy, 330);
+  gr.addColorStop(0, ink(0.25, 0, 0, 0)); gr.addColorStop(0.7, ink(0.9, 0.15, 0, 0)); gr.addColorStop(1, ink(1, 0.5, 0, 0.15));
+  g.fillStyle = gr; g.beginPath(); g.arc(dx, dy, 330, 0, 7); g.fill();
+  g.fillStyle = ink(0, 0, 0, 1);
+  g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+  const px = fitText(g, 'LINE', 1450, 640); g.font = `800 ${px}px Syne`;
+  g.fillText('LINE', CX, CY + px * 0.36);
+  g.textAlign = 'left';
+}
+
+// draw the composite picture at time t (with the two wipes)
+function picture(g, t) {
+  const w1 = lerp(-60, W + 60, ramp(t, 7.85, 8.75));   // title → LINE, wipes left → right
+  const w2 = lerp(W + 60, -60, ramp(t, 10.25, 11.05)); // LINE → title, wipes right → left
+  const inLine = t > 7.85 && t < 11.05;
+  if (!inLine) { picTitle(g, t); return; }
+  if (t < 9.5) {
+    picTitle(g, t);
+    g.save(); g.beginPath(); g.rect(-400, -400, w1 + 400, H + 800); g.clip(); picLine(g, t); g.restore();
+    g.fillStyle = ink(0, 0, 0, 1); g.fillRect(w1 - 22, -400, 44, H + 800);
+  } else {
+    picLine(g, t);
+    g.save(); g.beginPath(); g.rect(w2, -400, W + 800, H + 800); g.clip(); picTitle(g, t); g.restore();
+    g.fillStyle = ink(0, 0, 0, 1); g.fillRect(w2 - 22, -400, 44, H + 800);
+  }
+}
+
+let SAMP = null, SAMPK = null, BX = 0, BY = 0, BK = 1;
+function samplePicture(t, bx0, by0, bx1, by1) {
+  BX = bx0; BY = by0;
+  BK = Math.min(SW / (bx1 - bx0), SH / (by1 - by0));
+  for (const [g, mode] of [[gA, 'cmy'], [gB, 'k']]) {
+    MODE = mode;
+    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, SW, SH);
+    g.setTransform(BK, 0, 0, BK, -BX * BK, -BY * BK);
+    picture(g, t);
+  }
+  SAMP = gA.getImageData(0, 0, SW, SH).data;
+  SAMPK = gB.getImageData(0, 0, SW, SH).data;
+}
+function tone(p, wx, wy) {
+  let x = ((wx - BX) * BK) | 0, y = ((wy - BY) * BK) | 0;
+  if (x < 0) x = 0; else if (x >= SW) x = SW - 1;
+  if (y < 0) y = 0; else if (y >= SH) y = SH - 1;
+  const i = (y * SW + x) * 4;
+  return p === 3 ? SAMPK[i] / 255 : SAMP[i + p] / 255;
+}
+
+// ---------- the press: per-plate state at time t ----------
+const BASE = 17;
+const WHOOSH = [14.0, 14.16, 14.32, 14.5], WDUR = 2.35;
+const OFFY = [1, -1, 0.55, -0.8];
+const DIRB = [1, -1, 1, -1];
+const CONV = [30, 31.1, 30.5, 29.3];
+const PF = [0, 0.045, -0.035, 0.07];   // pitch detune while the angles converge → big moiré beats
+const QUAD = [[0, 0], [1, 0], [0, 1], [1, 1]];
+const GAP = 14;
+const TARGET = [762, 708];
+
+function whooshU(p, t) {
+  const tt = t < 5 ? t + DUR : t;
+  return clamp((tt - WHOOSH[p]) / WDUR);
+}
+function whooshE(u) {
+  if (u <= 0 || u >= 1) return 0;
+  return io3(u) + 0.035 * Math.sin(Math.PI * clamp((u - 0.7) / 0.3));
+}
+function latticeVecW(angDeg, s) {
+  // nearest lattice vector to (W, 0), so a full-width slide lands on the same lattice
+  const a = angDeg * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
+  const i = Math.round(W * ca / s), j = Math.round(-W * sa / s);
+  return [s * (i * ca - j * sa), s * (i * sa + j * ca)];
+}
+
+function camera(t) {
+  // zoom into one rosette and back out
+  const L = Math.log(44), L2 = Math.log(54);
+  let lz = L * ramp(t, 4.3, 6.7) + (L2 - L) * ramp(t, 6.6, 7.7);
+  lz *= 1 - ramp(t, 7.6, 8.65);
+  const z = Math.exp(lz);
+  const k = lz / L2;
+  const rot = -0.5 * ramp(t, 4.3, 6.9) + 0.5 * ramp(t, 7.5, 8.65);
+  // keep the target under the same screen point, drifting it to the centre as we go deep
+  const sxp = lerp(TARGET[0], CX, S(clamp(k * 1.4))), syp = lerp(TARGET[1], CY, S(clamp(k * 1.4)));
+  // screen = (sxp,syp) + R(rot) * z * (world - TARGET)
+  const c = Math.cos(rot) * z, s = Math.sin(rot) * z;
+  return { z, rot, m: [c, s, -s, c, sxp - (c * TARGET[0] - s * TARGET[1]), syp - (s * TARGET[0] + c * TARGET[1])] };
+}
+const mul = (A, B) => [A[0] * B[0] + A[2] * B[1], A[1] * B[0] + A[3] * B[1], A[0] * B[2] + A[2] * B[3], A[1] * B[2] + A[3] * B[3],
+  A[0] * B[4] + A[2] * B[5] + A[4], A[1] * B[4] + A[3] * B[5] + A[5]];
+const inv = M => { const d = M[0] * M[3] - M[1] * M[2];
+  return [M[3] / d, -M[1] / d, -M[2] / d, M[0] / d, (M[2] * M[5] - M[3] * M[4]) / d, (M[1] * M[4] - M[0] * M[5]) / d]; };
+const ap = (M, x, y) => [M[0] * x + M[2] * y + M[4], M[1] * x + M[3] * y + M[5]];
+
+function plateState(p, t, cam) {
+  // screen angle
+  let ang = STD[p] + (CONV[p] - STD[p]) * bump(t, 1.75, 2.45, 2.95, 3.75) + 90 * DIRB[p] * ramp(t, 2.95, 4.1)
+          - 90 * DIRB[p] * ramp(t, 8.75, 10.7);
+  // dot pitch (world px)
+  const u = whooshU(p, t), e = whooshE(u);
+  // while a plate is sliding its screen coarsens (bold dots read at speed)
+  const s = (BASE * (1 + PF[p] * bump(t, 1.75, 2.45, 2.95, 3.6)) + 31 * bump(t, 2.95, 3.55, 3.95, 4.6)) * (1 + 1.1 * Math.sin(Math.PI * u));
+  // dot shape: 0 round, 1 square, 2 line
+  const sig = ramp(t, 6.05, 6.65) + ramp(t, 7.0, 7.6) - 2 * ramp(t, 10.35, 11.0);
+  // registration: full-width slide that lands back in register
+  const offx = W * e, offy = 70 * OFFY[p] * Math.sin(Math.PI * u);
+  const lv = latticeVecW(ang, BASE);
+  const latx = lv[0] * e, laty = lv[1] * e + offy;
+  // viewport (colour separation 2×2)
+  const q = ramp(t, 11.1, 11.8) - ramp(t, 12.85, 13.55);
+  const qx = QUAD[p][0] * (W / 2 + GAP / 2), qy = QUAD[p][1] * (H / 2 + GAP / 2);
+  const vw = lerp(W, W / 2 - GAP / 2, q), vh = lerp(H, H / 2 - GAP / 2, q);
+  const vx = lerp(0, qx, q), vy = lerp(0, qy, q);
+  const vs = vw / W;
+  const V = [vs, 0, 0, vs, vx, vy];
+  const M = mul(V, cam.m);
+  return { ang, s, sig, offx, offy, latx, laty, u, q, view: [vx, vy, vw, vh], M };
+}
+
+// ---------- drawing ----------
+function regMark(g, x, y, lw) {
+  g.moveTo(x + 17, y); g.arc(x, y, 17, 0, Math.PI * 2);
+  g.moveTo(x - 30, y); g.lineTo(x + 30, y);
+  g.moveTo(x, y - 30); g.lineTo(x, y + 30);
+}
+const REG = [[CX, 46], [CX, H - 46], [46, CY], [W - 46, CY]];
+
+function drawPlate(p, st) {
+  const { ang, s, sig, offx, offy, latx, laty, M } = st;
+  const [vx, vy, vw, vh] = st.view;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(vx, vy, vw, vh); ctx.clip();
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.fillStyle = INK[p]; ctx.strokeStyle = INK[p];
+
+  // visible world rectangle → lattice index range
+  const Mi = inv(M);
+  const cs = [ap(Mi, vx, vy), ap(Mi, vx + vw, vy), ap(Mi, vx, vy + vh), ap(Mi, vx + vw, vy + vh)];
+  const a = ang * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
+  const ox = CX + latx, oy = CY + laty;
+  let i0 = 1e9, i1 = -1e9, j0 = 1e9, j1 = -1e9;
+  for (const [x, y] of cs) {
+    const dx = x - ox, dy = y - oy;
+    const li = (dx * ca + dy * sa) / s, lj = (-dx * sa + dy * ca) / s;
+    i0 = Math.min(i0, li); i1 = Math.max(i1, li); j0 = Math.min(j0, lj); j1 = Math.max(j1, lj);
+  }
+  i0 = Math.floor(i0) - 2; i1 = Math.ceil(i1) + 2; j0 = Math.floor(j0) - 2; j1 = Math.ceil(j1) + 2;
+
+  ctx.setTransform(M[0], M[1], M[2], M[3], M[4], M[5]);
+  ctx.translate(ox, oy); ctx.rotate(a); ctx.scale(s, s);
+  ctx.beginPath();
+  const wrap = offx !== 0;
+  for (let j = j0; j <= j1; j++) {
+    for (let i = i0; i <= i1; i++) {
+      const wx = ox + s * (i * ca - j * sa), wy = oy + s * (i * sa + j * ca);
+      let sx = wx - offx; if (wrap) sx = ((sx % W) + W) % W;
+      const v = tone(p, sx, wy - offy);
+      if (v < 0.02) continue;
+      const v4 = v * v * v * v;
+      if (sig <= 0) {
+        const r = 0.564 * Math.sqrt(v) * (1 + 0.3 * v4);
+        ctx.moveTo(i + r, j); ctx.arc(i, j, r, 0, 6.2832);
+      } else if (sig < 1) {
+        const dc = 1.128 * Math.sqrt(v) * (1 + 0.3 * v4), ds = Math.sqrt(v) * (1 + 0.08 * v4);
+        const d = lerp(dc, ds, sig), rr = (1 - sig) * d / 2;
+        ctx.roundRect(i - d / 2, j - d / 2, d, d, rr);
+      } else {
+        const f = sig - 1, ds = Math.sqrt(v) * (1 + 0.08 * v4);
+        const w = lerp(ds, 1.04, f), h = lerp(ds, v * 1.02, f);
+        ctx.rect(i - w / 2, j - h / 2, w, h);
+      }
+    }
+  }
+  ctx.fill();
+
+  // registration marks: solid, one per plate, so misregistration shows as colour fringes
+  ctx.setTransform(M[0], M[1], M[2], M[3], M[4], M[5]);
+  ctx.lineWidth = 2.6;
+  ctx.beginPath();
+  for (const sh of (wrap ? [offx, offx - W] : [0])) for (const [x, y] of REG) regMark(ctx, x + sh, y + offy);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ---------- overlay (screen space, not printed) ----------
+function chip(text, x, y, align, color = INK[3], bg = PAPER) {
+  ctx.font = '500 18px "IBM Plex Mono"';
+  const w = ctx.measureText(text).width;
+  const x0 = align === 'right' ? x - w : align === 'center' ? x - w / 2 : x;
+  ctx.fillStyle = bg; ctx.fillRect(x0 - 8, y - 17, w + 16, 26);
+  ctx.fillStyle = color; ctx.textAlign = 'left'; ctx.fillText(text, x0, y);
+}
+const SCENES = [[0, '01', 'REGISTER'], [1.6, '02', 'SCREEN ANGLE'], [4.3, '03', 'THE DOT'], [8.7, '04', 'LINE SCREEN'],
+  [11.1, '05', 'SEPARATION'], [14.0, '01', 'REGISTER']];
+const fmtA = a => ((((a % 90) + 90) % 90)).toFixed(1).padStart(4, ' ') + '°';
+function overlay(t, sts, cam) {
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.textBaseline = 'alphabetic';
+  chip('MIDDLE STUDIES   REEL — 020', 40, 52, 'left');
+  let sc = SCENES[0]; for (const x of SCENES) if (t >= x[0]) sc = x;
+  chip(`${sc[1]} / ${sc[2]}`, W - 40, 52, 'right');
+  chip(LETTER.map((l, p) => `${l} ${fmtA(sts[p].ang)}`).join('   '), 40, H - 66, 'left');
+  const shape = sts[0].sig < 0.5 ? 'ROUND' : sts[0].sig < 1.5 ? 'SQUARE' : 'LINE';
+  const reg = sts.some(st => st.u > 0 && st.u < 1)
+    ? 'REG  ' + sts.map((st, p) => `${LETTER[p]}${st.offx >= 0 ? '+' : ''}${Math.round(st.offx)}`).join(' ')
+    : 'REG  IN REGISTER';
+  chip(`PITCH ${sts[0].s.toFixed(1)} px   ×${cam.z.toFixed(2)}   DOT ${shape}   ${reg}`, 40, H - 34, 'left');
+  chip('overprint · four plates, one picture', W - 40, H - 66, 'right');
+  chip('Claude', W - 40, H - 34, 'right');
+  // separation captions
+  const q = sts[0].q;
+  if (q > 0.6) {
+    ctx.globalAlpha = (q - 0.6) / 0.4;
+    for (let p = 0; p < 4; p++) {
+      const [vx, vy, vw, vh] = sts[p].view;
+      chip(`${LETTER[p]} — ${NAME[p]}  ${fmtA(sts[p].ang)}`, vx + vw / 2, p < 2 ? vy + vh - 26 : vy + 44, 'center', INK[p] === INK[2] ? '#7a6a00' : INK[p]);
+    }
+  }
+  ctx.restore();
+}
+
+// ---------- frame ----------
+function renderAt(t) {
+  t = ((t % DUR) + DUR) % DUR;
+  const cam = camera(t);
+  const sts = [0, 1, 2, 3].map(p => plateState(p, t, cam));
+  // sample box: union of what every plate can see, plus a margin
+  let bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
+  for (const st of sts) {
+    const Mi = inv(st.M), [vx, vy, vw, vh] = st.view;
+    for (const [x, y] of [[vx, vy], [vx + vw, vy], [vx, vy + vh], [vx + vw, vy + vh]]) {
+      const [a, b] = ap(Mi, x, y);
+      bx0 = Math.min(bx0, a); bx1 = Math.max(bx1, a); by0 = Math.min(by0, b); by1 = Math.max(by1, b);
+    }
+  }
+  const mg = 3 * Math.max(...sts.map(s => s.s)) + 80;
+  samplePicture(t, bx0 - mg, by0 - mg, bx1 + mg, by1 + mg);
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = PAPER; ctx.fillRect(0, 0, W, H);
+  if (sts[0].q > 0) { ctx.fillStyle = '#e4dfd2'; ctx.fillRect(0, 0, W, H);
+    for (const st of sts) { ctx.fillStyle = PAPER; ctx.fillRect(...st.view); } }
+  for (let p = 0; p < 4; p++) drawPlate(p, sts[p]);
+  overlay(t, sts, cam);
+}
+
+window.__duration = DUR;
+window.__poster = 7.0;
+const ready = Promise.all([
+  document.fonts.load('800 100px Syne'),
+  document.fonts.load('500 18px "IBM Plex Mono"'),
+]).then(() => document.fonts.ready);
+ready.then(() => {
+  window.__seek = t => { renderAt(t); };
+  if (!/[?&]render/.test(location.search)) {
+    const t0 = performance.now();
+    const loop = now => { renderAt(((now - t0) / 1000) % DUR); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  }
+});
+</script>
+</body>
+</html>
