@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 021 · Shutter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #030409; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; object-fit: contain; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// SHUTTER — light painting. Only points of light exist; what you see is their history
+// while the shutter is open. Exposure E(t) is the whole edit.
+const W = 1920, H = 1080, D = 15, F = 1150;
+const cv = document.getElementById('c'), g = cv.getContext('2d');
+
+// ---------- utils ----------
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const rnd = mulberry32(2110);
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, u) => a + (b - a) * u;
+const ss = u => { u = clamp(u, 0, 1); return u * u * u * (u * (u * 6 - 15) + 10); };
+const wrap = s => ((s % D) + D) % D;
+const v3 = (x, y, z) => [x, y, z];
+const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const mul = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
+const mix = (a, b, u) => [lerp(a[0], b[0], u), lerp(a[1], b[1], u), lerp(a[2], b[2], u)];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const norm = a => mul(a, 1 / Math.hypot(a[0], a[1], a[2]));
+function rotAxis(p, k, th) { // Rodrigues
+  const c = Math.cos(th), s = Math.sin(th);
+  return add(add(mul(p, c), mul(cross(k, p), s)), mul(k, dot(k, p) * (1 - c)));
+}
+const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+
+// ---------- timeline (s = absolute time of a light's own history, periodic) ----------
+// burst 0 → vortex ~2.5 → highway ~5.2 → stars ~8.6 → collapse 11.8 → origin at 15 (= 0)
+const T_VX = 2.35, T_HW = 5.05, T_ST = 8.55, T_CL = 11.7, L = 0.8;
+const POLE = norm([0, 0.78, 0.62]);
+const N = 168;
+const C = {
+  spark: hex('#ffc56b'), sparkHot: hex('#fff1d6'), cyan: hex('#45dcff'), violet: hex('#8b72ff'),
+  head: hex('#eef3ff'), tail: hex('#ff2738'), amber: hex('#ffa22e'), star: hex('#f3f5ff'), blue: hex('#9cc0ff'),
+};
+const lights = [];
+for (let i = 0; i < N; i++) {
+  const r = () => rnd();
+  // burst: fountain cone
+  const az = r() * Math.PI * 2, el = 0.55 + r() * 0.9, sp = 9 + r() * 9;
+  const bv = [Math.cos(az) * Math.cos(el) * sp * 0.9, Math.sin(el) * sp, Math.sin(az) * Math.cos(el) * sp * 0.9];
+  // vortex
+  const vx = { R: 1.6 + r() * 4.2, h: 0.6 + r() * 6.4, ph: r() * Math.PI * 2, w: 2.6 + r() * 1.8, bob: r() * 6.28 };
+  // highway: cars = pairs
+  const car = i >> 1, side = (i & 1) ? 1 : -1, lane = car % 6;
+  const onc = lane < 3;
+  const laneX = [-8.2, -5.0, -1.8, 1.8, 5.0, 8.2][lane];
+  const hw = {
+    x: laneX + side * 0.78, y: 0.62 + (car % 5 === 0 ? 0.25 : 0),
+    d: onc ? 14 + r() * 190 : -55 + r() * 85, v: onc ? -58 - r() * 10 : 15 + r() * 9, onc,
+    col: onc ? C.head : (car % 7 === 3 ? C.amber : C.tail),
+  };
+  // stars: within a cone around the pole so they wheel around the frame centre
+  const ang = Math.acos(1 - r() * (1 - Math.cos(1.15))), rotA = r() * Math.PI * 2;
+  let ref = Math.abs(POLE[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const e1 = norm(cross(POLE, ref)), e2 = cross(POLE, e1);
+  const sd = add(mul(POLE, Math.cos(ang)), add(mul(e1, Math.sin(ang) * Math.cos(rotA)), mul(e2, Math.sin(ang) * Math.sin(rotA))));
+  const sc = r(), starCol = sc < 0.62 ? C.star : sc < 0.84 ? C.blue : C.amber;
+  lights.push({
+    i, bv, vx, hw, sd, starR: 38 + r() * 14, starCol, starI: 0.55 + r() * 0.45,
+    del: r() * 0.55, del2: r() * 0.4, spk: r(), vcol: r() < 0.6 ? C.cyan : C.violet,
+  });
+}
+
+// camera position along the road (world z), shared by highway lights and camera rig
+const zc = t => 5 * (t - 6.8);
+
+function burstP(l, s) {
+  const k = 0.85, G = 10, e = 1 - Math.exp(-k * s);
+  let x = l.bv[0] * e / k, z = l.bv[2] * e / k;
+  let y = l.bv[1] * e / k - G * (s - e / k) / k;
+  if (y < 0) y = -y * 0.35; // splash off the wet floor
+  return [x, y, z];
+}
+function vortexP(l, s) {
+  const v = l.vx, th = v.ph + v.w * s;
+  const R = v.R * (1 + 0.12 * Math.sin(s * 1.7 + v.bob));
+  return [R * Math.cos(th), v.h + 0.5 * Math.sin(s * 2.1 + v.bob) + 0.35 * (s - 3.7), R * Math.sin(th)];
+}
+// the road bends: seen from above, the traffic draws S-curves
+const roadX = z => 11 * Math.sin(z * 0.032) - 4;
+function highwayP(l, s) {
+  const h = l.hw, z = zc(s) + h.d + h.v * (s - 6.8);
+  return [h.x + roadX(z), h.y, z];
+}
+const STW = 0.42;
+function starP(l, s) {
+  return mul(rotAxis(l.sd, POLE, STW * (s - 10)), l.starR);
+}
+function collapseP(l, s) {
+  const u = clamp((s - T_CL) / (D - T_CL), 0, 1);
+  const k = 1 - ss(Math.pow(u, 0.85));
+  const spin = STW * (s - 10) + 3.2 * u * u;
+  return mul(rotAxis(l.sd, POLE, spin), l.starR * k);
+}
+
+// faint fixed stars: only the sky scene, their arcs are analytic
+const sky = [];
+for (let i = 0; i < 520; i++) {
+  const ang = Math.acos(1 - rnd() * (1 - Math.cos(1.25))), rotA = rnd() * Math.PI * 2;
+  const e1 = norm(cross(POLE, [1, 0, 0])), e2 = cross(POLE, e1);
+  const d = add(mul(POLE, Math.cos(ang)), add(mul(e1, Math.sin(ang) * Math.cos(rotA)), mul(e2, Math.sin(ang) * Math.sin(rotA))));
+  const m = rnd();
+  sky.push({ d: mul(d, 120), I: 0.12 + 0.5 * m * m * m, col: m > 0.93 ? C.amber : m > 0.7 ? C.blue : C.star });
+}
+const skyVis = t => ss((t - 8.9) / 0.7) * (1 - ss((t - 11.9) / 0.9));
+function drawSky(B, t, E) {
+  const v = skyVis(t); if (v <= 0) return;
+  const KS = 20;
+  for (const st of sky) {
+    g.beginPath(); let on = false, zz = 0;
+    for (let j = 0; j < KS; j++) {
+      const s = t - E * (1 - j / (KS - 1));
+      const pr = project(B, rotAxis(st.d, POLE, STW * (s - 10)));
+      if (!pr) { on = false; continue; }
+      zz = pr[2];
+      if (!on) { g.moveTo(pr[0], pr[1]); on = true; } else g.lineTo(pr[0], pr[1]);
+    }
+    g.lineWidth = 1.3; g.strokeStyle = rgba(st.col, st.I * v);
+    g.stroke();
+  }
+}
+
+// position + colour of light l at history time s
+function P(l, s) {
+  s = wrap(s);
+  if (s < T_VX + l.del) return [burstP(l, s), mix(C.sparkHot, C.spark, clamp(s / 1.2, 0, 1)), lerp(0.55, 0.9, ss(s / 1.4))];
+  if (s < T_HW + l.del) {
+    const u = ss((s - T_VX - l.del) / L);
+    return [mix(burstP(l, s), vortexP(l, s), u), mix(C.spark, l.vcol, u), lerp(0.9, 0.72, u)];
+  }
+  if (s < T_ST + l.del2) {
+    const u = ss((s - T_HW - l.del) / L);
+    return [mix(vortexP(l, s), highwayP(l, s), u), mix(l.vcol, l.hw.col, u), lerp(0.72, 1, u)];
+  }
+  if (s < T_CL) {
+    const u = ss((s - T_ST - l.del2) / 0.6);
+    // lights dim while they relocate, so the long star exposure is not crossed by their flight
+    return [mix(highwayP(l, s), starP(l, s), u), mix(l.hw.col, l.starCol, u), lerp(1, l.starI, u) * (u < 0.5 ? 1 - ss(u / 0.05) : ss((u - 0.92) / 0.08))];
+  }
+  const u = clamp((s - T_CL) / (D - T_CL), 0, 1);
+  return [collapseP(l, s), mix(l.starCol, C.sparkHot, ss(u * 1.2 - 0.1)), lerp(l.starI, 0.5, ss(u))];
+}
+
+// ---------- exposure (seconds the shutter is open) ----------
+const EK = [[0, 0.75], [2.0, 0.75], [2.9, 1.15], [4.7, 1.15], [5.4, 0.42], [8.4, 0.42], [9.6, 3.0], [11.5, 3.0], [12.4, 1.3], [15, 0.75]];
+function exposure(t) {
+  for (let k = 0; k < EK.length - 1; k++) {
+    const [a, ea] = EK[k], [b, eb] = EK[k + 1];
+    if (t <= b) return lerp(ea, eb, ss((t - a) / (b - a)));
+  }
+  return EK[0][1];
+}
+
+// ---------- camera rigs ----------
+function rigBurst(t) {
+  const tt = t > 7 ? t - D : t; // burst rig is centred on 0 (shared by the collapse end)
+  return { p: [2.6 * Math.sin(0.35 * tt + 0.4), 1.6 + 0.3 * tt, -10 + 1.2 * tt], q: [0, 3.0, 0], roll: -0.05 + 0.02 * tt, fd: 10 };
+}
+function rigVortex(t) {
+  const a = -Math.PI / 2 - 0.62 * (t - T_VX), r = lerp(10.5, 2.6, ss((t - T_VX) / 2.6));
+  return { p: [r * Math.cos(a), 3.0 + 0.5 * (t - T_VX), r * Math.sin(a)], q: [0, 3.8, 0], roll: 0.18 * Math.sin((t - T_VX) * 0.9), fd: r };
+}
+function rigHighway(t) {
+  const z = zc(t) - 8, k = (t - 6.8);
+  return { p: [roadX(z) + 9.5 - 1.2 * k, 7.0 - 0.5 * k, z], q: [roadX(z + 34) - 4.5, 0, z + 34], roll: -0.1 + 0.03 * k, fd: 30 };
+}
+function rigStars(t) {
+  const p = [0, 1.3, 0];
+  return { p, q: add(p, mul(POLE, 10)), roll: 0.08 * (t - 10), fd: 40 };
+}
+function blendRig(a, b, u) { return { p: mix(a.p, b.p, u), q: mix(a.q, b.q, u), roll: lerp(a.roll, b.roll, u), fd: lerp(a.fd, b.fd, u) }; }
+function camera(t) {
+  const W1 = 0.9;
+  if (t < T_VX + 0.2) return rigBurst(t);
+  if (t < T_VX + 0.2 + W1) return blendRig(rigBurst(t), rigVortex(t), ss((t - T_VX - 0.2) / W1));
+  if (t < T_HW + 0.3) return rigVortex(t);
+  if (t < T_HW + 0.3 + W1) return blendRig(rigVortex(t), rigHighway(t), ss((t - T_HW - 0.3) / W1));
+  if (t < T_ST + 0.2) return rigHighway(t);
+  if (t < T_ST + 1.3) return blendRig(rigHighway(t), rigStars(t), ss((t - T_ST - 0.2) / 1.1));
+  if (t < T_CL + 0.3) return rigStars(t);
+  return blendRig(rigStars(t), rigBurst(t), ss((t - T_CL - 0.3) / (D - T_CL - 0.3)));
+}
+function basis(cam) {
+  const f = norm(sub(cam.q, cam.p));
+  let r = norm(cross(f, [0, 1, 0])), u = cross(r, f);
+  const c = Math.cos(cam.roll), s = Math.sin(cam.roll);
+  const r2 = add(mul(r, c), mul(u, s)), u2 = sub(mul(u, c), mul(r, s));
+  return { p: cam.p, f, r: r2, u: u2, fd: cam.fd };
+}
+
+// ---------- sprites ----------
+function makeGlow(sz, stops) {
+  const c = document.createElement('canvas'); c.width = c.height = sz;
+  const x = c.getContext('2d'), gr = x.createRadialGradient(sz / 2, sz / 2, 0, sz / 2, sz / 2, sz / 2);
+  for (const [o, col] of stops) gr.addColorStop(o, col);
+  x.fillStyle = gr; x.fillRect(0, 0, sz, sz); return c;
+}
+const glow = makeGlow(256, [[0, 'rgba(255,255,255,1)'], [0.08, 'rgba(255,255,255,0.75)'], [0.25, 'rgba(255,255,255,0.18)'], [0.6, 'rgba(255,255,255,0.04)'], [1, 'rgba(255,255,255,0)']]);
+const vign = (() => {
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d'), gr = x.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 1.05);
+  gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.72)');
+  x.fillStyle = gr; x.fillRect(0, 0, W, H); return c;
+})();
+// tinted glow cache (quantised colours)
+const tintCache = new Map();
+function tinted(rgb) {
+  const key = (rgb[0] >> 3) + ',' + (rgb[1] >> 3) + ',' + (rgb[2] >> 3);
+  let c = tintCache.get(key);
+  if (!c) {
+    c = document.createElement('canvas'); c.width = c.height = 256;
+    const x = c.getContext('2d'); x.drawImage(glow, 0, 0);
+    x.globalCompositeOperation = 'source-atop'; x.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`; x.fillRect(0, 0, 256, 256);
+    tintCache.set(key, c);
+  }
+  return c;
+}
+
+// ---------- render ----------
+const K = 72, CH = 6; // samples per trail, samples per stroke chunk
+function project(B, p) {
+  const d = sub(p, B.p), z = dot(d, B.f);
+  if (z < 0.35) return null;
+  return [W / 2 + F * dot(d, B.r) / z, H / 2 - F * dot(d, B.u) / z, z];
+}
+const rgba = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+
+function drawTrails(B, t, E, mirror) {
+  const heads = [];
+  for (const l of lights) {
+    const pts = [];
+    for (let j = 0; j < K; j++) {
+      const s = t - E * (1 - j / (K - 1));
+      const [p, col, I] = P(l, s);
+      const q = mirror ? [p[0], -p[1], p[2]] : p;
+      const pr = project(B, q);
+      pts.push(pr && I > 0.03 ? { x: pr[0], y: pr[1], z: pr[2], col, I } : null);
+    }
+    // chunks: constant width/alpha per chunk, butt-ended so additive overlaps stay invisible
+    for (let a = 0; a < K - 1; a += CH) {
+      const b = Math.min(K - 1, a + CH);
+      let zs = 0, n = 0, I = 1, col = null;
+      for (let j = a; j <= b; j++) if (pts[j]) { zs += pts[j].z; I = Math.min(I, pts[j].I); n++; col = pts[j].col; }
+      if (n < 2) continue;
+      const z = zs / n, u = (a + b) / 2 / (K - 1);
+      const fade = 0.18 + 0.82 * Math.pow(u, 1.6);
+      const w = clamp(0.06 * F / z, 1.1, 9);
+      const blur = Math.min(16, 0.5 * F * Math.abs(1 / z - 1 / B.fd));
+      const tw = w + blur, energy = w / tw;
+      const A = I * fade * (mirror ? 0.2 : 1);
+      // halo
+      g.lineWidth = tw * 4 + 8; g.strokeStyle = rgba(col, A * 0.05 * Math.sqrt(energy));
+      strokeRange(pts, a, b);
+      // body
+      g.lineWidth = tw; g.strokeStyle = rgba(col, Math.min(1, A * 0.7 * (0.3 + 0.7 * energy)));
+      strokeRange(pts, a, b);
+      // hot core
+      if (energy > 0.25 && !mirror) {
+        g.lineWidth = Math.max(0.8, w * 0.35); g.strokeStyle = rgba([255, 250, 240], A * 0.55 * energy);
+        strokeRange(pts, a, b);
+      }
+    }
+    const h = pts[K - 1];
+    if (h && !mirror) heads.push({ h, l });
+  }
+  return heads;
+}
+function strokeRange(pts, a, b) {
+  g.beginPath(); let on = false;
+  for (let j = a; j <= b; j++) {
+    const p = pts[j];
+    if (!p) { on = false; continue; }
+    if (!on) { g.moveTo(p.x, p.y); on = true; } else g.lineTo(p.x, p.y);
+  }
+  g.stroke();
+}
+
+function render(t) {
+  t = wrap(t);
+  const E = exposure(t), B = basis(camera(t));
+  g.globalCompositeOperation = 'source-over';
+  // night: faint horizon glow, stronger on the road
+  const bg = g.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#02030a'); bg.addColorStop(0.55, '#060818'); bg.addColorStop(1, '#03040a');
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  // horizon line in world: project a far point straight ahead at y=0
+  const hz = project(B, add([B.p[0], 0, B.p[2]], mul(norm([B.f[0], 0, B.f[2] || 1e-6]), 400)));
+  if (hz && hz[1] < H * 1.3) {
+    const hg = g.createLinearGradient(0, hz[1] - 220, 0, hz[1] + 160);
+    hg.addColorStop(0, 'rgba(40,40,90,0)'); hg.addColorStop(0.6, 'rgba(60,48,90,0.22)'); hg.addColorStop(1, 'rgba(10,10,24,0)');
+    g.fillStyle = hg; g.fillRect(0, hz[1] - 220, W, 380);
+  }
+  g.globalCompositeOperation = 'lighter';
+  g.lineCap = 'butt'; g.lineJoin = 'round';
+  drawSky(B, t, E);
+  drawTrails(B, t, E, true);           // wet-floor reflection
+  const heads = drawTrails(B, t, E, false);
+  // heads: the light itself, bright and tinted, with an anamorphic streak
+  for (const { h, l } of heads) {
+    const blur = Math.min(16, 0.5 * F * Math.abs(1 / h.z - 1 / B.fd));
+    const base = clamp(3.2 * F / h.z, 10, 120), sz = base + blur * 3;
+    const a = 0.75 * h.I * clamp(base / sz, 0.2, 1);
+    g.globalAlpha = a;
+    g.drawImage(tinted(h.col), h.x - sz / 2, h.y - sz / 2, sz, sz);
+    g.globalAlpha = a * 0.5;
+    g.drawImage(glow, h.x - sz / 5, h.y - sz / 5, sz / 2.5, sz / 2.5);
+    if (h.z < 30) {
+      const sw = clamp(2600 / h.z, 60, 700);
+      g.globalAlpha = a * 0.22;
+      g.drawImage(tinted([120, 170, 255]), h.x - sw / 2, h.y - 3, sw, 6);
+    }
+  }
+  g.globalAlpha = 1;
+  // ignition flash at the loop point (t = 0 ≡ 15)
+  const dz = Math.min(t, D - t), fl = Math.exp(-Math.pow(dz / 0.16, 2));
+  if (fl > 0.01) {
+    const o = project(B, [0, 0.2, 0]);
+    if (o) { const sz = 520 * fl + 60; g.globalAlpha = 0.55 * fl; g.drawImage(tinted([255, 214, 160]), o[0] - sz / 2, o[1] - sz / 2, sz, sz); g.globalAlpha = 1; }
+  }
+  g.globalCompositeOperation = 'source-over';
+  g.drawImage(vign, 0, 0);
+  hud(t, E);
+}
+
+function hud(t, E) {
+  g.font = '600 18px "Chivo Mono", monospace';
+  g.fillStyle = 'rgba(236,238,248,0.82)'; g.textBaseline = 'alphabetic';
+  g.textAlign = 'left';
+  g.fillText('MIDDLE STUDIES  REEL — 021', 56, 64);
+  const sh = E < 0.66 ? '1/' + Math.round(1 / E) + ' s' : E.toFixed(1) + '"';
+  g.font = '400 18px "Chivo Mono", monospace';
+  g.fillStyle = 'rgba(236,238,248,0.62)';
+  g.fillText('SHUTTER', 56, H - 56);
+  g.font = '600 30px "Chivo Mono", monospace';
+  g.fillStyle = 'rgba(255,214,150,0.95)';
+  g.fillText(sh, 56 + 104, H - 54);
+  g.font = '400 18px "Chivo Mono", monospace';
+  g.fillStyle = 'rgba(236,238,248,0.62)';
+  g.fillText('f/1.4   ISO 6400   ' + N + ' lights', 330, H - 56);
+  g.textAlign = 'right';
+  g.fillText('shutter — light painting', W - 56, 64);
+  g.fillStyle = 'rgba(236,238,248,0.82)';
+  g.fillText('Claude', W - 56, H - 56);
+  // exposure bar: how much history is on the frame
+  const bw = 220, x0 = W - 56 - bw - 110, y0 = H - 62;
+  g.fillStyle = 'rgba(236,238,248,0.18)'; g.fillRect(x0, y0, bw, 3);
+  g.fillStyle = 'rgba(255,214,150,0.9)'; g.fillRect(x0 + bw - bw * E / 3.2, y0, bw * E / 3.2, 3);
+}
+
+window.__duration = D;
+window.__poster = 9.3;
+const isRender = location.search.includes('render');
+document.fonts.load('600 18px "Chivo Mono"').then(() => document.fonts.ready).then(() => {
+  render(0);
+  window.__seek = t => render(t);
+  if (!isRender) {
+    const t0 = performance.now();
+    const loop = () => { render(((performance.now() - t0) / 1000) % D); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  }
+});
+</script>
+</body>
+</html>

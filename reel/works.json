@@ -746,5 +746,43 @@
     },
     "review_rounds": 3,
     "review": "1周目：網角が揃う2.4秒のモアレがほとんど見えず、角度が回るだけに見えた→収束角を1°以内に詰め、版ごとに網ピッチを最大7%ずらし、青いパネルにマゼンタ版を重ねて広い面で干渉縞が走るようにした。深く潜る先が赤と黄だけだったので狙う点を球の暗部へ移し、紺・墨が入るようにした。色分解のラベルが下の読み出しと重なったので各象限の内側の継ぎ目寄りへ移した。2周目：冒頭1秒の版が流れる場面が8MB上限の2パス圧縮でブロック状に崩れていた→基本ピッチを15→17pxにし、流れている版だけ網点を最大2.1倍に粗くした（見当がずれるあいだは太い網点で読ませる）。格子の平行移動は基本ピッチの格子ベクトルで行い、着地で網が跳ばないようにした。3周目：冒頭の網点が読めるところまで戻り、1秒以上止まる区間もない。許容した差：最速の版が流れる0.2秒前後にわずかな圧縮のにじみが残る／タイトルの絵は冒頭と終盤で同じ構図に戻る（ループのため）。"
+  },
+  {
+    "id": "021",
+    "slug": "shutter",
+    "title": "Shutter",
+    "date": "2026-10-20",
+    "concept": "画面にあるのは168個の光の点だけで、見えている線はすべて、シャッターが開いているあいだの光の軌跡（長時間露光）。露光時間そのものが編集になっていて、左下の SHUTTER が 0.8秒→1/2秒→3秒と変わる。地面から噴き上がる火花の噴水が濡れた床に映り、光が渦に巻かれ、カーブする夜の高速道路の赤いテールランプと白いヘッドライトの流れになる。見せ場は9.3秒：カメラが空を見上げる途中で、道路の光の帯の上に北極星を中心に回る星の円弧が重なる。星の円弧は渦を巻いて1点へ吸い込まれ、0秒目の噴水の点火に戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/021_shutter.mp4",
+    "techniques": [
+      "long-exposure-light-trails",
+      "trail-as-sampled-position-history",
+      "exposure-time-as-edit",
+      "custom-3d-projection-canvas",
+      "depth-of-field-width-energy-conservation",
+      "additive-glow-compositing",
+      "wet-floor-mirror-reflection",
+      "staggered-formation-blending",
+      "analytic-star-trail-arcs",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#030409",
+        "#ffc56b",
+        "#45dcff",
+        "#8b72ff",
+        "#ff2738",
+        "#eef3ff",
+        "#9cc0ff"
+      ],
+      "type": [
+        "Chivo Mono"
+      ],
+      "structure": "one shutter / 168 lights, only their history is drawn: spark fountain (0.8\") → vortex (1.1\") → night highway S-curve from above (1/2 s) → camera tilts up into star trails (3.0\") → stars spiral into one point → ignition of the same fountain",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：冒頭0.3秒の噴水と3.0秒の渦で中心が真っ白に飛んでいた→噴き始めと渦の光量を0.55〜0.72に下げた。9.3〜10.0秒は空を見上げたのに星がまだ出ておらず、ほぼ黒い間が空いていた→星の到着を早め（移動0.6秒・ずれ0.4秒以内）、北極星を中心に回る520個の淡い固定星の円弧を足して、道路の上に星の軌跡が重なる絵にした。2周目：6.0〜7.0秒の道路が画面の右に寄って左半分が空いていた→カメラの横位置と注視点を道路の内側へ寄せ、少し傾けた。3周目：中央に収まり、道路→星空のつなぎ（9.3秒）が一番の絵になったのでポスターをそこにした。許容した差：道路の入りの6.0秒台は車の光がまだ少ない／星が着く瞬間に短い鉤が残る／収束の最後（14秒台）は中心が白く飛ぶ。"
   }
 ]
