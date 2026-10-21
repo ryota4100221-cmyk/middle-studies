@@ -784,5 +784,43 @@
     },
     "review_rounds": 3,
     "review": "1周目：冒頭0.3秒の噴水と3.0秒の渦で中心が真っ白に飛んでいた→噴き始めと渦の光量を0.55〜0.72に下げた。9.3〜10.0秒は空を見上げたのに星がまだ出ておらず、ほぼ黒い間が空いていた→星の到着を早め（移動0.6秒・ずれ0.4秒以内）、北極星を中心に回る520個の淡い固定星の円弧を足して、道路の上に星の軌跡が重なる絵にした。2周目：6.0〜7.0秒の道路が画面の右に寄って左半分が空いていた→カメラの横位置と注視点を道路の内側へ寄せ、少し傾けた。3周目：中央に収まり、道路→星空のつなぎ（9.3秒）が一番の絵になったのでポスターをそこにした。許容した差：道路の入りの6.0秒台は車の光がまだ少ない／星が着く瞬間に短い鉤が残る／収束の最後（14秒台）は中心が白く飛ぶ。"
+  },
+  {
+    "id": "022",
+    "slug": "shatter",
+    "title": "Shatter",
+    "date": "2026-10-21",
+    "concept": "黄色い警告ポスター「SHATTER」の1枚ガラスが、照準の1点を打たれて放射と同心円のヒビを走らせ、253枚の破片になって画面いっぱいに飛び散る15秒。宙に浮いた破片は裏返りながら奥行きのばらばらな位置へ散り、カメラが軸の1点に戻った7.5秒にだけ、破片の裏面が隙間なく揃って青地の「whole」の絵になる（アナモルフォーシス）。カメラが動き出すと絵は視差で崩れ、破片はミラーボールになって回り、最後は元の板へ吸い込まれてヒビが消え、0秒目の打たれる前の板に戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/022_shatter.mp4",
+    "techniques": [
+      "radial-concentric-fracture-pattern",
+      "sutherland-hodgman-pane-clip",
+      "per-shard-quaternion-slerp-states",
+      "anamorphic-depth-scaled-alignment",
+      "two-sided-shard-textures-via-pattern-transform",
+      "custom-3d-projection-canvas",
+      "exponential-burst-to-bullet-time",
+      "mirror-ball-fibonacci-assembly",
+      "env-reflection-chrome-shading",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#ffd21a",
+        "#111216",
+        "#2a36ff",
+        "#ff3d1f",
+        "#f4f0e6"
+      ],
+      "type": [
+        "Bricolage Grotesque 800",
+        "Fraunces Italic 900",
+        "JetBrains Mono"
+      ],
+      "structure": "one pane / hit → cracks → burst into 253 shards → suspended cloud → shards flip and scatter in depth, aligning into a second picture from one viewpoint (7.5 s) → parallax breaks it → mirror ball → shards fly home, cracks heal into the unbroken pane",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：破裂後の破片が画面外へ飛びすぎて中央が空っぽ→面内の飛散を0.3倍に、奥行き方向へ散らす。STRIKE HERE の小書きが字の陰に隠れる→削除。2周目：陰影で黄色が濁ってオリーブに見える→陰影を6割に。ミラーボールが中央で2秒止まって見える→カメラを寄せる。3〜5秒の宙吊りで中央が穴→カメラを雲へ突っ込ませたら雲を通り抜けて空の画面になったので、ゆるい寄りと小さい振りに戻す。3周目：0秒と15秒の一致、7.3→7.7→8.25秒の揃う・崩れるを確認。許容した差：4.5〜5.5秒は雲の中央が暗い穴のまま（トンネル状の構図として残す）。"
   }
 ]
