@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 023 Weave</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@400;600;700&family=Rubik+Mono+One&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #0c0d12; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: auto; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// REEL — 023 WEAVE
+// Every mark on screen is a crossing of two threads: which one is on top.
+// 128 indigo warp ends, 72 picks. Woven by a flying shuttle, cut from the loom,
+// turned over in the air (the back is the negative), then unravelled by one pull.
+// __seek(t) is a pure function of t.
+
+const W = 1920, H = 1080, T = 15;
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const rnd = mulberry32(2301);
+const clamp = (x, a = 0, b = 1) => x < a ? a : x > b ? b : x;
+const lerp = (a, b, u) => a + (b - a) * u;
+const ss = (a, b, x) => { const u = clamp((x - a) / (b - a)); return u * u * (3 - 2 * u); };
+const sms = (a, b, x) => { const u = clamp((x - a) / (b - a)); return u * u * u * (u * (u * 6 - 15) + 10); };
+const eio = u => u < .5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+
+// ---------- cloth ----------
+const NC = 128, NR = 72, F = 3;           // ends, picks, fringe rows
+const R0 = -F, R1 = NR + F;               // drawn rows -3 … 74
+const G = 0.13;                           // gap between threads (fraction of a cell)
+
+const INDIGO = [34, 50, 124], ECRU = [238, 229, 208], VERM = [232, 62, 38], SAFF = [247, 172, 30];
+const warpCol = [];
+for (let c = 0; c < NC; c++) {
+  const v = (rnd() - .5) * 16;
+  let col = [INDIGO[0] + v * .5, INDIGO[1] + v * .7, INDIGO[2] + v];
+  if (c < 2 || c >= NC - 2) col = ECRU.slice();          // selvedge
+  warpCol.push(col);
+}
+const jit = []; for (let c = 0; c < NC; c++) jit.push(rnd());
+
+// bands of picks (row 0 is woven first and ends up at the top)
+const BANDS = [
+  { a: 0, b: 12, kind: 'plain', name: 'PLAIN WEAVE' },
+  { a: 12, b: 22, kind: 'twill', name: '3/1 TWILL — DENIM' },
+  { a: 22, b: 26, kind: 'plain', name: 'PLAIN WEAVE' },
+  { a: 26, b: 58, kind: 'damask', name: 'DAMASK — 8-END SATIN' },
+  { a: 58, b: 62, kind: 'plain', name: 'PLAIN WEAVE' },
+  { a: 62, b: 72, kind: 'bird', name: "BIRD'S-EYE" },
+];
+const bandOf = r => BANDS.find(b => r >= b.a && r < b.b) || BANDS[0];
+const weftCol = [];
+for (let r = 0; r < NR; r++) {
+  let col;
+  if (r < 12) col = (r < 4 || (r >= 6 && r < 10)) ? ECRU : (r < 6 ? VERM : SAFF);
+  else if (r < 22) col = ECRU;
+  else if (r < 26) col = SAFF;
+  else if (r < 58) col = VERM;
+  else if (r < 62) col = SAFF;
+  else col = ECRU;
+  const v = (rnd() - .5) * 10;
+  weftCol.push([col[0] + v, col[1] + v, col[2] + v]);
+}
+
+const MR0 = 26, MRN = 32;
+const mask = new Uint8Array(NC * MRN);
+const TOP = new Uint8Array(NR * NC);       // 1 = warp on top
+function buildMask() {
+  const SC = 8, mc = document.createElement('canvas');
+  mc.width = NC * SC; mc.height = MRN * SC;
+  const m = mc.getContext('2d');
+  m.font = '100px "Rubik Mono One"';
+  const mm = m.measureText('WEAVE');
+  const asc = mm.actualBoundingBoxAscent, desc = mm.actualBoundingBoxDescent;
+  const size = 100 * (23 * SC) / (asc + desc);
+  m.font = `${size}px "Rubik Mono One"`;
+  const m2 = m.measureText('WEAVE');
+  const tw = m2.actualBoundingBoxLeft + m2.actualBoundingBoxRight;
+  const a2 = m2.actualBoundingBoxAscent, d2 = m2.actualBoundingBoxDescent;
+  m.save();
+  m.translate(mc.width / 2, mc.height / 2);
+  m.scale((116 * SC) / tw, 1);
+  m.fillStyle = '#fff';
+  m.fillText('WEAVE', -(m2.actualBoundingBoxRight - m2.actualBoundingBoxLeft) / 2, (a2 - d2) / 2);
+  m.restore();
+  const img = m.getImageData(0, 0, mc.width, mc.height).data;
+  for (let r = 0; r < MRN; r++) for (let c = 0; c < NC; c++) {
+    let s = 0;
+    for (let y = 1; y < SC - 1; y++) for (let x = 1; x < SC - 1; x++) s += img[((r * SC + y) * mc.width + c * SC + x) * 4 + 3];
+    mask[r * NC + c] = s / ((SC - 2) * (SC - 2)) > 120 ? 1 : 0;
+  }
+}
+function buildWeave() {
+  for (let r = 0; r < NR; r++) {
+    const k = bandOf(r).kind;
+    for (let c = 0; c < NC; c++) {
+      let top;
+      if (k === 'plain') top = (c + r) & 1;
+      else if (k === 'twill') top = (((c - r) % 4) + 4) % 4 !== 0 ? 1 : 0;
+      else if (k === 'damask') {
+        const tie = (c + 3 * r) % 8 === 0;
+        top = mask[(r - MR0) * NC + c] ? 0 : (tie ? 0 : 1);
+      } else {
+        const u = Math.abs((c % 8) - 4), v = Math.abs((r % 8) - 4);
+        top = ((u + v) % 4) < 2 ? 1 : 0;
+      }
+      if (c < 2 || c >= NC - 2) top = (c + r) & 1;           // selvedge: plain
+      TOP[r * NC + c] = top;
+    }
+  }
+}
+
+// ---------- time ----------
+const TW = 6.2, TS = 14.0, TL = TW + T - TS;           // the loom runs from 14.0 s, through the wrap, to 6.2 s
+const weaving = t => t < TW || t >= TS;
+const loomClock = t => t >= TS ? t - TS : t + (T - TS);
+function Rof(t) { if (!weaving(t)) return t < 10.4 ? NR : 0; const u = loomClock(t) / TL; return NR * (0.34 * u + 0.66 * u * u * u); }
+function rateOf(t) { if (!weaving(t)) return 0; const u = loomClock(t) / TL; return NR * (0.34 + 1.98 * u * u) / TL; }
+const UN0 = 10.6, UNS = 0.033, UND = 0.95;     // last pick (row 0) is out at 13.9 s                // unravel: start, stagger per pick, duration
+function pulled(r, t) { const u = clamp((t - (UN0 + (NR - 1 - r) * UNS)) / UND); return (NC + 90) * u * u; }
+function cutOff(c, t) {
+  const j = jit[c];
+  if (t < 6.62) return 0;
+  if (t < 13.2) { const u = clamp((t - 6.62 - j * 0.12) / 0.5); return 140 * u * u; }
+  return 140 * Math.pow(1 - sms(11.5 + j * 0.15, 12.6 + j * 0.15, t), 2);
+}
+
+const LN46 = Math.log(46), LN15 = Math.log(15), LN13 = Math.log(13), LN12 = Math.log(12);
+function camAt(t, R) {
+  let cx = 0, cy = 36, s = 15, rx = 0, ry = 0, A = 0;
+  if (t < 7.0) {
+    const m = sms(1.2, 6.3, t);
+    s = Math.exp(lerp(LN46, LN15, m) + (LN12 - LN15) * sms(6.25, 6.85, t)); cy = lerp(R - 5, 36, m); rx = lerp(-0.72, 0, sms(0.9, 5.4, t));
+  } else if (t < 10.4) {
+    const q = (t - 7.0) / 3.4, b = Math.sin(Math.PI * q);
+    ry = Math.PI * (sms(7.15, 8.3, t) + sms(9.25, 10.3, t));   // turn, hold the reverse, turn home
+    rx = -0.42 * b; s = 12 * (1 - 0.12 * b);
+    A = 4.5 * ss(7.0, 7.9, t) * (1 - ss(9.6, 10.4, t));
+  } else {
+    const u = sms(10.5, 11.6, t), v = sms(12.2, 14.3, t);
+    s = Math.exp(lerp(lerp(LN12, LN13, u), LN46, v)); cx = 14 * u * (1 - v); cy = lerp(36, R - 5, v); rx = lerp(0, -0.72, v);
+  }
+  return { cx, cy, s, rx, ry, A };
+}
+const waveZ = (x, y, t, A) => A === 0 ? 0 : A * (Math.sin(0.09 * x + 0.05 * y - 5.0 * t) + 0.6 * Math.sin(0.06 * x - 0.11 * y - 3.3 * t + 1.3));
+
+// ---------- projection ----------
+let cam, cX, sX, cY, sY, D, shX = 0, shY = 0;
+let _x, _y, _z, _f, _px, _py;
+function P(x, y, z) {
+  const X = x - cam.cx, Y = y - cam.cy;
+  const x1 = X * cY + z * sY, z1 = -X * sY + z * cY;
+  const y2 = Y * cX - z1 * sX, z2 = Y * sX + z1 * cX;
+  const f = D / Math.max(D + z2, D * 0.05);
+  _x = W / 2 + cam.s * x1 * f + shX; _y = H / 2 + cam.s * y2 * f + shY; _z = z2; _f = f; _px = x1; _py = y2;
+}
+const NCV = NC + 1, NRV = R1 - R0 + 1, NV = NCV * NRV, NCELL = NC * (R1 - R0);
+const PX = new Float32Array(NV), PY = new Float32Array(NV), PZ = new Float32Array(NV), QX = new Float32Array(NV), QY = new Float32Array(NV);
+const order = new Uint32Array(NCELL), depth = new Float32Array(NCELL);
+
+const rgb = (c, k, add = 0) => `rgb(${Math.min(255, c[0] * k + add) | 0},${Math.min(255, c[1] * k + add) | 0},${Math.min(255, c[2] * k + add) | 0})`;
+
+let Ax, Ay, Bx, By, Cx, Cy, Ex, Ey;   // TL, TR, BL, BR of the current cell
+function quad(u0, u1, v0, v1, dt, db) {
+  const tlx = Ax + (Bx - Ax) * u0, tly = Ay + (By - Ay) * u0, blx = Cx + (Ex - Cx) * u0, bly = Cy + (Ey - Cy) * u0;
+  const trx = Ax + (Bx - Ax) * u1, try_ = Ay + (By - Ay) * u1, brx = Cx + (Ex - Cx) * u1, bry = Cy + (Ey - Cy) * u1;
+  ctx.beginPath();
+  ctx.moveTo(tlx + (blx - tlx) * v0 + dt, tly + (bly - tly) * v0);
+  ctx.lineTo(trx + (brx - trx) * v0 + dt, try_ + (bry - try_) * v0);
+  ctx.lineTo(trx + (brx - trx) * v1 + db, try_ + (bry - try_) * v1);
+  ctx.lineTo(tlx + (blx - tlx) * v1 + db, tly + (bly - tly) * v1);
+  ctx.closePath(); ctx.fill();
+}
+
+const L = (() => { const v = [-0.35, -0.55, -0.76], n = Math.hypot(...v); return v.map(x => x / n); })();
+
+// ---------- the loom state at t ----------
+function loomAt(t) {
+  const R = Rof(t), k = Math.floor(R), frac = R - k, rate = rateOf(t);
+  const dir = (k % 2 === 0) ? 1 : -1;
+  const uf = clamp(frac / 0.55), w = uf - 0.5;
+  const p = 0.5 + 0.35 * w + 2.6 * w * w * w;             // slows to a third in the middle of its run
+  const xsh = dir * (-71 + 142 * p);
+  let tau = 99;
+  if (weaving(t)) { const kk = Math.floor(R - 0.72); if (kk >= 0) tau = (R - 0.72 - kk) / rate; }
+  else if (t < 10.4) tau = 0.28 / rateOf(TW - 1e-6) + (t - TW);
+  return { R, k, frac, rate, dir, p, xsh, tau };
+}
+function woven(r, c, t, lm) {
+  if (r < 0 || r >= NR) return false;
+  if (t >= 10.4 && t < TS) return c >= pulled(r, t);
+  if (r < lm.k) return true;
+  if (r > lm.k || lm.k >= NR) return false;
+  if (lm.frac >= 0.55) return true;
+  const xc = c + 0.5 - 64;
+  return lm.dir > 0 ? xc < lm.xsh - 5 : xc > lm.xsh + 5;
+}
+function vib(y, c, t, lm) {          // warp below the fell rings after each beat (world units)
+  if (!(t < TW + 0.8 || t >= TS) || lm.tau > 2) return 0;
+  const a = 0.2 * Math.exp(-lm.tau * 7) * ss(lm.R + 0.5, lm.R + 5, y);
+  return a === 0 ? 0 : a * Math.sin(0.55 * y - lm.tau * 38 + c * 0.9);
+}
+
+// ---------- draw ----------
+let vign;
+const SHIFT = 0.2;   // frame 0 opens mid-weave with the shuttle in the middle of its run
+function render(tOut) {
+  const t = (((tOut + SHIFT) % T) + T) % T;
+  const lm = loomAt(t);
+  cam = camAt(t, lm.R);
+  cX = Math.cos(cam.rx); sX = Math.sin(cam.rx); cY = Math.cos(cam.ry); sY = Math.sin(cam.ry);
+  D = 2200 / cam.s;
+  const close = clamp((cam.s - 15) / 31);
+  const shake = (t < TW + 0.3 || t >= TS) ? Math.exp(-lm.tau * 16) * Math.sin(lm.tau * 75) : 0;
+  shX = 0; shY = 7 * shake * close;
+  const lit = cam.A > 0 || Math.abs(Math.sin(cam.ry)) > 1e-4 || Math.abs(cam.ry) > 0.01;
+
+  ctx.fillStyle = '#0c0d12'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = vign; ctx.fillRect(0, 0, W, H);
+
+  // vertices
+  for (let j = 0; j < NRV; j++) {
+    const y = j + R0;
+    for (let c = 0; c < NCV; c++) {
+      const x = c - 64, i = j * NCV + c;
+      P(x, y, waveZ(x, y, t, cam.A));
+      PX[i] = _x; PY[i] = _y; PZ[i] = _z; QX[i] = _px; QY[i] = _py;
+    }
+  }
+
+  // bare warp beyond the cloth (cut away after 6.6 s, back for the loop)
+  drawWarpPieces(t, lm);
+
+  // cells
+  let n = 0;
+  for (let i = 0; i < NCELL; i++) order[n++] = i;
+  if (lit) {
+    for (let i = 0; i < NCELL; i++) {
+      const r = (i / NC) | 0, c = i % NC, v = r * NCV + c;
+      depth[i] = PZ[v] + PZ[v + 1] + PZ[v + NCV] + PZ[v + NCV + 1];
+    }
+    order.sort((a, b) => depth[b] - depth[a]);
+  }
+  let backCount = 0, cellCount = 0;
+  for (let n2 = 0; n2 < NCELL; n2++) {
+    const i = order[n2];
+    const jr = (i / NC) | 0, c = i % NC, r = jr + R0, v = jr * NCV + c;
+    const a = v, b = v + 1, d = v + NCV, e = v + NCV + 1;
+    Ax = PX[a]; Ay = PY[a]; Bx = PX[b]; By = PY[b]; Cx = PX[d]; Cy = PY[d]; Ex = PX[e]; Ey = PY[e];
+    const minx = Math.min(Ax, Bx, Cx, Ex), maxx = Math.max(Ax, Bx, Cx, Ex), miny = Math.min(Ay, By, Cy, Ey), maxy = Math.max(Ay, By, Cy, Ey);
+    if (maxx < -4 || minx > W + 4 || maxy < -4 || miny > H + 4) continue;
+    if (D + Math.min(PZ[a], PZ[b], PZ[d], PZ[e]) < D * 0.12) continue;
+    const cross = (Bx - Ax) * (Cy - Ay) - (By - Ay) * (Cx - Ax);
+    const back = cross < 0;
+    let shade = 1, spec = 0;
+    if (lit) {
+      const ux = QX[b] - QX[a], uy = QY[b] - QY[a], uz = PZ[b] - PZ[a];
+      const vx = QX[d] - QX[a], vy = QY[d] - QY[a], vz = PZ[d] - PZ[a];
+      let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      const nl = Math.hypot(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl;
+      if (!back) { nx = -nx; ny = -ny; nz = -nz; }
+      const dd = Math.max(0, nx * L[0] + ny * L[1] + nz * L[2]);
+      shade = (0.42 + 0.58 * dd) / (0.42 + 0.58 * 0.76);
+      spec = 120 * Math.pow(dd, 18);
+      cellCount++; if (back) backCount++;
+    }
+    const wc = warpCol[c];
+    if (woven(r, c, t, lm)) {
+      const top = TOP[r * NC + c] ^ (back ? 1 : 0);
+      const fc = weftCol[r];
+      const topC = top ? wc : fc, undC = top ? fc : wc;
+      ctx.fillStyle = rgb(undC, 0.42 * shade);
+      quad(-0.03, 1.03, -0.03, 1.03, 0, 0);
+      ctx.fillStyle = rgb(topC, shade, spec);
+      if (top) quad(G, 1 - G, -0.02, 1.02, 0, 0); else quad(-0.02, 1.02, G, 1 - G, 0, 0);
+      ctx.fillStyle = rgb(topC, 1.16 * shade, 22 + spec * 1.4);
+      if (top) quad(0.42, 0.58, 0.08, 0.92, 0, 0); else quad(0.08, 0.92, 0.42, 0.58, 0, 0);
+    } else {
+      // bare warp end (with the shed: lifted ends are a touch brighter)
+      let k = shade;
+      if (weaving(t) && r >= lm.k && lm.k < NR && lm.frac < 0.6 && TOP[lm.k * NC + c]) k *= 1.22;
+      const s = cam.s;
+      const dt = s * vib(r, c, t, lm), db = s * vib(r + 1, c, t, lm);
+      ctx.fillStyle = rgb(wc, k, spec);
+      quad(G, 1 - G, -0.03, 1.03, dt, db);
+      ctx.fillStyle = rgb(wc, 1.16 * k, 22 + spec);
+      quad(0.42, 0.58, -0.03, 1.03, dt, db);
+    }
+  }
+
+  if (t >= 10.4 && t < TS) drawPulled(t);
+  drawReed(t, lm);
+  drawShuttle(t, lm);
+  drawCut(t);
+  drawHUD(t, lm, cellCount ? backCount / cellCount : 0);
+}
+
+function drawWarpPieces(t, lm) {
+  const s = cam.s, hw = 0.5 - G;
+  for (let c = 0; c < NC; c++) {
+    const off = cutOff(c, t);
+    const x = c - 64 + 0.5;
+    const pieces = [[cam.cy - 70, R0 - off], [R1 + off, cam.cy + 30]];
+    for (const [ya, yb] of pieces) {
+      if (yb <= ya) continue;
+      const nseg = Math.max(1, Math.ceil((yb - ya) / 1.5));
+      for (const [w, kk, add] of [[hw, 1, 0], [0.08, 1.16, 22]]) {
+        ctx.beginPath();
+        let lx = [], rx = [], ly = [], ry = [];
+        for (let q = 0; q <= nseg; q++) {
+          const y = ya + (yb - ya) * q / nseg;
+          const dx = vib(y, c, t, lm);
+          P(x + dx - w, y, 0); if (D + _z < D * 0.12) continue; lx.push(_x); ly.push(_y);
+          P(x + dx + w, y, 0); rx.push(_x); ry.push(_y);
+        }
+        if (lx.length < 2) continue;
+        ctx.moveTo(lx[0], ly[0]);
+        for (let q = 1; q < lx.length; q++) ctx.lineTo(lx[q], ly[q]);
+        for (let q = rx.length - 1; q >= 0; q--) ctx.lineTo(rx[q], ry[q]);
+        ctx.closePath();
+        ctx.fillStyle = rgb(warpCol[c], kk, add); ctx.fill();
+      }
+    }
+  }
+}
+
+function drawPulled(t) {
+  ctx.lineCap = 'round';
+  for (let r = 0; r < NR; r++) {
+    const Lr = pulled(r, t);
+    if (Lr <= 0) continue;
+    const xa = Math.max(0, Lr - NC), xb = Math.min(Lr, 70);
+    if (xb <= xa) continue;
+    const pts = [];
+    for (let xx = xa; xx <= xb + 1e-6; xx += 1.2) {
+      const fan = (r - 36) / 36 * 0.16 * xx + 0.55 * Math.sin(xx * 0.28 - t * 9 + r * 0.7) * clamp(xx / 8);
+      P(64 + xx, r + 0.5 + fan, 0); pts.push(_x, _y);
+    }
+    if (pts.length < 4) continue;
+    for (const [w, k, add] of [[0.74, 1, 0], [0.16, 1.16, 22]]) {
+      ctx.beginPath(); ctx.moveTo(pts[0], pts[1]);
+      for (let q = 2; q < pts.length; q += 2) ctx.lineTo(pts[q], pts[q + 1]);
+      ctx.lineWidth = cam.s * w; ctx.strokeStyle = rgb(weftCol[r], k, add); ctx.stroke();
+    }
+  }
+}
+
+function polyW(pts, z) {   // world polygon → path
+  ctx.beginPath();
+  for (let q = 0; q < pts.length; q += 2) { P(pts[q], pts[q + 1], z); q ? ctx.lineTo(_x, _y) : ctx.moveTo(_x, _y); }
+  ctx.closePath();
+}
+
+function drawReed(t, lm) {
+  const alpha = t < 7 ? 1 - ss(6.15, 6.5, t) : ss(13.2, 13.35, t);
+  const rise = t < 7 ? 0 : 9 * Math.pow(1 - sms(13.2, 13.95, t), 2);   // the beater slides back in from below
+  if (alpha <= 0) return;
+  const f = lm.frac;
+  let d;
+  if (!weaving(t)) d = 2.6;
+  else if (f < 0.55) d = 2.6;
+  else if (f < 0.72) { const u = (f - 0.55) / 0.17; d = 2.6 - 2.5 * u * u; }
+  else d = 0.1 + 2.5 * ss(0.72, 1, f);
+  const y0 = lm.R + d + rise, h = 1.3;
+  ctx.globalAlpha = alpha;
+  // wires (dents)
+  ctx.strokeStyle = '#c7ced9'; ctx.lineWidth = Math.max(1, cam.s * 0.07);
+  ctx.beginPath();
+  for (let c = 0; c <= NC; c++) { P(c - 64, y0, -0.4); ctx.moveTo(_x, _y); P(c - 64, y0 + h, -0.4); ctx.lineTo(_x, _y); }
+  ctx.stroke();
+  // bars
+  ctx.fillStyle = '#8b93a1'; polyW([-68, y0 - 0.12, 68, y0 - 0.12, 68, y0 + 0.08, -68, y0 + 0.08], -0.45); ctx.fill();
+  ctx.fillStyle = '#5d6470'; polyW([-68, y0 + h - 0.06, 68, y0 + h - 0.06, 68, y0 + h + 0.16, -68, y0 + h + 0.16], -0.45); ctx.fill();
+  // beater beam (walnut)
+  ctx.fillStyle = '#5a3a22'; polyW([-70, y0 + h + 0.16, 70, y0 + h + 0.16, 70, y0 + h + 1.9, -70, y0 + h + 1.9], -0.5); ctx.fill();
+  ctx.fillStyle = '#7d5232'; polyW([-70, y0 + h + 0.16, 70, y0 + h + 0.16, 70, y0 + h + 0.55, -70, y0 + h + 0.55], -0.5); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function drawShuttle(t, lm) {
+  if (!weaving(t) || lm.k >= NR) return;
+  const x = lm.xsh, y = lm.k + 1.75, dir = lm.dir, z = -0.9;
+  const flying = lm.p > 0 && lm.p < 1;
+  // weft running from the shuttle back to the laid pick
+  ctx.strokeStyle = rgb(weftCol[lm.k], 1); ctx.lineWidth = Math.max(1.5, cam.s * 0.16);
+  ctx.beginPath(); P(x - dir * 4.6, y, z); ctx.moveTo(_x, _y); P(x - dir * 6.5, lm.k + 0.5, 0); ctx.lineTo(_x, _y); ctx.stroke();
+  if (flying) {   // speed streak
+    const tail = x - dir * 5, len = 34;
+    P(tail, y, z); const x0 = _x, y0 = _y; P(tail - dir * len, y, z); const x1 = _x, y1 = _y;
+    const g = ctx.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, 'rgba(255,214,150,0.55)'); g.addColorStop(1, 'rgba(255,214,150,0)');
+    ctx.fillStyle = g; polyW([tail, y - 0.55, tail - dir * len, y - 0.1, tail - dir * len, y + 0.1, tail, y + 0.55], z); ctx.fill();
+  }
+  const S = (u, w) => [x + u * dir, y + w];
+  const body = [S(-5, 0), S(-3.4, -0.8), S(3.4, -0.8), S(5, 0), S(3.4, 0.8), S(-3.4, 0.8)].flat();
+  ctx.fillStyle = '#3a2414'; polyW(body.map((v, i) => i % 2 ? v + 0.35 : v), 0); ctx.globalAlpha = 0.5; ctx.fill(); ctx.globalAlpha = 1;  // shadow on the cloth
+  ctx.fillStyle = '#a8713c'; polyW(body, z); ctx.fill();
+  ctx.fillStyle = '#d39a58'; polyW([S(-3.6, -0.6), S(3.6, -0.6), S(3.0, -0.25), S(-3.0, -0.25)].flat(), z); ctx.fill();
+  ctx.fillStyle = '#24160d'; polyW([S(-2, -0.32), S(2, -0.32), S(2, 0.36), S(-2, 0.36)].flat(), z); ctx.fill();
+  ctx.fillStyle = rgb(weftCol[lm.k], 1); polyW([S(-1.6, -0.2), S(1.6, -0.2), S(1.6, 0.24), S(-1.6, 0.24)].flat(), z); ctx.fill();
+  ctx.fillStyle = '#dfe4ec';
+  polyW([S(5, 0), S(4.1, -0.36), S(4.1, 0.36)].flat(), z); ctx.fill();
+  polyW([S(-5, 0), S(-4.1, -0.36), S(-4.1, 0.36)].flat(), z); ctx.fill();
+}
+
+function drawCut(t) {
+  const a = t >= 6.62 ? Math.exp(-(t - 6.62) * 9) : 0;
+  if (a < 0.01) return;
+  ctx.strokeStyle = `rgba(255,246,226,${a})`; ctx.lineWidth = 3;
+  for (const y of [R0, R1]) { ctx.beginPath(); P(-80, y, 0); ctx.moveTo(_x, _y); P(80, y, 0); ctx.lineTo(_x, _y); ctx.stroke(); }
+}
+
+const pad3 = n => String(n).padStart(3, '0');
+function label(txt, x, y, align, font, col = '#ece5d3') {
+  ctx.font = font; ctx.textAlign = align; ctx.textBaseline = 'middle';
+  const w = ctx.measureText(txt).width, px = align === 'right' ? x - w : x;
+  ctx.fillStyle = 'rgba(12,13,18,0.82)'; ctx.fillRect(px - 12, y - 19, w + 24, 38);
+  ctx.fillStyle = col; ctx.fillText(txt, x, y);
+}
+function drawHUD(t, lm, backFrac) {
+  const F1 = '600 20px "Martian Mono"', F2 = '700 26px "Martian Mono"';
+  label('MIDDLE STUDIES  REEL — 023', 56, 56, 'left', F1);
+  label('WEAVE  ·  128 ENDS × 72 PICKS', W - 56, 56, 'right', F1);
+  label('Claude', W - 56, H - 56, 'right', F1);
+  let txt;
+  if (t < 6.45 || t >= TS) {
+    const k = Math.min(lm.k, NR - 1);
+    txt = `PICK ${pad3(Math.min(NR, Math.floor(lm.R) + (lm.frac >= 0.55 ? 1 : 0)))}/072  ·  ${bandOf(k).name}`;
+  } else if (t < 7.2) txt = 'CUT FROM THE LOOM';
+  else if (t < 10.4) txt = backFrac > 0.5 ? 'REVERSE  ·  EVERY CROSSING INVERTED' : 'FACE  ·  9,216 CROSSINGS';
+  else {
+    let left = 0; for (let r = 0; r < NR; r++) if (pulled(r, t) < NC) left++;
+    txt = t < UN0 ? 'FACE  ·  9,216 CROSSINGS' : left ? `PULL ONE THREAD  ·  ${pad3(left)}/072 LEFT` : 'WARP  ·  128 ENDS  ·  READY';
+  }
+  label(txt, 56, H - 56, 'left', F2, '#f7c64a');
+}
+
+// ---------- boot ----------
+async function boot() {
+  await document.fonts.load('100px "Rubik Mono One"', 'WEAVE');
+  await document.fonts.load('600 20px "Martian Mono"');
+  await document.fonts.load('700 26px "Martian Mono"');
+  await document.fonts.ready;
+  buildMask(); buildWeave();
+  vign = ctx.createRadialGradient(W / 2, H / 2, H * 0.2, W / 2, H / 2, H * 1.05);
+  vign.addColorStop(0, 'rgba(40,44,62,0.35)'); vign.addColorStop(1, 'rgba(0,0,0,0)');
+  window.__duration = T;
+  window.__poster = 8.4;
+  window.__seek = t => { render(t); };
+  render(0);
+  if (!location.search.includes('render')) {
+    const t0 = performance.now();
+    const loop = () => { render(((performance.now() - t0) / 1000) % T); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  }
+}
+boot();
+</script>
+</body>
+</html>

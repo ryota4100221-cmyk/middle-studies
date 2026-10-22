@@ -822,5 +822,44 @@
     },
     "review_rounds": 3,
     "review": "1周目：破裂後の破片が画面外へ飛びすぎて中央が空っぽ→面内の飛散を0.3倍に、奥行き方向へ散らす。STRIKE HERE の小書きが字の陰に隠れる→削除。2周目：陰影で黄色が濁ってオリーブに見える→陰影を6割に。ミラーボールが中央で2秒止まって見える→カメラを寄せる。3〜5秒の宙吊りで中央が穴→カメラを雲へ突っ込ませたら雲を通り抜けて空の画面になったので、ゆるい寄りと小さい振りに戻す。3周目：0秒と15秒の一致、7.3→7.7→8.25秒の揃う・崩れるを確認。許容した差：4.5〜5.5秒は雲の中央が暗い穴のまま（トンネル状の構図として残す）。"
+  },
+  {
+    "id": "023",
+    "slug": "weave",
+    "title": "Weave",
+    "date": "2026-10-22",
+    "concept": "画面の印はすべて「経糸と緯糸の交点で、どちらが上か」だけでできている15秒。藍の経糸128本の間を杼（シャトル）が飛び、筬が打ち込むたびに経糸が震え、低い視点の寄りから引いていくあいだに平織→デニムの綾織→朱の緯糸が浮いて WEAVE の字を織り出すダマスク→鳥目織と、72段の布ができあがる。布は機から切り離されて宙で波打ちながら裏返り、裏面では同じ交点がすべて反転して、字が鏡文字のネガになる（見せ場は8.4秒）。表に戻ったあと緯糸を1本ずつ引き抜いて解き、裸の経糸の上へカメラが戻ると、杼がまた0秒目の1段目を織り始める。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/023_weave.mp4",
+    "techniques": [
+      "procedural-weave-structures-plain-twill-satin-birdseye",
+      "text-mask-to-damask-jacquard",
+      "warp-weft-crossing-cells-as-pixels",
+      "flying-shuttle-with-variable-speed-flight",
+      "beat-driven-reed-and-warp-vibration",
+      "custom-3d-projection-canvas-quad-mesh",
+      "two-sided-cloth-reverse-inverts-crossings",
+      "travelling-wave-cloth-with-lambert-sheen",
+      "staggered-unravel-pulled-threads",
+      "independent-loom-clock-across-the-loop-wrap",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#22327c",
+        "#eee5d0",
+        "#e83e26",
+        "#f7ac1e",
+        "#0c0d12",
+        "#a8713c"
+      ],
+      "type": [
+        "Rubik Mono One (woven)",
+        "Martian Mono"
+      ],
+      "structure": "one cloth, one continuous camera / low tilted close-up of the shuttle and reed → pull back while 72 picks are woven (plain → denim twill → damask WEAVE → bird's-eye) → cut from the loom → lifted, waving, turned over to the reverse (negative, mirrored) and back → wefts pulled out one by one → camera flies back to the fell and the first pick starts again",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 4,
+    "review": "0周目（静止画）：冒頭1秒が裸の経糸だけで掴みがない→ループ全体を位相ずらしし、0秒目を杼が画面中央を飛ぶ4段目に。杼が2コマで消える→飛行の中央で1/3速に落とす。字に繻子の止め点が混ざって読めない→字は緯糸の浮きだけ、地は8枚繻子に。360°回転では裏が一瞬しか見えない→180°回して裏で0.8秒止めてから戻す（置換で rx と s を消していたのも直した）。1周目：3〜5秒の引きで下半分が空の経糸→引き終わりを6.2秒へ遅らせる。切り離しの線と飛ぶ経糸の端が画面外で見えない→切る直前に s=12 へ引く。12.3〜14秒が裸の経糸だけで止まって見える→機の時計を本編と分け、14.0秒から織り始めるようにし、解きの最後の1本と寄りの着地を重ねた。2周目：切り離し後の1.2秒が静止→持ち上げを7.0秒に前倒し。8.6秒・4.2秒を等倍で見て4Mbpsでも織り目は崩れていない。3周目：0秒と15秒のつなぎ目は杼が1コマ進むだけ。13.4秒の筬が半透明の幽霊でにごる→下から滑り込ませる。許容した差：13.3〜13.9秒は寄っていくカメラの先に残り数段の緯糸が小さく見えるだけで、ほぼ経糸と筬の画になる（次の1段目への助走として残す）。"
   }
 ]
