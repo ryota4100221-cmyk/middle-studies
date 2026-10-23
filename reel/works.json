@@ -861,5 +861,42 @@
     },
     "review_rounds": 4,
     "review": "0周目（静止画）：冒頭1秒が裸の経糸だけで掴みがない→ループ全体を位相ずらしし、0秒目を杼が画面中央を飛ぶ4段目に。杼が2コマで消える→飛行の中央で1/3速に落とす。字に繻子の止め点が混ざって読めない→字は緯糸の浮きだけ、地は8枚繻子に。360°回転では裏が一瞬しか見えない→180°回して裏で0.8秒止めてから戻す（置換で rx と s を消していたのも直した）。1周目：3〜5秒の引きで下半分が空の経糸→引き終わりを6.2秒へ遅らせる。切り離しの線と飛ぶ経糸の端が画面外で見えない→切る直前に s=12 へ引く。12.3〜14秒が裸の経糸だけで止まって見える→機の時計を本編と分け、14.0秒から織り始めるようにし、解きの最後の1本と寄りの着地を重ねた。2周目：切り離し後の1.2秒が静止→持ち上げを7.0秒に前倒し。8.6秒・4.2秒を等倍で見て4Mbpsでも織り目は崩れていない。3周目：0秒と15秒のつなぎ目は杼が1コマ進むだけ。13.4秒の筬が半透明の幽霊でにごる→下から滑り込ませる。許容した差：13.3〜13.9秒は寄っていくカメラの先に残り数段の緯糸が小さく見えるだけで、ほぼ経糸と筬の画になる（次の1段目への助走として残す）。"
+  },
+  {
+    "id": "024",
+    "slug": "principles",
+    "title": "Principles",
+    "date": "2026-10-23",
+    "concept": "1つの点だけを手で動かして、アニメーションの原則を8つ演じさせる15秒。シミュレーションではなく、すべてのポーズを時刻の関数としてキーを打った。藍の床で弾む桃色の玉が SQUASH の字ごと潰れ、溜めて跳ぶと画面いっぱいに膨らんで次の背景色になる。桃色の場面ではグラフエディタのカーブ（ease-in-out→overshoot→elastic）と、3コマごとのオニオンスキンで、同じ移動の間隔の違いを見せる（見せ場は5.0秒）。緑の場面では12個に分かれてずらしと重なりで波打ち、円になって1つに戻る。黄の場面では点が字の上を弧で跳ねて ı に点を打ち、principles のピリオドになり、それがまた膨らんで0秒目の藍に戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/024_principles.mp4",
+    "techniques": [
+      "hand-keyed-animation-principles",
+      "squash-and-stretch-contact-deformation",
+      "velocity-aligned-stretch-area-preserving",
+      "anticipation-hold-and-snap",
+      "live-graph-editor-curve-morph",
+      "onion-skin-spacing-chart",
+      "staggered-overlap-wave",
+      "dope-sheet-keyframe-readout",
+      "ball-fills-frame-colour-match-cut",
+      "dotless-i-tittle-stamping",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#1f1a3a",
+        "#ff8fb1",
+        "#00a67e",
+        "#ffd23f"
+      ],
+      "type": [
+        "Bagel Fat One",
+        "Sometype Mono"
+      ],
+      "structure": "one dot through four flat colour scenes; at every cut the ball grows to fill the frame and becomes the next background: bounce + anticipation (aubergine) → graph editor easing/overshoot/elastic (pink) → 12-way stagger, wave, ring, merge (green) → ball hops across the word and becomes its full stop (yellow) → fills back to aubergine",
+      "renderer": "svg"
+    },
+    "review_rounds": 3,
+    "review": "1周目（試し撮り18枚）：elastic の山と cubic-bezier の注記が題字に重なる→値の範囲を狭めて注記を題字の下へ。ドープシートの菱形が小さく潰れる→行間13→17px・菱形10→14px。背景の SQUASH が暗すぎ→少し明るく。2周目（本番の場面のつなぎ目13枚）：4回の塗りつぶしの切り替えは色がそのまま次の背景になってつながっている。3周目（グラフとドープシートを等倍で切り出し、14.95秒→0秒の継ぎ目）：文字は18px以上で読め、ループは T=0.55→0.6 で連続。許容した差：グラフの value の字に再生ヘッドの線が重なる瞬間がある。"
   }
 ]
