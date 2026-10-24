@@ -163,7 +163,7 @@ def check_condition(w, d, src):
         days = json.load(open(os.path.join(REEL, "conditions.json")))["days"]
     except FileNotFoundError:
         days = {}
-    c = days.get(w["date"])
+    c = days.get(w.get("condition_day") or w["date"])   # condition_day＝前倒しで作った回
     if not c:
         if w.get("condition") and w["condition"] != "control":
             R(f"condition={w['condition']} だが conditions.json に {w['date']} の行が無い")

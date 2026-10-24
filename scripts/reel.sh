@@ -39,6 +39,7 @@ last_is() {
   [[ "$(grep -v '^[[:space:]]*$' "$2" | tail -1 | tr -d '[:space:]*`')" == "$1" ]]
 }
 
+[[ -n "${REEL_COND_DAY:-}" ]] && REEL_FORCE=1   # 前倒しは「今日の分は済み」で止めない
 if [[ -z "${REEL_FORCE:-}" ]] && grep -q "=== done (exit 0" "$LOG_FILE" 2>/dev/null; then
   echo "[$(date)] already succeeded today — skip (catch-up slot)" >> "$LOG_FILE"
   exit 0
@@ -49,6 +50,17 @@ if ! mkdir "$LOCK" 2>/dev/null; then
   exit 0
 fi
 trap 'rmdir "$LOCK"' EXIT
+# 前倒し（2026-10-25〜）：REEL_COND_DAY=YYYY-MM-DD でその日の条件の回を今日作る。
+# 前倒し済みの日の自動実行は、同じ条件の2本目を作らないようにスキップする
+TODAY="$(TZ=Asia/Tokyo date +%F)"
+COND_DAY="${REEL_COND_DAY:-$TODAY}"
+if [[ -z "${REEL_COND_DAY:-}" ]] && /usr/bin/python3 -c '
+import json,sys; sys.exit(0 if any(w.get("condition_day")==sys.argv[2] for w in json.load(open(sys.argv[1]))) else 1)
+' "$ROOT/reel/works.json" "$TODAY" 2>/dev/null; then
+  echo "[$(date)] $TODAY の条件の回は前倒しで作成済み — skip" >> "$LOG_FILE"
+  echo "[$(date)] === done (exit 0, attempts 0) ===" >> "$LOG_FILE"
+  exit 0
+fi
 if ! head -c 1 "$SKILL_MD" >/dev/null 2>&1; then
   echo "[$(date)] ABORT: skill file unreadable: $SKILL_MD" >> "$LOG_FILE"
   notify "🔴 *MIDDLE STUDIES REEL（$(TZ=Asia/Tokyo date +%F)）*：手順書が読めない（$SKILL_MD）"
@@ -61,6 +73,7 @@ git -C "$HOME/projects/middle-studies-reel" pull -q --ff-only >> "$LOG_FILE" 2>&
 
 echo "[$(date)] === REEL daily start ===" >> "$LOG_FILE"
 OUT_TMP="$(mktemp /tmp/middle-reel-out.XXXXXX)"
+[[ -n "${REEL_COND_DAY:-}" ]] && REEL_FORCE=1
 PROMPT="まず「$SKILL_MD」を読み、その手順どおりに今日の MIDDLE STUDIES REEL を1本制作・公開して。${REEL_FORCE:+（工程0の「今日の分は済んでいるか」は飛ばしてよい）} 🔴 これは無人の夜間実行で、人は見ていない。質問せず、レンダーは同期で待ち、ターンを途中で終えない。止めるときは SKILL.md 工程7のとおり Slack へ通知してから終わる。完走したときだけ、最後の行に REEL_OK とだけ書く。"
 
 # 今日の条件（reel/conditions.json・2026-10-24〜）。SKILL.md でも読ませるが、読み落としを防ぐためプロンプトにも直接入れる
@@ -68,9 +81,10 @@ COND_LINE="$(/usr/bin/python3 -c '
 import json,sys
 d=json.load(open(sys.argv[1]))["days"].get(sys.argv[2])
 if d and d["id"]!="control": print("今日の条件（id="+d["id"]+"）："+d["line"])
-' "$ROOT/reel/conditions.json" "$(TZ=Asia/Tokyo date +%F)" 2>/dev/null)"
+' "$ROOT/reel/conditions.json" "$COND_DAY" 2>/dev/null)"
 if [[ -n "$COND_LINE" ]]; then
   PROMPT="$PROMPT 🔴 $COND_LINE（ブリーフは置き換えない。SKILL.md「今日の条件」の約束も守り、works.json に condition を書く）"
+  [[ "$COND_DAY" != "$TODAY" ]] && PROMPT="$PROMPT これは $COND_DAY の条件の前倒し。works.json の date は今日（$TODAY）のまま、\"condition_day\": \"$COND_DAY\" を足す。"
   echo "[$(date)] $COND_LINE" >> "$LOG_FILE"
 fi
 

@@ -30,6 +30,7 @@ description: >
   - `case-values`：`look.palette` と `look.type` は `palette_allowed`／`type_allowed` の中だけ。和文はGoogle Fontsから読む。
   - `no-depth`：three.js・WebGLの3D・CSS `perspective`・自作の3D投影を使わない。techniques に depth / 3d / perspective / parallax / projection / fly-through を含む語を書かない（書くなら条件違反）。
 - 条件があっても、工程1（前の7本を見る）と変化ゲートはそのまま効く。
+- **前倒し**（2026-10-25〜）：`REEL_COND_DAY=YYYY-MM-DD zsh scripts/reel.sh` で、その日の条件の回を今日作る。プロンプトに日付が入るので、works.json の `date` は今日のまま `"condition_day": "YYYY-MM-DD"` を足す。その日の夜の自動実行はスキップされる。
 
 ## 🔴 無人で走る
 
