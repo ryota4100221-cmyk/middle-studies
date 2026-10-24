@@ -974,5 +974,45 @@
     "review_rounds": 3,
     "review": "1周目：分裂の寄り・TURING・渦の指紋・ループの戻りは成立。終わりの細胞に鏡面ハイライトが2つ出る（高倍率の双線形補間）→ 鏡面を弱く広く。2周目：ハイライトは1つに、14.98秒と0秒目の細胞が一致。場面が替わる瞬間に章の題が0から出直して一瞬消える → 題の不透明度を0.4から立ち上げる。3周目：題の明滅は解消、直すことが言えなくなった。許容した差：迷路の前線が通ると6秒台で TURING の字が読めなくなる（字が場に溶けること自体を見せる場面として残す）。",
     "condition": "control"
+  },
+  {
+    "id": "027",
+    "slug": "drop",
+    "title": "Drop",
+    "date": "2026-10-25",
+    "concept": "縦9:16。0秒目は、これまでの8本のカードが親指で弾かれたフィードのように流れていて、0.5秒でそのスクロールが「STOP.」に叩きつけられて止まる（字は慣性で沈んでばねで戻る）。そのピリオドだけが溜めて跳び出し、EVERY・SCROLL・IS・A・COIN・TOSS. の段を跳ね下り、最後の段で投げ上げられて表裏の回るコインになる。コインはガルトン盤のじょうごで400粒に分かれ、14段の釘を打ちながら5,600回のコイン投げを重ねて正規分布の山を積み、12.6秒で曲線と「you stopped.」が出る（見せ場）。最後はまたフリックで流れて0秒目へ戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/027_drop.mp4",
+    "techniques": [
+      "thumb-flick-scroll-camera-with-motion-blur",
+      "scroll-slam-damped-spring-stop",
+      "per-letter-inertia-jelly",
+      "period-as-character-hand-keyed-bounce",
+      "word-ledges-as-course",
+      "coin-flip-by-scale-inversion",
+      "galton-board-seeded-random-walk",
+      "stacked-histogram-to-normal-curve",
+      "vertical-world-wrap-loop",
+      "scroll-velocity-readout"
+    ],
+    "look": {
+      "palette": [
+        "#ff3d9a",
+        "#121212",
+        "#f3efe7",
+        "#2a3bff",
+        "#ffd400"
+      ],
+      "type": [
+        "Anybody 900",
+        "Overpass Mono"
+      ],
+      "structure": "one vertical world scrolled by one camera / feed of past reels flicked → slammed into STOP. (0.5 s) → the full stop drops down six word-ledges → tossed as a coin → splits into 400 dots through a 14-row Galton board → bell curve + 'you stopped.' → flick back into the feed",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：STOP. が画面の上半分だけで下が空く→字幅を normal にして縦に大きく・中央へ。you stopped. が画面からはみ出す→幅で字の大きさを決める。盤の首が画面上端で切れ、注記がヘッダーと重なる→段の間隔を詰めて盤全体を1画面に入れ、注記をじょうごの左右へ。スクロールバーが叩きつけのばねで上下に跳ぶ→巻き戻しを考えて位置を出す。2周目：盤の下に墨のフィードが早く覗く→フィードの始まりを下げる。コインが高く上がりすぎて画面上端のヘッダーに隠れる→投げ上げを低くし、カメラの移りを長く。3周目：コインが段から盤へ画面内で落ちるのを確認。許容した差：フリックとカメラの追従の間（0〜0.5秒・2秒前後・6.3秒前後）は文字がブレで読めないが、指で弾いた速さとして残した。",
+    "condition": "vertical",
+    "condition_day": "2026-10-26",
+    "format": "vertical"
   }
 ]

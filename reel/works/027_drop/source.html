@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 027 Drop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wdth,wght@50..150,100..900&family=Overpass+Mono:wght@400;700&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { display: block; height: 100vh; width: auto; margin: 0 auto; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// MIDDLE STUDIES REEL 027 — Drop（縦 9:16）
+// 流れていくフィードが「STOP.」に叩きつけられて止まり、そのピリオドが落ちて、
+// 言葉の段を跳ね、コインになってガルトン盤で400粒に分かれ、正規分布を積む。最後はまたフリックで流れて0秒目へ。
+window.__format = 'vertical';
+window.__duration = 15;
+window.__poster = 12.9;
+
+const W = 1080, H = 1920, CX = W / 2;
+const cv = document.getElementById('c');
+const mainCtx = cv.getContext('2d');
+let ctx = mainCtx;
+
+const PINK = '#ff3d9a', INK = '#121212', PAPER = '#f3efe7', COBALT = '#2a3bff', YEL = '#ffd400';
+const FONT = 'Anybody', MONO = '"Overpass Mono"';
+
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, u) => a + (b - a) * u;
+const smooth = u => { u = clamp(u); return u * u * (3 - 2 * u); };
+const easeOut = u => 1 - Math.pow(1 - clamp(u), 3);
+const easeInOut = u => { u = clamp(u); return u < .5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; };
+const backOut = u => { u = clamp(u); const c = 2.2; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); };
+// 減衰ばね：速度 v0 で叩かれた質点の変位（τ<0 は 0）
+function kick(tau, v0, w, z) { if (tau <= 0) return 0; const wd = w * Math.sqrt(1 - z * z); return v0 / wd * Math.exp(-z * w * tau) * Math.sin(wd * tau); }
+function font(px, wt = 900, stretch = 'normal') { ctx.font = `${wt} ${px}px ${FONT}`; ctx.fontStretch = stretch; }
+function mono(px, wt = 400) { ctx.font = `${wt} ${px}px ${MONO}`; ctx.fontStretch = 'normal'; }
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+
+// ───────────────────────── 世界の配置（y は下向き・1周 L で巻き戻る）
+const TC = 0.5;                 // フィードが STOP に叩きつけられる時刻
+const BALL_R = 54;
+let L = 0;                      // 世界の1周（カメラ表を作るときに決まる）
+let STOP = null;                // 字の配置
+const LEDGES = [
+  { w: 'EVERY',  cx: 330, top: 2480, fill: PAPER,  text: INK },
+  { w: 'SCROLL', cx: 690, top: 2960, fill: INK,    text: PINK },
+  { w: 'IS',     cx: 330, top: 3400, fill: COBALT, text: PAPER },
+  { w: 'A',      cx: 700, top: 3800, fill: YEL,    text: INK },
+  { w: 'COIN',   cx: 370, top: 4170, fill: PAPER,  text: COBALT },
+  { w: 'TOSS.',  cx: 690, top: 4510, fill: INK,    text: YEL },
+];
+const LAND = [2.5, 3.1, 3.66, 4.18, 4.66, 5.1];     // 各段に着く時刻
+const LEDGE_H = 168;
+const GN = 5900;                // ガルトン盤の首（コインの落ちる所）
+const ROWS = 14, PX = 70, ROW_Y = 66, PEG_R = 7, DOT_R = 8;
+const ROW0 = GN + 150;
+const rowY = k => ROW0 + k * ROW_Y;
+const FLOOR = ROW0 + ROWS * ROW_Y + 430;
+const PAPER_TOP = GN - 520;     // ここから下は紙
+const TOSS_T0 = 5.1, TOSS_T1 = 6.45;
+const N = 400, DT_ROW = 0.085, REL0 = 6.55, REL_SPAN = 3.25, G = 3200;
+let FEED_TOP = 0;               // ここから下はフィード（墨）
+
+// ───────────────────────── ボールの道（t の関数）
+function arc(x0, y0, x1, y1, lift, u) { return { x: lerp(x0, x1, u), y: y0 + (y1 - y0) * u - lift * 4 * u * (1 - u) }; }
+function ballAt(t) {
+  const p0 = { x: STOP.px, y: STOP.py };
+  const land = LEDGES.map(l => ({ x: l.cx + (l.cx < CX ? 40 : -40), y: l.top - BALL_R }));
+  if (t < 1.6) {
+    // 字といっしょに揺れ、1.25〜1.6 で溜める
+    const jig = STOP.letterOff(t, 4);
+    const a = smooth((t - 1.2) / 0.38);
+    return { x: p0.x, y: p0.y + jig + a * BALL_R * 0.28, sx: 1 + a * 0.28, sy: 1 - a * 0.28, rot: 0, mode: 'ball' };
+  }
+  if (t < LAND[0]) {
+    const u = (t - 1.6) / (LAND[0] - 1.6);
+    const p = arc(p0.x, p0.y, land[0].x, land[0].y, 360, u);
+    return { ...p, ...stretch(u, 0.9), mode: 'ball' };
+  }
+  for (let j = 0; j < LAND.length - 1; j++) {
+    if (t < LAND[j + 1]) {
+      const T = LAND[j + 1] - LAND[j], u = (t - LAND[j]) / T;
+      const p = arc(land[j].x, land[j].y, land[j + 1].x, land[j + 1].y, 230 - j * 18, u);
+      const sq = squash(t - LAND[j]);
+      const st = stretch(u, T);
+      return { ...p, sx: st.sx * sq.sx, sy: st.sy * sq.sy, mode: 'ball' };
+    }
+  }
+  if (t < TOSS_T1) {
+    // TOSS. の上で深く潰れてから、高く投げ上げられてコインになる
+    const last = land[land.length - 1];
+    if (t < TOSS_T0 + 0.16) { const k = Math.sin(Math.PI * (t - TOSS_T0) / 0.16); return { x: last.x, y: last.y + k * 22, sx: 1 + k * .35, sy: 1 - k * .35, mode: 'ball' }; }
+    const u = (t - TOSS_T0 - 0.16) / (TOSS_T1 - TOSS_T0 - 0.16);
+    const p = arc(last.x, last.y, CX, GN - 30, 560, u);
+    return { ...p, sx: 1, sy: 1, flip: u * 7.5 * Math.PI * 2, mode: 'coin', u };
+  }
+  return { x: CX, y: GN - 30, sx: 1, sy: 1, mode: 'reservoir' };
+}
+function squash(dt) { if (dt < 0 || dt > 0.22) return { sx: 1, sy: 1 }; const k = Math.exp(-dt * 16) * Math.cos(dt * 30); return { sx: 1 + 0.32 * k, sy: 1 - 0.32 * k }; }
+function stretch(u, T) { const v = Math.abs(1 - 2 * u); const s = 0.16 * v * v; return { sx: 1 - s * 0.6, sy: 1 + s }; }
+
+// ───────────────────────── ガルトン盤（400粒・14段）
+const rng = mulberry32(27027);
+const dots = [];
+const binCount = new Array(ROWS + 1).fill(0);
+for (let i = 0; i < N; i++) {
+  const r = REL0 + REL_SPAN * Math.pow(i / (N - 1), 0.92);
+  const dirs = []; let h = 0; const hs = [0];
+  for (let k = 0; k < ROWS; k++) { const d = rng() < 0.5 ? 0 : 1; dirs.push(d); h += d; hs.push(h); }
+  const slot = binCount[h]++;
+  const sx = CX + (h - ROWS / 2) * PX + ((slot % 4) - 1.5) * 15.5;
+  const sy = FLOOR - DOT_R - Math.floor(slot / 4) * 15;
+  const x13 = CX + (hs[ROWS - 1] - (ROWS - 1) / 2) * PX, y13 = rowY(ROWS - 1) - PEG_R - DOT_R;
+  const fall = Math.sqrt(2 * Math.max(10, sy - y13 + 24) / G);
+  dots.push({ r, hs, dirs, h, slot, sx, sy, x13, y13, fall, land: r + ROWS * DT_ROW + fall });
+}
+const MAXBIN = Math.max(...binCount);
+// 釘を打った時刻（光らせる用）：peg[k][i] → 時刻の配列
+const pegHits = [];
+for (let k = 0; k < ROWS; k++) { pegHits.push([]); for (let i = 0; i <= k; i++) pegHits[k].push([]); }
+for (const d of dots) for (let k = 0; k < ROWS; k++) pegHits[k][d.hs[k]].push(d.r + (k + 1) * DT_ROW);
+const ALL_HITS = dots.flatMap(d => Array.from({ length: ROWS }, (_, k) => d.r + (k + 1) * DT_ROW)).sort((a, b) => a - b);
+function binColor(h) { const e = Math.abs(h - ROWS / 2); return e <= 1 ? COBALT : e <= 3 ? PINK : e <= 4 ? YEL : INK; }
+
+function dotAt(d, t) {
+  const tau = t - d.r;
+  if (tau < 0) return null;
+  const seg = Math.floor(tau / DT_ROW);
+  if (seg === 0) {
+    const u = tau / DT_ROW;
+    return { x: CX, y: lerp(GN + 20, rowY(0) - PEG_R - DOT_R, u * u), c: INK };
+  }
+  if (seg < ROWS) {
+    const k = seg - 1, u = tau / DT_ROW - seg;
+    const x0 = CX + (d.hs[k] - k / 2) * PX, x1 = CX + (d.hs[k + 1] - (k + 1) / 2) * PX;
+    const y0 = rowY(k) - PEG_R - DOT_R, y1 = rowY(k + 1) - PEG_R - DOT_R;
+    return { x: lerp(x0, x1, u), y: y0 + (y1 - y0) * u * u - 22 * 4 * u * (1 - u), c: INK };
+  }
+  const tf = tau - ROWS * DT_ROW;
+  const bx = CX + (d.h - ROWS / 2) * PX;
+  if (tf < d.fall) {
+    const u = clamp(tf / 0.12);
+    const x = lerp(d.x13, bx, easeOut(u)) + (d.sx - bx) * smooth(tf / d.fall);
+    const y = d.y13 - 24 * Math.sin(Math.PI * clamp(tf / 0.16)) * (1 - clamp(tf / 0.16)) + 0.5 * G * tf * tf;
+    return { x, y: Math.min(y, d.sy), c: INK };
+  }
+  const s = t - d.land;
+  const sq = s < 0.2 ? Math.exp(-s * 18) * Math.cos(s * 40) * 0.35 : 0;
+  return { x: d.sx, y: d.sy + sq * 4, c: binColor(d.h), sq };
+}
+
+// ───────────────────────── カメラ（表を1回だけ作る＝__seek は表を引くだけ）
+const HZ = 600;
+let CAM = null, VEL = null, FLICK = null;
+function buildCamera() {
+  const n = Math.round(15 * HZ) + 1;
+  CAM = new Float64Array(n); VEL = new Float64Array(n);
+  // 着地の後は、ボール（→盤）を臨界減衰ばねで追う
+  const TF0 = 13.4;
+  const w = 6.5;
+  let x = 0, v = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / HZ;
+    if (t < 1.9) { continue; }
+    let target;
+    if (t < TOSS_T0) target = ballAt(t).y - 0.4 * H;
+    else {
+      const a = smooth((t - TOSS_T0 - 0.15) / 1.6);
+      target = lerp(LEDGES[5].top - 0.4 * H - BALL_R, GN - 300, a);
+    }
+    if (t > 11.5) target = lerp(GN - 300, GN + 300, easeInOut((t - 11.5) / 0.9));
+    if (i === Math.round(1.9 * HZ)) { x = 0; v = 0; }
+    const dt = 1 / HZ;
+    const acc = w * w * (target - x) - 2 * w * v;
+    v += acc * dt; x += v * dt;
+    CAM[i] = x; VEL[i] = v;
+  }
+  // フリック：13.4 から少し引いて（予備動作）一気に流し、15+TC で 1 周先の STOP に叩きつける
+  const A = CAM[Math.round(TF0 * HZ)];
+  const TF1 = 15 + TC;
+  const VMAX = 6400;
+  const ANT = 70, TA = 0.28, TR = 0.5;
+  const D = VMAX * (TF1 - TF0 - TA - TR / 2) - ANT;   // 走る距離
+  L = A + D;
+  FLICK = { TF0, TF1, A, VMAX, ANT, TA, TR };
+  FEED_TOP = FLOOR + 900;
+}
+function flickPos(T) {
+  const { TF0, A, VMAX, ANT, TA, TR } = FLICK;
+  const s = T - TF0;
+  if (s <= 0) return A;
+  if (s < TA) return A - ANT * (1 - Math.cos(Math.PI * s / TA)) / 2;
+  // 予備動作の終わりの位置は A-ANT。そこから速度 0→VMAX（smoothstep を TR かけて）→一定
+  const q = s - TA;
+  const ramp = q < TR ? TR * (Math.pow(q / TR, 3) - Math.pow(q / TR, 4) / 2) : TR / 2 + (q - TR);
+  return A - ANT + VMAX * ramp;
+}
+function flickVel(T) {
+  const { TF0, VMAX, ANT, TA, TR } = FLICK;
+  const s = T - TF0;
+  if (s <= 0) return 0;
+  if (s < TA) return -ANT * Math.PI / (2 * TA) * Math.sin(Math.PI * s / TA);
+  const q = s - TA;
+  return q < TR ? VMAX * (3 * Math.pow(q / TR, 2) - 2 * Math.pow(q / TR, 3)) : VMAX;
+}
+const SLAM_W = 24, SLAM_Z = 0.42;
+function camAt(t) {
+  if (t < TC) return flickPos(t + 15) - L;
+  if (t >= FLICK.TF0) return flickPos(t);
+  if (t < 1.9) return kick(t - TC, FLICK.VMAX, SLAM_W, SLAM_Z);
+  const f = t * HZ, i = Math.floor(f), u = f - i;
+  return lerp(CAM[i], CAM[Math.min(i + 1, CAM.length - 1)], u);
+}
+function camVel(t) {
+  const e = 1 / 240;
+  return (camAt(Math.min(15, t + e)) - camAt(Math.max(0, t - e))) / (2 * e);
+}
+
+// ───────────────────────── 字の配置（フォントが読めてから）
+function layoutStop() {
+  font(100, 900, 'normal');
+  const m = ctx.measureText('ST'), m2 = ctx.measureText('OP');
+  const cap = ctx.measureText('S').actualBoundingBoxAscent / 100;
+  const want = 1000;
+  const r = BALL_R;
+  // OP + 隙間 + ピリオド（ボール）が幅に収まる大きさ
+  const size = Math.min(want / (m.width / 100), (want - 2 * r - 16) / (m2.width / 100));
+  font(size, 900, 'normal');
+  const capPx = cap * size;
+  const gap = 70;
+  const blockH = capPx * 2 + gap;
+  const top = 900 - blockH / 2;
+  const b1 = top + capPx, b2 = b1 + gap + capPx;
+  const letters = [];
+  const lw = s => ctx.measureText(s).width;
+  const w1 = lw('ST'), w2 = lw('OP') + 16 + 2 * r;
+  let x = CX - w1 / 2;
+  for (const ch of 'ST') { letters.push({ ch, x, y: b1, w: lw(ch) }); x += lw(ch); }
+  x = CX - w2 / 2;
+  for (const ch of 'OP') { letters.push({ ch, x, y: b2, w: lw(ch) }); x += lw(ch); }
+  STOP = {
+    size, capPx, b1, b2, letters,
+    px: x + 16 + r, py: b2 - r,
+    // 叩きつけの慣性：字は少し遅れて下へ行き、ばねで戻る（i=4 はピリオド）
+    letterOff(t, i) { return kick(t - TC - 0.03 - i * 0.022, 1500, 17, 0.3); },
+  };
+}
+
+// ───────────────────────── フィード（これまでの8本のカード）
+const FEED = [
+  ['019', 'Split Screen', '#0b0b0c', '#ff4d1f', '#f2efe8', '#2340ff'],
+  ['020', 'Overprint', '#f2eee3', '#e5097f', '#26221f', '#00a0e2'],
+  ['021', 'Shutter', '#030409', '#ffc56b', '#eef3ff', '#45dcff'],
+  ['022', 'Shatter', '#ffd21a', '#111216', '#111216', '#2a36ff'],
+  ['023', 'Weave', '#22327c', '#e83e26', '#eee5d0', '#f7ac1e'],
+  ['024', 'Principles', '#ff8fb1', '#1f1a3a', '#1f1a3a', '#00a67e'],
+  ['025', 'Match Cut', '#5b3bff', '#f3efe6', '#f3efe6', '#ff5a3c'],
+  ['026', 'Morphogenesis', '#0e3d2e', '#ffbe2e', '#f4eee2', '#ffa8c4'],
+];
+function feedCards() {
+  const y0 = FEED_TOP + 120, y1 = L - 150, n = FEED.length, gap = 56;
+  const h = (y1 - y0 - gap * (n - 1)) / n;
+  return FEED.map((f, i) => ({ f, y: y0 + i * (h + gap), h }));
+}
+let CARDS = [];
+function drawCard(c, sy) {
+  const [id, title, bg, fg, tx, ac] = c.f;
+  const x = 40, w = W - 80, h = c.h;
+  ctx.save();
+  rr(x, sy, w, h, 44); ctx.fillStyle = bg; ctx.fill(); ctx.clip();
+  // 作品ごとの記号（円・帯）
+  ctx.fillStyle = ac;
+  const k = +id;
+  if (k % 2) { ctx.beginPath(); ctx.arc(x + w * 0.72, sy + h * 0.42, h * 0.3, 0, Math.PI * 2); ctx.fill(); }
+  else { for (let j = 0; j < 6; j++) { ctx.fillRect(x, sy + h * 0.2 + j * h * 0.09, w, h * 0.045); } }
+  ctx.fillStyle = fg;
+  font(420, 900, 'extra-expanded'); ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  ctx.fillText(id, x + 40, sy + h * 0.62);
+  ctx.fillStyle = tx;
+  font(118, 900, 'condensed');
+  ctx.fillText(title, x + 44, sy + h - 120);
+  mono(26, 700);
+  ctx.fillText('MIDDLE STUDIES  REEL — ' + id, x + 48, sy + 70);
+  ctx.textAlign = 'right'; ctx.fillText('Claude', x + w - 48, sy + 70);
+  ctx.restore();
+}
+
+// ───────────────────────── 背景（世界の y で色が決まる）
+function bgAt(wy) {
+  wy = ((wy % L) + L) % L;
+  if (wy >= FEED_TOP) return INK;
+  if (wy >= PAPER_TOP) return PAPER;
+  return PINK;
+}
+
+// ───────────────────────── 1枚の絵（カメラ位置 cy・時刻 t）
+function scene(t, cy) {
+  // 世界は L で巻く：cy を [0, L) に寄せ、要素は y と y-L の2か所に描く
+  const cw = ((cy % L) + L) % L;
+  // 背景の帯
+  const bands = [[-L, 0, null], [0, PAPER_TOP, PINK], [PAPER_TOP, FEED_TOP, PAPER], [FEED_TOP, L, INK], [L, L + PAPER_TOP, PINK]];
+  for (const [a, b, c] of bands) {
+    const col = c || INK;
+    const s0 = a - cw, s1 = b - cw;
+    if (s1 < 0 || s0 > H) continue;
+    ctx.fillStyle = col; ctx.fillRect(0, Math.max(0, s0), W, Math.min(H, s1) - Math.max(0, s0));
+  }
+  for (const o of [0, L]) {
+    const oy = o - cw;     // 世界 y → 画面 y は y + oy
+    drawStop(t, oy);
+    drawLedges(t, oy);
+    drawGalton(t, oy);
+    drawFeed(oy);
+  }
+  drawBall(t, -cw);
+  drawBall(t, L - cw);
+}
+
+function drawStop(t, oy) {
+  if (oy + 1920 < 0 || oy > H) return;
+  ctx.save();
+  font(STOP.size, 900, 'normal');
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  STOP.letters.forEach((l, i) => {
+    const o = STOP.letterOff(t, i);
+    // ピリオドが跳ぶ瞬間、OP は踏まれて少し沈む
+    const push = i >= 2 ? Math.max(0, Math.sin(Math.PI * clamp((t - 1.55) / 0.3))) * 26 * (i === 3 ? 1 : 0.5) : 0;
+    const sy = 1 - o / 900;
+    ctx.save();
+    ctx.translate(l.x + l.w / 2, l.y + oy + o + push);
+    ctx.scale(1 / Math.sqrt(sy), sy);
+    ctx.fillStyle = INK;
+    ctx.fillText(l.ch, -l.w / 2, 0);
+    ctx.restore();
+  });
+  // 「指を止めて」の小さな字（タイプ打ち）
+  mono(40, 700); ctx.fillStyle = INK;
+  const line = 'you were about to scroll.';
+  const nshow = Math.floor(clamp((t - 0.78) / 0.55) * line.length);
+  ctx.fillText(line.slice(0, nshow) + (t > 0.78 && t < 1.7 && Math.floor(t * 6) % 2 ? '▍' : ''), 70, STOP.b2 + 170 + oy);
+  // 段の先を指す矢印（1.7 から）
+  const a = clamp((t - 1.65) / 0.3);
+  if (a > 0) {
+    ctx.fillText('↓ follow the dot', 70, STOP.b2 + 236 + oy);
+  }
+  ctx.restore();
+}
+
+function drawLedges(t, oy) {
+  for (let j = 0; j < LEDGES.length; j++) {
+    const l = LEDGES[j];
+    const sy = l.top + oy;
+    if (sy > H + 50 || sy + LEDGE_H < -50) continue;
+    const dt = t - LAND[j];
+    const dip = dt > 0 ? kick(dt, 700, 22, 0.25) : 0;
+    font(150, 900, 'normal');
+    const tw = ctx.measureText(l.w).width;
+    const w = tw + 90, x = l.cx - w / 2;
+    // 着地した段は一瞬、色が反転する
+    const flash = dt > 0 && dt < 0.12;
+    // 波紋
+    if (dt > 0 && dt < 0.6) {
+      const u = dt / 0.6, b = LAND_X(j);
+      ctx.strokeStyle = INK; ctx.lineWidth = 6 * (1 - u);
+      ctx.beginPath(); ctx.ellipse(b, sy + dip, 40 + 260 * easeOut(u), 10 + 50 * easeOut(u), 0, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.save();
+    ctx.translate(0, sy + dip);
+    rr(x, 0, w, LEDGE_H, 22); ctx.fillStyle = flash ? l.text : l.fill; ctx.fill();
+    ctx.fillStyle = flash ? l.fill : l.text;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText(l.w, l.cx, LEDGE_H / 2 + 54);
+    ctx.restore();
+    // 段の番号
+    mono(24, 700); ctx.fillStyle = INK; ctx.textAlign = l.cx < CX ? 'left' : 'right';
+    ctx.fillText(`0${j + 1} / 06`, l.cx < CX ? x : x + w, sy + dip + LEDGE_H + 40);
+    ctx.textAlign = 'left';
+  }
+}
+const LAND_X = j => LEDGES[j].cx + (LEDGES[j].cx < CX ? 40 : -40);
+
+function drawBall(t, oy) {
+  const b = ballAt(t);
+  const sy = b.y + oy;
+  if (sy < -300 || sy > H + 300) return;
+  ctx.save();
+  if (b.mode === 'reservoir') {
+    const out = dots.reduce((n, d) => n + (t >= d.r ? 1 : 0), 0);
+    const left = 1 - out / N;
+    const arrive = t - TOSS_T1;
+    const sq = arrive < 0.25 ? Math.exp(-arrive * 14) * Math.cos(arrive * 34) * 0.3 : 0;
+    const r = BALL_R * Math.sqrt(left);
+    if (r > 0.5) {
+      ctx.translate(b.x, sy + r * 0.6);
+      ctx.scale(1 + sq, 1 - sq);
+      ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(0, -r * 0.6, r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore(); return;
+  }
+  ctx.translate(b.x, sy);
+  if (b.mode === 'coin') {
+    const c = Math.cos(b.flip);
+    ctx.scale(1, Math.max(0.04, Math.abs(c)));
+    ctx.fillStyle = c > 0 ? INK : PAPER;
+    ctx.beginPath(); ctx.arc(0, 0, BALL_R, 0, Math.PI * 2); ctx.fill();
+    ctx.lineWidth = 6; ctx.strokeStyle = c > 0 ? PAPER : INK; ctx.beginPath(); ctx.arc(0, 0, BALL_R - 12, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = c > 0 ? PAPER : INK;
+    font(58, 900, 'normal'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(c > 0 ? 'H' : 'T', 0, 4);
+  } else {
+    ctx.scale(b.sx, b.sy);
+    ctx.fillStyle = INK;
+    ctx.beginPath(); ctx.arc(0, 0, BALL_R, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawGalton(t, oy) {
+  const top = GN - 400 + oy, bot = FLOOR + 700 + oy;
+  if (bot < 0 || top > H) return;
+  ctx.save();
+  // じょうご
+  ctx.strokeStyle = INK; ctx.lineWidth = 8; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(CX - 230, GN - 180 + oy); ctx.lineTo(CX - 46, GN + 40 + oy); ctx.moveTo(CX + 230, GN - 180 + oy); ctx.lineTo(CX + 46, GN + 40 + oy); ctx.stroke();
+  // 釘
+  for (let k = 0; k < ROWS; k++) {
+    for (let i = 0; i <= k; i++) {
+      const x = CX + (i - k / 2) * PX, y = rowY(k) + oy;
+      if (y < -20 || y > H + 20) continue;
+      let f = 0;
+      for (const te of pegHits[k][i]) { if (te <= t && t - te < 0.5) f = Math.max(f, Math.exp(-(t - te) / 0.09)); }
+      ctx.fillStyle = f > 0.05 ? PINK : INK;
+      ctx.beginPath(); ctx.arc(x, y, PEG_R * (1 + f * 1.1), 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  // 仕切り
+  ctx.lineWidth = 3; ctx.strokeStyle = INK;
+  const divTop = rowY(ROWS - 1) + 120 + oy;
+  for (let h = 0; h <= ROWS + 1; h++) {
+    const x = CX + (h - ROWS / 2 - 0.5) * PX;
+    ctx.beginPath(); ctx.moveTo(x, divTop); ctx.lineTo(x, FLOOR + oy); ctx.stroke();
+  }
+  ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(10, FLOOR + oy + 4); ctx.lineTo(W - 10, FLOOR + oy + 4); ctx.stroke();
+  // 粒
+  for (const d of dots) {
+    const p = dotAt(d, t);
+    if (!p) continue;
+    const y = p.y + oy;
+    if (y < -20 || y > H + 20) continue;
+    ctx.fillStyle = p.c;
+    ctx.beginPath(); ctx.arc(p.x, y, DOT_R, 0, Math.PI * 2); ctx.fill();
+  }
+  // 正規分布の曲線（11.5〜12.6 で引かれる）
+  const cu = clamp((t - 11.45) / 1.1);
+  if (cu > 0) {
+    const mu = ROWS / 2, sd = Math.sqrt(ROWS / 4);
+    ctx.strokeStyle = INK; ctx.lineWidth = 7; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    const steps = 200, xs0 = -0.9, xs1 = ROWS + 0.9;
+    for (let s = 0; s <= steps * easeInOut(cu); s++) {
+      const hx = lerp(xs0, xs1, s / steps);
+      const cnt = N * Math.exp(-0.5 * Math.pow((hx - mu) / sd, 2)) / (sd * Math.sqrt(2 * Math.PI));
+      const y = FLOOR - DOT_R - (cnt / 4) * 15 - 26 + oy;
+      const x = CX + (hx - mu) * PX;
+      s ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.stroke();
+  }
+  // 決め：「you stopped.」（12.0〜）
+  const ty = FLOOR + oy + 230;
+  if (t > 11.9) {
+    font(100, 900, 'normal'); const tsz = 100 * 950 / ctx.measureText('stopped.').width; font(tsz, 900, 'normal'); ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+    const words = ['you', 'stopped.'];
+    let x = 56;
+    const lineY = [ty, ty + tsz * 0.92];
+    words.forEach((w, wi) => {
+      let cx = 56;
+      for (let ci = 0; ci < w.length; ci++) {
+        const ch = w[ci];
+        const st = 11.9 + wi * 0.18 + ci * 0.035;
+        const u = clamp((t - st) / 0.45);
+        const cw2 = ctx.measureText(ch).width;
+        if (u > 0) {
+          ctx.save();
+          ctx.translate(cx + cw2 / 2, lineY[wi] + (1 - backOut(u)) * 120);
+          ctx.globalAlpha = clamp(u * 3);
+          ctx.fillStyle = wi ? PINK : INK;
+          ctx.fillText(ch, -cw2 / 2, 0);
+          ctx.restore();
+        }
+        cx += cw2;
+      }
+    });
+  }
+  // 盤の注記
+  mono(26, 700); ctx.fillStyle = INK; ctx.textAlign = 'left';
+  ctx.fillText('GALTON BOARD', 40, GN - 120 + oy);
+  ctx.fillText('14 ROWS · p = 0.5', 40, GN - 82 + oy);
+  ctx.textAlign = 'right';
+  ctx.fillText('400 DROPS', W - 40, GN - 120 + oy);
+  ctx.fillText(`${String(countLE(ALL_HITS, t)).replace(/(\d)(\d{3})$/, '$1 $2')} COIN TOSSES`, W - 40, GN - 82 + oy);
+  ctx.restore();
+}
+function countLE(arr, t) { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] <= t) lo = m + 1; else hi = m; } return lo; }
+
+function drawFeed(oy) {
+  for (const c of CARDS) {
+    const sy = c.y + oy;
+    if (sy > H || sy + c.h < 0) continue;
+    drawCard(c, sy);
+  }
+}
+
+// ───────────────────────── 画面に貼る字（HUD）
+function hud(t, cy) {
+  const v = camVel(t);
+  const cw = ((cy % L) + L) % L;
+  const topBg = bgAt(cy + 60), botBg = bgAt(cy + H - 60);
+  const on = bg => (bg === INK ? PAPER : INK);
+  mono(26, 700); ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = on(topBg);
+  ctx.textAlign = 'left'; ctx.fillText('MIDDLE STUDIES  REEL — 027', 40, 72);
+  ctx.textAlign = 'right'; ctx.fillText('DROP', W - 40, 72);
+  ctx.fillStyle = on(botBg);
+  ctx.textAlign = 'left';
+  const sp = Math.round(Math.abs(v));
+  ctx.fillText(`SCROLL  ${String(sp).replace(/(\d)(\d{3})$/, '$1 $2')} px/s`, 40, H - 52);
+  ctx.textAlign = 'right'; ctx.fillText('Claude', W - 40, H - 52);
+  // 右端のスクロールバー
+  const tr0 = 160, tr1 = H - 160, th = (tr1 - tr0) * H / L;
+  const cyS = cw > L - 2500 ? cw - L : cw;
+  const pos = tr0 + (tr1 - tr0 - th) * clamp((cyS + 2500) / (L - H));
+  ctx.globalAlpha = 0.5;
+  ctx.fillStyle = on(bgAt(cy + H / 2));
+  rr(W - 22, clamp(pos, tr0, tr1 - th), 8, th, 4); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+// ───────────────────────── __seek：フリック中だけカメラのモーションブラー
+const off = document.createElement('canvas'); off.width = W; off.height = H;
+const offCtx = off.getContext('2d');
+function render(t) {
+  const v = Math.abs(camVel(t));
+  const pxPerFrame = v / 60;
+  const K = pxPerFrame > 6 ? Math.min(14, Math.ceil(pxPerFrame / 9)) : 1;
+  ctx = mainCtx;
+  if (K === 1) { scene(t, camAt(t)); hud(t, camAt(t)); return; }
+  for (let j = 0; j < K; j++) {
+    const ts = (t + ((j + 0.5) / K - 0.5) / 60 + 15) % 15;
+    ctx = offCtx; scene(ts, camAt(ts));
+    ctx = mainCtx;
+    ctx.globalAlpha = 1 / (j + 1); ctx.drawImage(off, 0, 0); ctx.globalAlpha = 1;
+  }
+  hud(t, camAt(t));
+}
+
+(async () => {
+  await document.fonts.load(`900 100px ${FONT}`);
+  await document.fonts.load(`700 26px ${MONO}`);
+  await document.fonts.ready;
+  layoutStop();
+  buildCamera();
+  CARDS = feedCards();
+  window.__dbg = () => ({ size: STOP.size, cap: STOP.capPx, b1: STOP.b1, b2: STOP.b2, L, GN, FLOOR, FEED_TOP });
+  window.__seek = t => { render(((t % 15) + 15) % 15); };
+  if (!location.search.includes('render')) {
+    const t0 = performance.now();
+    const loop = () => { window.__seek((performance.now() - t0) / 1000 % 15); requestAnimationFrame(loop); };
+    loop();
+  }
+})();
+</script>
+</body>
+</html>
