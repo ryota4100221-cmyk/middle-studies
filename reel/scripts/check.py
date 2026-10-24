@@ -96,11 +96,15 @@ def main():
                                     "-of", "json", mp4], capture_output=True, text=True).stdout)
     s, fmt = pr["streams"][0], pr["format"]
     spec = (s["width"], s["height"], s["r_frame_rate"], int(s["nb_frames"]))
-    (O if spec == (1920, 1080, "60/1", 900) else R)(f"仕様 {spec[0]}×{spec[1]} {spec[2]} {spec[3]}f（要 1920×1080 60/1 900f）")
+    ww, hh = (1080, 1920) if w.get("format") == "vertical" else (1920, 1080)
+    (O if spec == (ww, hh, "60/1", 900) else R)(f"仕様 {spec[0]}×{spec[1]} {spec[2]} {spec[3]}f（要 {ww}×{hh} 60/1 900f）")
     dur = float(fmt["duration"])
     (O if abs(dur - 15) < 0.03 else R)(f"尺 {dur:.3f}s")
     mb = int(fmt["size"]) / 1e6
     (O if mb <= 8 else R)(f"容量 {mb:.2f}MB（上限8MB）")
+
+    # --- 今日の条件（conditions.json）に沿っているか ---
+    check_condition(w, d, src)
 
     # --- 止まっている／真っ黒な区間 ---
     log = subprocess.run(["ffmpeg", "-v", "info", "-i", mp4, "-vf",
@@ -149,6 +153,45 @@ def main():
     except FileNotFoundError:
         R(f"配信リポ {MEDIA} が無い")
     return finish(wid)
+
+
+DEPTH_WORDS = re.compile(r"depth|3d|perspective|parallax|projection|fly-through|z-sort|dolly", re.I)
+
+
+def check_condition(w, d, src):
+    try:
+        days = json.load(open(os.path.join(REEL, "conditions.json")))["days"]
+    except FileNotFoundError:
+        days = {}
+    c = days.get(w["date"])
+    if not c:
+        if w.get("condition") and w["condition"] != "control":
+            R(f"condition={w['condition']} だが conditions.json に {w['date']} の行が無い")
+        return
+    cid = c["id"]
+    if w.get("condition") != cid:
+        R(f"今日の条件は {cid}。works.json の condition が {w.get('condition')!r}"); return
+    O(f"条件 {cid}")
+    want_v = c.get("format") == "vertical"
+    if want_v != (w.get("format") == "vertical") or want_v != bool(re.search(r"__format\s*=\s*['\"]vertical", src)):
+        R(f"縦横が条件と合わない（条件 {'縦' if want_v else '横'}／works.json format={w.get('format')}）")
+    look = w.get("look", {})
+    if c.get("palette_allowed"):
+        allowed = {x.lower() for x in c["palette_allowed"]}
+        bad = [x for x in look.get("palette", []) if x.lower() not in allowed]
+        (R if bad else O)(f"palette が条件の範囲 {'外: ' + ', '.join(bad) if bad else '内'}")
+    if c.get("type_allowed"):
+        bad = [x for x in look.get("type", []) if x not in c["type_allowed"]]
+        (R if bad else O)(f"書体が条件の範囲 {'外: ' + ', '.join(bad) if bad else '内'}")
+    if c.get("asset"):
+        name = os.path.basename(c["asset"])
+        used = name in src or os.path.exists(os.path.join(d, name))
+        (O if used else R)(f"素材 {name} を{'使っている' if used else '使っていない'}")
+    if cid == "no-depth":
+        hit = [t for t in w.get("techniques", []) if DEPTH_WORDS.search(t)]
+        if re.search(r"three(\.module)?(\.min)?\.js|THREE\.|perspective\s*[:(]", src):
+            hit.append("source.html に three.js / perspective")
+        (R if hit else O)(f"奥行きなし {'違反: ' + ', '.join(hit) if hit else '守っている'}")
 
 
 def finish(wid):

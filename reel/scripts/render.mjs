@@ -12,7 +12,7 @@ import path from 'node:path';
 import os from 'node:os';
 
 const dir = path.resolve(process.argv[2] || '.');
-const W = 1920, H = 1080, FPS = 60;
+let W = 1920, H = 1080; const FPS = 60;   // window.__format === 'vertical' のときだけ 1080×1920（conditions.json・2026-10-24）
 const FR = path.join(os.tmpdir(), 'reel-frames-' + path.basename(dir));
 rmSync(FR, { recursive: true, force: true }); mkdirSync(FR, { recursive: true });
 
@@ -23,6 +23,13 @@ page.on('pageerror', e => { console.error('[pageerror]', e.message); errors++; }
 page.on('console', m => { if (m.type() === 'error') { console.error('[console]', m.text()); errors++; } });
 await page.goto('file://' + path.join(dir, 'source.html') + '?render', { waitUntil: 'load' });
 await page.waitForFunction(() => typeof window.__seek === 'function' && typeof window.__duration === 'number', null, { timeout: 30000 });
+if (await page.evaluate(() => window.__format === 'vertical')) {
+  [W, H] = [1080, 1920];
+  await page.setViewportSize({ width: W, height: H });
+  await page.reload({ waitUntil: 'load' });   // 縦の寸法で組み直させる（resize に頼らない）
+  await page.waitForFunction(() => typeof window.__seek === 'function', null, { timeout: 30000 });
+  console.log('  format: vertical 1080×1920');
+}
 await page.evaluate(() => document.fonts.ready);
 await page.waitForTimeout(500);
 const dur = await page.evaluate(() => window.__duration);

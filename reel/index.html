@@ -52,6 +52,9 @@
     display: block;
     background: var(--panel);
   }
+  /* 縦9:16の回（works.json format=vertical・2026-10-24〜） */
+  .feature video.vert, .card video.vert { aspect-ratio: 9 / 16; width: auto; max-width: 100%; height: min(78vh, 960px); margin: 0 auto; }
+  .card video.vert { height: auto; width: 56.25%; }
   .meta { margin-top: 18px; display: flex; justify-content: space-between; gap: 16px; font-size: 11px; letter-spacing: 0.22em; color: var(--mute); }
   .feature h2 { margin-top: 14px; font-size: clamp(28px, 3.4vw, 48px); font-weight: 700; letter-spacing: -0.02em; }
   .archive-head {
@@ -77,6 +80,7 @@
     nav { padding: 20px 16px; gap: 20px; }
     header { grid-template-columns: 1fr; padding: 8vh 16px 6vh; gap: 28px; }
     .feature { padding: 0 16px 10vh; }
+    .feature video.vert { width: 100%; height: auto; }
     .archive-head { padding: 32px 16px 20px; }
     .grid { padding: 0 16px 24px; }
     .empty { padding: 0 16px 8vh; }
@@ -116,7 +120,7 @@ fetch('works.json')
     const list = works.slice().reverse();
     const w = list[0], dir = `works/${w.id}_${w.slug}`;
     feature.innerHTML = `
-      <video src="${esc(w.video)}" poster="${dir}/poster.jpg" autoplay loop muted playsinline controls preload="auto"></video>
+      <video ${w.format === 'vertical' ? 'class="vert" ' : ''}src="${esc(w.video)}" poster="${dir}/poster.jpg" autoplay loop muted playsinline controls preload="auto"></video>
       <div class="meta"><span>REEL / ${esc(w.id)} — LATEST</span><span>${esc(w.date)}</span></div>
       <h2>${esc(w.title)}</h2>`;
     const rest = list.slice(1);
@@ -132,7 +136,7 @@ fetch('works.json')
       const a = document.createElement('div');
       a.className = 'card';
       a.innerHTML = `
-        <video data-src="${esc(w.video)}" poster="${dir}/poster.jpg" loop muted playsinline controls preload="none"></video>
+        <video ${w.format === 'vertical' ? 'class="vert" ' : ''}data-src="${esc(w.video)}" poster="${dir}/poster.jpg" loop muted playsinline controls preload="none"></video>
         <div class="meta"><span>REEL / ${esc(w.id)}</span><span>${esc(w.date)}</span></div>
         <h3>${esc(w.title)}</h3>`;
       grid.appendChild(a);

@@ -63,6 +63,17 @@ echo "[$(date)] === REEL daily start ===" >> "$LOG_FILE"
 OUT_TMP="$(mktemp /tmp/middle-reel-out.XXXXXX)"
 PROMPT="まず「$SKILL_MD」を読み、その手順どおりに今日の MIDDLE STUDIES REEL を1本制作・公開して。${REEL_FORCE:+（工程0の「今日の分は済んでいるか」は飛ばしてよい）} 🔴 これは無人の夜間実行で、人は見ていない。質問せず、レンダーは同期で待ち、ターンを途中で終えない。止めるときは SKILL.md 工程7のとおり Slack へ通知してから終わる。完走したときだけ、最後の行に REEL_OK とだけ書く。"
 
+# 今日の条件（reel/conditions.json・2026-10-24〜）。SKILL.md でも読ませるが、読み落としを防ぐためプロンプトにも直接入れる
+COND_LINE="$(/usr/bin/python3 -c '
+import json,sys
+d=json.load(open(sys.argv[1]))["days"].get(sys.argv[2])
+if d and d["id"]!="control": print("今日の条件（id="+d["id"]+"）："+d["line"])
+' "$ROOT/reel/conditions.json" "$(TZ=Asia/Tokyo date +%F)" 2>/dev/null)"
+if [[ -n "$COND_LINE" ]]; then
+  PROMPT="$PROMPT 🔴 $COND_LINE（ブリーフは置き換えない。SKILL.md「今日の条件」の約束も守り、works.json に condition を書く）"
+  echo "[$(date)] $COND_LINE" >> "$LOG_FILE"
+fi
+
 MAX_ATTEMPTS=6
 attempt=1
 RC=1

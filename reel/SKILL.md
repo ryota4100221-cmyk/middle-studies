@@ -10,12 +10,26 @@ description: >
 
 2026-09-29 開始（Ryota指示）。公開先 https://middle.lab.monakadesign.com/reel/
 
-## ブリーフ（毎回これだけ。書き換えない・足さない）
+## ブリーフ（書き換えない。足してよいのは下の「今日の条件」1行だけ）
 
 > 君がどれだけすごいモーションデザイナーかを見せる、ダイナミックな15秒のモーショングラフィックス動画を作って。履歴書に添えるショーリールのつもりで。全力でやって。
 
 **このブリーフが唯一の創作上の指示。** 下に書いてあるのは、技術の約束と公開の手順と、
 「毎日同じ絵に落ちない」ための歯止めだけ。見た目・題材・構成・色・書体は毎回自分で決める。
+
+## 今日の条件（`reel/conditions.json`・2026-10-24 Ryota指示）
+
+`TZ=Asia/Tokyo date +%F` の日付が `conditions.json` の `days` にあり、`id` が `control` 以外なら、
+**その `line` をブリーフの直後に足して読む**（条件はブリーフを置き換えない＝「全力のショーリール」のまま、条件の中で全力を出す）。
+
+- 行が無い日・`control` の日は、元のブリーフだけ（比較用の対照）。何も足さない。
+- works.json に `"condition": "<id>"` を必ず書く（control の日は `"control"`、表に無い日は書かない）。check.py が表と照合する。
+- 条件ごとの技術の約束：
+  - `vertical`：`window.__format = 'vertical'` を置き、1080×1920 で組む（render.mjs が読んで縦で撮る）。見どころは**最初の3秒**。工程4の1番目を「0〜3秒の間に手を止めさせるか」に読み替え、0.5秒・1.5秒・3秒を等倍で切り出して見る。
+  - `logo`：`assets/monaka-logo.svg` を作品フォルダにコピーし、source.html から相対パスで読む（またはパスをインラインで埋める）。字形を描き直さない。最後の1.5秒以上はロゴが読める状態で止まらずに決める。
+  - `case-values`：`look.palette` と `look.type` は `palette_allowed`／`type_allowed` の中だけ。和文はGoogle Fontsから読む。
+  - `no-depth`：three.js・WebGLの3D・CSS `perspective`・自作の3D投影を使わない。techniques に depth / 3d / perspective / parallax / projection / fly-through を含む語を書かない（書くなら条件違反）。
+- 条件があっても、工程1（前の7本を見る）と変化ゲートはそのまま効く。
 
 ## 🔴 無人で走る
 
@@ -57,7 +71,7 @@ description: >
 - **`window.__duration = 15` と `window.__seek(t)` を公開する。** `__seek(t)` は時刻 t の絵を描き切る純関数（何度呼んでも同じ絵・呼ぶ順番に依存しない）。Promise を返してもよい（render.mjs が await する）。
 - 🔴 **`Math.random()` を使わない**（撮るたびに絵が変わる）。乱数はシード付き PRNG（mulberry32 等）で。`requestAnimationFrame` や経過時間で状態を進めない（GSAP なら timeline を paused で作って `tl.seek(t)`／three.js なら t から姿勢を計算して `renderer.render`）。
 - URL に `?render` が付いていないときは自走再生する（ブラウザで開いて見られるように）。
-- 1920×1080・60fps・ちょうど15秒・無音（BGM素材は無い）。**15秒でループの戻りが自然になるよう終える**のが望ましい。
+- 1920×1080（今日の条件が `vertical` のときだけ 1080×1920）・60fps・ちょうど15秒・無音（BGM素材は無い）。**15秒でループの戻りが自然になるよう終える**のが望ましい。
 - `window.__poster = 秒` で、ポスター（一覧の静止画）に使う1枚を指定する。
 - 右下などに作品番号を入れるなら `REEL — NNN`。署名は `Claude`（作者はClaude。Ryota の作品だと書かない）。
 
@@ -94,7 +108,9 @@ node scripts/render.mjs works/NNN_slug     # 1〜2分。同期で待つ
   "techniques": ["主役の技法を kebab-case で5〜10個"],
   "look": { "palette": ["#hex", "..."], "type": ["書体名"], "structure": "構成の型", "renderer": "canvas2d|svg|dom|webgl|three|gsap" },
   "review_rounds": 3,
-  "review": "周ごとに見つけたこと→直したこと。最後に 許容した差：…"
+  "review": "周ごとに見つけたこと→直したこと。最後に 許容した差：…",
+  "condition": "今日の条件の id（control 含む。conditions.json に日付が無い日は項目ごと書かない）",
+  "format": "vertical（縦の日だけ。横は書かない）"
 }
 ```
 
