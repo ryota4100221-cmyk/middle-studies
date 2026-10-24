@@ -936,5 +936,43 @@
     },
     "review_rounds": 4,
     "review": "1周目：Cの拡大で帯の継ぎ目の細線が残る→帯が閉じたら切り抜きをやめて1枚で描く／左下のショット名がタイムラインに重なる→タイムラインを右へ／F・G・Kの細かい地の上でUI文字が読めない→上下に地色の帯を敷く／時計の円周テキストが文の途中で切れる→文字数を文の長さの倍数に／Dの合体が凸凹→合体を早める。2周目：ヒーローの字が跳ねると模様の箱で頭が切れる→箱を上へ広げた。3周目：ループの継ぎ目（14.97s→0s）とUIの等倍を確認、Dの合体途中がまだ凸凹→中心から円を育てて覆う。4周目：合体を確認。許容した差：Dの合体途中の数フレームに残るわずかな凸凹と、各ショット頭の0.1秒ほどの溜め。"
+  },
+  {
+    "id": "026",
+    "slug": "morphogenesis",
+    "title": "Morphogenesis",
+    "date": "2026-10-25",
+    "concept": "画面の印はすべて、1枚のグレイ–スコット反応拡散（チューリング・パターン）の場の濃さで、場は毎コマ数十ステップずつ実際に解いている。0秒目の桃色の1つの細胞が分裂を繰り返して増え、文字の形に限って負の斑点の条件を与えると、場の中から芥子色の TURING が育つ。斜めに走る前線が条件を迷路へ書き換えて字を溶かし、7.4秒からは場ごと渦に巻いてかき混ぜる（見せ場は8.9秒、迷路が同心の指紋になるところ）。中心から負の前線が広がって芥子色に塗り替えたあと、皿が閉じるように場が縮み、カメラが寄って0秒目の1つの細胞に戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/026_morphogenesis.mp4",
+    "techniques": [
+      "gray-scott-reaction-diffusion-cpu",
+      "spatially-varying-feed-kill-maps",
+      "text-mask-as-regime-map",
+      "mitosis-close-up-zoom-out",
+      "sweeping-parameter-front",
+      "semi-lagrangian-vortex-stir",
+      "checkpointed-deterministic-simulation-seek",
+      "height-field-relief-shading-with-drop-shadow",
+      "iris-close-to-seed-loop"
+    ],
+    "look": {
+      "palette": [
+        "#08261d",
+        "#0e3d2e",
+        "#ffa8c4",
+        "#ffbe2e",
+        "#f4eee2"
+      ],
+      "type": [
+        "Climate Crisis (grown)",
+        "Gloock",
+        "Reddit Mono"
+      ],
+      "structure": "one simulated field, one continuous camera / zoom out from a single dividing cell (mitosis) → TURING inoculated and grown as negative spots → diagonal front rewrites it into a labyrinth → vortex stir into a fingerprint spiral (hero) → negative front floods saffron from the centre → the dish closes while the camera dives back into one cell",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：分裂の寄り・TURING・渦の指紋・ループの戻りは成立。終わりの細胞に鏡面ハイライトが2つ出る（高倍率の双線形補間）→ 鏡面を弱く広く。2周目：ハイライトは1つに、14.98秒と0秒目の細胞が一致。場面が替わる瞬間に章の題が0から出直して一瞬消える → 題の不透明度を0.4から立ち上げる。3周目：題の明滅は解消、直すことが言えなくなった。許容した差：迷路の前線が通ると6秒台で TURING の字が読めなくなる（字が場に溶けること自体を見せる場面として残す）。",
+    "condition": "control"
   }
 ]
