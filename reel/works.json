@@ -1053,5 +1053,49 @@
     "review_rounds": 3,
     "review": "1周目：HUDの書体が1コマ目だけ読み込み前になっていた→フォントを読み終えてから__seekを出すようにした。終盤でマークの中に黒い円盤が残りすぎていた→虹彩が閉じるのを0.35秒早めた。2周目：見せ場の入れ子の三日月を透明度でフェードさせていたため、ライムと白が黒に混ざって濁ったオリーブ色・灰色になっていた→透明度を使わず、1組から拡大して展開・収束するだけにした。3周目：字の位置を全コマで数値検査し、跳びが無いことを確かめた。2πの巻き数の付け替えをぶれとして数えていたのを直した。ロックアップを等倍で切り出し、字形・字間・比率が原本と一致することを確かめた。許容した差：5.0秒と10.3秒前後に、移動中の字が一瞬重なる。",
     "condition": "logo"
+  },
+  {
+    "id": "029",
+    "slug": "paper-trail",
+    "title": "Paper Trail",
+    "date": "2026-10-25",
+    "concept": "架空の印刷会社「ホシノメ印刷」のコーポレートサイトのFVに置く15秒で、色と書体は案件の確定値（グレー4段・墨・藍・水色／Kaisei Tokumin・BIZ UDPGothic・Libre Franklin）だけ。1枚の紙が形を変えて15秒をつなぐ：波打つ紙帯が版の下を通るたびに『紙のことなら、ホシノメへ。』が刷られ、刷られた「紙」の字に寄って断裁すると頁になり、13字を1頁ずつ加速しながらめくる。めくり終えた頁は背の1点を軸に色見本の扇に開き、星形の輪になって羽根が順に裏返る（見せ場は8.8秒）。扇のリベットの穴へ飛び込み、FVの小さな扇のリベットから引くとサイトのFVになって、その紙がめくれて0秒目の紙帯に戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/029_paper-trail.mp4",
+    "techniques": [
+      "paper-web-on-arc-length-path",
+      "plate-line-clipped-printing",
+      "glyph-match-zoom-into-page-cut",
+      "flat-fold-page-turn-by-reflection",
+      "accelerating-flip-book",
+      "pages-to-swatch-fan-pivot-morph",
+      "fan-to-rosette-with-domino-blade-flip",
+      "zoom-through-rivet-into-layout",
+      "fv-page-peel-back-to-web",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#f2f2f2",
+        "#ffffff",
+        "#e6e6e6",
+        "#d4d4d4",
+        "#1f3a6e",
+        "#9db0d6",
+        "#5c6068",
+        "#8c9099",
+        "#1c1e22"
+      ],
+      "type": [
+        "Kaisei Tokumin",
+        "BIZ UDPGothic",
+        "Libre Franklin"
+      ],
+      "structure": "one sheet changing form, every cut carried by paper: web snaking under the plate rollers, copy printed → zoom into the printed 紙 and guillotine it into a page → 13-page flip book, accelerating → the flipped pages swing round the spine into a swatch fan → fan opens into a star rosette, blades flip over in a wave (hero) → dive into the rivet → pull out of the small fan's rivet into the corporate FV → the FV sheet peels off revealing the web of frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：頁から扇への変形で、幅の広い頁が一斉に縮んで白い塊が0.3秒できていた→頁は頁のまま背の1点を軸に先に振り出し、遅れて細くする順に変えた（色見本のHEXが扇の根元に覗く）。2周目：FVでコピーの字がカメラの引きと別の座標で落ちてきて、ヘッダより先に大きく出ていた→字もカメラの中に入れ、引き終わり近く（+0.7秒）から落とした。3周目：つなぎ目（3.2断裁・6.6扇・10.6リベット・13.9めくり→0秒）と見せ場9.2を等倍で確認、直すことなし。許容した差：紙帯は面で見せたまま平面内で曲げている（実際の紙は面内に曲がらない）。紙帯の弧の上で字が少し歪む。",
+    "condition": "case-values",
+    "condition_day": "2026-10-28"
   }
 ]

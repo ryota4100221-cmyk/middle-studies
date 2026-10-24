@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>REEL — 029 Paper Trail</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Kaisei+Tokumin:wght@800&family=Libre+Franklin:wght@400;600&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #f2f2f2; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; object-fit: contain; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// REEL — 029 Paper Trail · Claude
+// 架空の印刷会社「ホシノメ印刷」のFV。色と書体は案件の確定値だけ。1枚の紙が形を変えて15秒をつなぐ：
+// 紙帯に刷る → 断裁して頁に → パラパラめくり → 頁が色見本の扇になる → リベットの穴を抜けてFV → FVの紙がめくれて紙帯へ。
+window.__duration = 15;
+window.__poster = 8.75;
+
+const W = 1920, H = 1080;
+const cv = document.getElementById('c');
+cv.width = W; cv.height = H;
+const ctx = cv.getContext('2d');
+const off = document.createElement('canvas');
+off.width = W; off.height = H;
+const octx = off.getContext('2d');
+
+const C = { white: '#ffffff', g1: '#f2f2f2', g2: '#e6e6e6', g3: '#d4d4d4', ink: '#1c1e22', g5: '#5c6068', g6: '#8c9099', navy: '#1f3a6e', sky: '#9db0d6' };
+const COPY = [...'紙のことなら、ホシノメへ。'];   // 13字
+const COLS = ['#1f3a6e', '#9db0d6', '#5c6068', '#e6e6e6', '#1c1e22', '#d4d4d4', '#8c9099', '#1f3a6e', '#f2f2f2', '#5c6068', '#9db0d6', '#1c1e22', '#d4d4d4', '#ffffff'];
+const DARK = new Set(['#1f3a6e', '#5c6068', '#1c1e22', '#8c9099']);
+const inkOn = c => DARK.has(c) ? C.white : C.navy;
+const KF = s => `800 ${s}px "Kaisei Tokumin"`;
+const GF = (w, s) => `${w} ${s}px "BIZ UDPGothic"`;
+const LF = (w, s) => `${w} ${s}px "Libre Franklin"`;
+
+const cl = x => x < 0 ? 0 : x > 1 ? 1 : x;
+const lerp = (a, b, u) => a + (b - a) * u;
+const eio = x => { x = cl(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const eout = x => { x = cl(x); return 1 - Math.pow(1 - x, 3); };
+const ein = x => { x = cl(x); return x * x * x; };
+const sio = x => { x = cl(x); return .5 - .5 * Math.cos(Math.PI * x); };
+const bout = x => { x = cl(x); const c1 = 1.5, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const D2R = Math.PI / 180;
+
+/* ---------------- 紙帯（web）の道 ---------------- */
+const AMP = 250, LAM = 1400, RW = 235, GS = 130, V = 900;
+const DS = 2;
+let PXs, PYs, PAs, LTOT, S_BLUE, S_PLATE, S_IDLE1, S_IDLE2, S_STAR;
+(function buildPath() {
+  const xs = [], ys = [], cum = [0];
+  for (let x = -560; x <= 2480; x += 1) { xs.push(x); ys.push(540 + AMP * Math.sin(2 * Math.PI * (x - 1240) / LAM)); }
+  for (let i = 1; i < xs.length; i++) cum.push(cum[i - 1] + Math.hypot(xs[i] - xs[i - 1], ys[i] - ys[i - 1]));
+  LTOT = cum[cum.length - 1];
+  const N = Math.floor(LTOT / DS) + 1;
+  PXs = new Float32Array(N); PYs = new Float32Array(N); PAs = new Float32Array(N);
+  let j = 0;
+  for (let n = 0; n < N; n++) {
+    const s = n * DS;
+    while (j < cum.length - 2 && cum[j + 1] < s) j++;
+    const f = (s - cum[j]) / (cum[j + 1] - cum[j]);
+    const x = lerp(xs[j], xs[j + 1], f);
+    PXs[n] = x; PYs[n] = lerp(ys[j], ys[j + 1], f);
+    PAs[n] = Math.atan(AMP * 2 * Math.PI / LAM * Math.cos(2 * Math.PI * (x - 1240) / LAM));
+  }
+  const sAtX = x => cum[Math.round(x + 560)];
+  S_BLUE = sAtX(250); S_PLATE = sAtX(540); S_IDLE1 = sAtX(890); S_IDLE2 = sAtX(1600); S_STAR = sAtX(1240);
+})();
+function pt(s) {
+  const f = Math.max(0, Math.min(PXs.length - 1.001, s / DS));
+  const i = Math.floor(f), u = f - i;
+  return [lerp(PXs[i], PXs[i + 1], u), lerp(PYs[i], PYs[i + 1], u), lerp(PAs[i], PAs[i + 1], u)];
+}
+function offAt(tw) {           // 紙帯の送り量（tw<2.4 は等速、2.4〜3.2 で止まる）
+  if (tw < 2.4) return V * tw;
+  const u = cl((tw - 2.4) / 0.8);
+  return V * 2.4 + V * 0.8 * (u - u * u / 2);
+}
+let ADV = [], CEN = [], GAP = 560, PER = 0, MB = 0;
+function layoutWeb() {
+  ctx.font = KF(GS);
+  ADV = COPY.map(ch => ctx.measureText(ch).width);
+  let x = GAP; CEN = [];
+  for (let i = 0; i < COPY.length; i++) { CEN.push(x + ADV[i] / 2); x += ADV[i]; }
+  PER = x + 40;
+  MB = S_STAR - offAt(3.2) - CEN[0];
+}
+
+function strokeRun(g, s0, s1, color, width, dy = 0) {
+  if (s1 <= s0) return;
+  g.beginPath();
+  for (let s = s0; ; s += 6) {
+    const ss = Math.min(s, s1); const [x, y] = pt(ss);
+    if (s === s0) g.moveTo(x, y + dy); else g.lineTo(x, y + dy);
+    if (ss >= s1) break;
+  }
+  g.strokeStyle = color; g.lineWidth = width; g.lineCap = 'butt'; g.lineJoin = 'round'; g.stroke();
+}
+// 版の位置 thr より下流だけ刷られている。境目は版の線でクリップする
+function printed(g, s, half, thr, fn) {
+  if (s + half < thr) return;
+  const [x, y, a] = pt(s);
+  g.save(); g.translate(x, y); g.rotate(a);
+  if (s - half < thr) { g.beginPath(); g.rect(thr - s, -RW, half * 2 + 60, RW * 2); g.clip(); }
+  fn(g); g.restore();
+}
+function drawBar(g, s, fill, line, o) {
+  const [x, y, a] = pt(s);
+  for (const pass of [0, 1]) {
+    g.save(); g.translate(x, y + (pass ? 0 : 12)); g.rotate(a);
+    if (!pass) { g.fillStyle = C.g3; g.fillRect(-32, -172, 64, 344); g.restore(); continue; }
+    g.fillStyle = C.g5; g.fillRect(-18, -172, 36, 344);
+    g.fillStyle = fill; g.fillRect(-32, -152, 64, 304);
+    g.fillStyle = line;
+    for (let i = 0; i < 4; i++) {
+      const lx = -32 + (((o * 0.9) + i * 16) % 64 + 64) % 64;
+      g.fillRect(lx - 1.5, -152, 3, 304);
+    }
+    g.restore();
+  }
+}
+function drawWeb(g, tw) {
+  g.fillStyle = C.g1; g.fillRect(-W, -H, W * 3, H * 3);
+  const o = offAt(tw);
+  strokeRun(g, 0, LTOT, C.g3, RW, 12);
+  strokeRun(g, 0, LTOT, C.white, RW);
+  strokeRun(g, S_BLUE, LTOT, C.sky, 204);
+  strokeRun(g, S_BLUE, LTOT, C.white, 198);
+  const k0 = Math.floor((-MB - o - PER) / PER) - 1, k1 = Math.ceil((LTOT - MB - o) / PER) + 1;
+  for (let k = k0; k <= k1; k++) {
+    const u0 = MB + k * PER + o;
+    // 見当トンボ（水色の版）
+    printed(g, u0 + GAP * 0.32, 48, S_BLUE, gg => {
+      gg.strokeStyle = C.sky; gg.lineWidth = 3;
+      gg.beginPath(); gg.arc(0, 0, 24, 0, Math.PI * 2); gg.moveTo(-44, 0); gg.lineTo(44, 0); gg.moveTo(0, -44); gg.lineTo(0, 44); gg.stroke();
+    });
+    printed(g, u0 + GAP * 0.66, 120, S_PLATE, gg => {
+      gg.fillStyle = C.g5; gg.font = LF(600, 18); gg.textAlign = 'center'; gg.textBaseline = 'middle';
+      gg.fillText('HOSHINOME PRINTING', 0, -64); gg.font = GF(700, 20); gg.fillText('ホシノメ印刷', 0, 64);
+    });
+    for (let i = 0; i < COPY.length; i++) {
+      printed(g, u0 + CEN[i], ADV[i] / 2, S_PLATE, gg => {
+        gg.fillStyle = C.navy; gg.font = KF(GS); gg.textAlign = 'center'; gg.textBaseline = 'middle';
+        gg.fillText(COPY[i], 0, 0);
+      });
+    }
+  }
+  drawBar(g, S_BLUE, C.sky, C.white, o);
+  drawBar(g, S_PLATE, C.navy, C.sky, o);
+  drawBar(g, S_IDLE1, C.g2, C.g6, o);
+  drawBar(g, S_IDLE2, C.g2, C.g6, o);
+}
+const SC = 420 / GS;
+function camA(g, t) {           // 2.3〜3.2秒：刷られた「紙」の字に寄り、頁の位置・大きさに合わせる
+  if (t < 2.3) return;
+  const e = eio((t - 2.3) / 0.9);
+  const [gx, gy, a] = pt(S_STAR + offAt(t) - offAt(3.2));
+  g.translate(lerp(gx, 1240, e), lerp(gy, 540, e));
+  g.rotate(-a * e);
+  g.scale(Math.pow(SC, e), Math.pow(SC, e));
+  g.translate(-gx, -gy);
+}
+
+/* ---------------- 折り返し（頁めくり） ---------------- */
+function clipHalf(poly, M, n, sign) {      // poly ∩ {(p-M)·n * sign >= 0}
+  const out = [], f = p => ((p[0] - M[0]) * n[0] + (p[1] - M[1]) * n[1]) * sign;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length], fa = f(a), fb = f(b);
+    if (fa >= 0) out.push(a);
+    if ((fa >= 0) !== (fb >= 0)) { const u = fa / (fa - fb); out.push([lerp(a[0], b[0], u), lerp(a[1], b[1], u)]); }
+  }
+  return out;
+}
+function polyPath(g, p) { g.beginPath(); p.forEach((q, i) => i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1])); g.closePath(); }
+// 局所座標 [0,w]×[0,h] の紙を、角 Cc を P まで持っていく折り。mode: 'rem'（残る側）| 'flap'（めくれた側）
+function fold(g, w, h, Cc, P, front, back, mode) {
+  const dx = Cc[0] - P[0], dy = Cc[1] - P[1], d = Math.hypot(dx, dy);
+  const rect = [[0, 0], [w, 0], [w, h], [0, h]];
+  if (d < 0.5) { if (mode === 'rem') front(g); return; }
+  const n = [dx / d, dy / d], M = [(Cc[0] + P[0]) / 2, (Cc[1] + P[1]) / 2], u = [-n[1], n[0]];
+  if (mode === 'rem') {
+    const rem = clipHalf(rect, M, n, -1);
+    if (rem.length < 3) return;
+    g.save(); polyPath(g, rem); g.clip(); front(g);
+    const sh = Math.min(46, d * 0.3);
+    const gr = g.createLinearGradient(M[0], M[1], M[0] - n[0] * sh, M[1] - n[1] * sh);
+    gr.addColorStop(0, 'rgba(28,30,34,0.20)'); gr.addColorStop(1, 'rgba(28,30,34,0)');
+    g.fillStyle = gr; g.fillRect(-w, -h, w * 3, h * 3);
+    g.restore();
+    return;
+  }
+  const flap = clipHalf(rect, M, n, 1);
+  if (flap.length < 3) return;
+  const R00 = 2 * u[0] * u[0] - 1, R01 = 2 * u[0] * u[1], R11 = 2 * u[1] * u[1] - 1;
+  const ref = gg => gg.transform(R00, R01, R01, R11, M[0] - (R00 * M[0] + R01 * M[1]), M[1] - (R01 * M[0] + R11 * M[1]));
+  g.save(); g.translate(7, 11); ref(g); polyPath(g, flap); g.fillStyle = 'rgba(28,30,34,0.13)'; g.fill(); g.restore();
+  g.save(); ref(g); polyPath(g, flap); g.clip();
+  const L = Math.min(d * 0.5, 420);
+  const gr = g.createLinearGradient(M[0], M[1], M[0] + n[0] * L, M[1] + n[1] * L);
+  gr.addColorStop(0, C.g3); gr.addColorStop(0.35, C.g2); gr.addColorStop(1, C.white);
+  g.fillStyle = gr; g.fillRect(-w, -h, w * 3, h * 3);
+  back(g);
+  g.restore();
+}
+
+/* ---------------- 本（パラパラめくり） ---------------- */
+const SPX = 960, PY0 = 160, PW = 560, PH = 760;
+const FLIP0 = 3.72, NFL = 13;
+const FST = [], FDU = [];
+(function () {
+  let s = FLIP0;
+  for (let k = 0; k < NFL; k++) { FST.push(s); FDU.push(lerp(0.44, 0.27, k / (NFL - 1))); s += lerp(0.33, 0.12, Math.min(1, k / (NFL - 2))); }
+})();
+const T_F0 = FST[NFL - 1] + FDU[NFL - 1];   // めくり終わり＝扇の始まり
+const flipP = (k, t) => sio((t - FST[k]) / FDU[k]);
+
+function pageFront(g, k) {
+  g.fillStyle = C.white; g.fillRect(0, 0, PW, PH);
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  if (k < 13) {
+    g.fillStyle = C.navy; g.font = KF(420); g.fillText(COPY[k], PW / 2, PH / 2);
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+    g.fillStyle = C.g6; g.font = LF(600, 18); g.fillText(String(k + 1).padStart(2, '0') + ' / 13', 30, 46);
+    g.textAlign = 'right'; g.font = GF(400, 18); g.fillText('ホシノメ印刷', PW - 30, PH - 30);
+  } else {
+    g.fillStyle = C.g6; g.font = GF(400, 18); g.textAlign = 'right'; g.textBaseline = 'alphabetic';
+    g.fillText('ホシノメ印刷', PW - 30, PH - 30);
+  }
+}
+function pageBackContent(g, k) {        // 左頁として読める向き（[0,PW]）
+  const c = COLS[k];
+  g.fillStyle = c; g.fillRect(0, PH - 96, PW, 96);
+  g.fillStyle = inkOn(c); g.font = LF(600, 20); g.textAlign = 'left'; g.textBaseline = 'middle';
+  g.fillText(c.toUpperCase(), 30, PH - 48);
+  g.fillStyle = C.g6; g.font = GF(400, 18); g.textBaseline = 'alphabetic';
+  g.fillText('色見本 ' + String(k + 1).padStart(2, '0'), 30, PH - 124);
+}
+function drawBook(g, t) {
+  g.fillStyle = C.g1; g.fillRect(0, 0, W, H);
+  // 3.2〜3.7：断裁された紙帯の残りが左右へ抜ける
+  if (t < 3.72) {
+    const e = ein((t - 3.2) / 0.5), dx = 1500 * e;
+    for (const side of [-1, 1]) {
+      g.save();
+      g.beginPath(); if (side < 0) g.rect(-dx - 10, -200, SPX + 10, H + 400); else g.rect(SPX + PW + dx, -200, W, H + 400); g.clip();
+      g.translate(side * dx, 260 * e * e); g.rotate(side * 0.12 * e);
+      camA(g, 3.2); drawWeb(g, 3.2);
+      g.restore();
+    }
+  }
+  let started = 0; for (let k = 0; k < NFL; k++) if (t >= FST[k]) started = k + 1;
+  // 右の束（厚み）＋一番上の頁
+  const remain = 14 - started;
+  g.fillStyle = C.g3; g.fillRect(SPX + 6, PY0 + 12, PW, PH);
+  for (let i = Math.min(remain, 6) - 1; i >= 1; i--) { g.fillStyle = i % 2 ? C.g2 : C.white; g.fillRect(SPX, PY0 + i * 1.6, PW + i * 1.6, PH); }
+  g.save(); g.translate(SPX, PY0); pageFront(g, Math.min(started, 13)); g.restore();
+  // 左に重なった頁
+  let landed = -1; for (let k = 0; k < NFL; k++) if (t >= FST[k] + FDU[k]) landed = k;
+  if (landed >= 0) {
+    g.fillStyle = C.g3; g.fillRect(SPX - PW - 6, PY0 + 12, PW, PH);
+    for (let i = Math.min(landed + 1, 6) - 1; i >= 1; i--) { g.fillStyle = i % 2 ? C.g2 : C.white; g.fillRect(SPX - PW - i * 1.6, PY0 + i * 1.6, PW, PH); }
+    g.save(); g.translate(SPX - PW, PY0); g.fillStyle = C.white; g.fillRect(0, 0, PW, PH); pageBackContent(g, landed); g.restore();
+  }
+  // めくれている頁：残る側（下の頁から）→ めくれた側（下の頁から）
+  const fl = []; for (let k = NFL - 1; k >= 0; k--) { const p = flipP(k, t); if (t >= FST[k] && t < FST[k] + FDU[k]) fl.push([k, p]); }
+  const Pof = p => { const ph = Math.PI * p; return [PW * Math.cos(ph), PH - PW * 0.3 * Math.sin(ph)]; };
+  for (const mode of ['rem', 'flap'])
+    for (const [k, p] of fl) {
+      g.save(); g.translate(SPX, PY0);
+      fold(g, PW, PH, [PW, PH], Pof(p), gg => pageFront(gg, k), gg => { gg.save(); gg.translate(PW, 0); gg.scale(-1, 1); pageBackContent(gg, k); gg.restore(); }, mode);
+      g.restore();
+    }
+  // 刃（断裁の一瞬）
+  if (t < 3.34) { g.fillStyle = C.navy; const a = 1 - cl((t - 3.2) / 0.14); g.fillRect(SPX - 3 * a, 0, 6 * a, H); g.fillRect(SPX + PW - 3 * a, 0, 6 * a, H); }
+}
+
+/* ---------------- 色見本の扇 ---------------- */
+function strip(g, k, P, th, u, L, Wd, phi, withChar, edge) {
+  const x0 = lerp(k < 13 ? -PW : 0, -Wd / 2, u), x1 = lerp(k < 13 ? 0 : PW, Wd / 2, u);
+  const y0 = lerp(-PH, -L, u), y1 = lerp(0, 34, u);
+  const c = COLS[k], cs = Math.cos(phi);
+  const body = (gg, sx) => {
+    gg.translate(P[0], P[1]); gg.rotate(th); gg.scale(sx, 1);
+  };
+  // 影
+  g.save(); g.translate(5, 8); body(g, cs); g.fillStyle = 'rgba(28,30,34,0.13)'; g.fillRect(x0, y0, x1 - x0, y1 - y0); g.restore();
+  g.save(); body(g, cs);
+  if (cs >= 0) {
+    g.fillStyle = C.white; g.fillRect(x0, y0, x1 - x0, y1 - y0);
+    const bh = lerp(96, y1 - y0, eout(u * 1.4));
+    g.fillStyle = c; g.fillRect(x0, y1 - bh, x1 - x0, bh);
+    if (u < 0.1 && k < 13) { g.save(); g.translate(x0, y0); g.globalAlpha = 1; pageBackContent(g, k); g.restore(); }
+    if (k === 13 && u < 0.1) { g.save(); g.translate(x0, y0); pageFront(g, 13); g.restore(); }
+    if (withChar && k < 13 && u > 0.3) {
+      const s = eout((u - 0.3) / 0.7);
+      g.fillStyle = inkOn(c); g.font = KF(Math.max(1, 84 * s)); g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(COPY[k], 0, y0 + 70);
+    }
+  } else {
+    g.scale(-1, 1);
+    g.fillStyle = C.white; g.fillRect(-x1, y0, x1 - x0, y1 - y0);
+    g.fillStyle = c; g.fillRect(-x1 + 14, y1 - 120, x1 - x0 - 28, 70);
+    if (k < 13) { g.fillStyle = C.navy; g.font = KF(84); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(COPY[k], 0, y0 + 70); }
+  }
+  if (edge) { g.strokeStyle = C.g3; g.lineWidth = 1.5; g.strokeRect(x0, y0, x1 - x0, y1 - y0); }
+  g.restore();
+}
+function rivet(g, P, r) {
+  g.beginPath(); g.arc(P[0], P[1], r, 0, Math.PI * 2); g.fillStyle = C.white; g.fill();
+  g.lineWidth = r * 0.2; g.strokeStyle = C.g6; g.stroke();
+}
+const T_HERO = 8.35, T_Z0 = 9.9, T_D = 10.6;
+function fanRot(t) {
+  const t0 = T_F0 + 0.95; if (t < t0) return 0;
+  return 34 * (t - t0) + (t > 9.5 ? 300 * Math.pow(t - 9.5, 2) : 0);
+}
+function drawFan(g, t) {
+  g.fillStyle = C.g1; g.fillRect(0, 0, W, H);
+  const tf = t - T_F0;
+  const e1 = eio((tf - 0.02) / 0.7), e2 = eio((tf - 0.95) / 0.85);
+  const P = [960, lerp(920, 540, e2)];
+  const L = lerp(760, 460, e2), Wd = lerp(110, 122, e2);
+  const rot = fanRot(t);
+  g.save();
+  if (t > T_Z0) {   // リベットの穴へ
+    const s = Math.exp(Math.log(140) * ein((t - T_Z0) / (T_D - T_Z0)));
+    g.translate(960, 540); g.scale(s, s); g.translate(-P[0], -P[1]);
+  }
+  for (let k = 0; k < 14; k++) {
+    const u = eio((tf - 0.22 - 0.02 * (13 - k)) / 0.55);
+    const sem = -90 + 180 * k / 13, ros = 360 * k / 14;
+    const th = (lerp(lerp(0, sem, e1), ros, e2) + rot * e2) * D2R;
+    const ph = Math.PI * (sio((t - T_HERO - k * 0.06) / 0.36) - sio((t - 9.05 - k * 0.06) / 0.36));
+    const Lk = L + 70 * Math.sin(ph) * e2;
+    strip(g, k, P, th, u, Lk, Wd, ph, true, false);
+  }
+  rivet(g, P, 16 * eout(tf / 0.6));
+  g.restore();
+}
+
+/* ---------------- FV ---------------- */
+const FVP = [1540, 780];
+let FVX = [];
+function layoutFV() {
+  ctx.font = KF(150);
+  FVX = []; let x = 150;
+  for (let i = 0; i < 7; i++) { FVX.push([x + ctx.measureText(COPY[i]).width / 2, 410]); x += ctx.measureText(COPY[i]).width; }
+  x = 150;
+  for (let i = 7; i < 13; i++) { FVX.push([x + ctx.measureText(COPY[i]).width / 2, 590]); x += ctx.measureText(COPY[i]).width; }
+}
+function reveal(g, t0, t, dy, fn) {     // 下からせり上がる（クリップ）
+  const p = eout((t - t0) / 0.5); if (p <= 0) return;
+  g.save(); g.translate(0, dy * (1 - p)); fn(g); g.restore();
+}
+function drawFV(g, t) {
+  g.fillStyle = C.white; g.fillRect(0, 0, W, H);
+  const td = t - T_D;
+  g.save();
+  if (td < 1.0) {
+    const e = eout(td / 1.0), s = Math.exp(Math.log(140) * (1 - e));
+    g.translate(lerp(960, FVP[0], e), lerp(540, FVP[1], e)); g.scale(s, s); g.translate(-FVP[0], -FVP[1]);
+  }
+  // ヘッダ
+  g.fillStyle = C.ink; g.textBaseline = 'middle'; g.textAlign = 'left';
+  g.beginPath(); g.arc(166, 92, 12, 0, Math.PI * 2); g.lineWidth = 7; g.strokeStyle = C.navy; g.stroke();
+  g.font = GF(700, 28); g.fillText('ホシノメ印刷', 192, 93);
+  const nav = ['事業内容', '制作実績', '会社概要', '採用情報'];
+  g.font = GF(400, 20); g.fillStyle = C.g5;
+  let nx = 1010; for (const s of nav) { g.fillText(s, nx, 93); nx += g.measureText(s).width + 48; }
+  g.fillStyle = C.navy; g.fillRect(1620, 66, 150, 54); g.fillStyle = C.white; g.font = GF(700, 18); g.textAlign = 'center'; g.fillText('お問い合わせ', 1695, 93);
+  g.fillStyle = C.g2; g.fillRect(150, 150, 1620, 2);
+  // 扇
+  const spread = 138 + 16 * Math.sin(2 * Math.PI * Math.max(0, td - 1.4) / 2.6);
+  const base = -6 - 520 * (1 - eout(td / 1.8)) + 7 * Math.sin(2 * Math.PI * td / 3.1);
+  for (let k = 0; k < 14; k++) {
+    const th = (base + spread * (k / 13 - 0.5)) * D2R;
+    strip(g, k, FVP, th, 1, 300, 58, 0, false, true);
+  }
+  rivet(g, FVP, 16);
+  // コピー：1字ずつ落ちてきて止まる
+  for (let i = 0; i < 13; i++) {
+    const p = (td - 0.7 - i * 0.065) / 0.6; if (p <= 0) continue;
+    const [x, y] = FVX[i];
+    const sc = lerp(1.35, 1, eout(p));
+    g.save(); g.translate(x, y - 70 * (1 - bout(p))); g.rotate(-0.35 * (1 - eout(p))); g.scale(sc, sc);
+    g.fillStyle = C.navy; g.font = KF(150); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(COPY[i], 0, 0);
+    g.restore();
+  }
+  g.restore();
+  g.save(); g.beginPath(); g.rect(140, 690, 1100, 230); g.clip();
+  reveal(g, T_D + 1.6, t, 60, gg => { gg.fillStyle = C.g5; gg.font = GF(400, 28); gg.textAlign = 'left'; gg.textBaseline = 'middle'; gg.fillText('企画・デザインから、印刷・製本・発送まで。', 152, 730); });
+  reveal(g, T_D + 1.75, t, 60, gg => { gg.fillStyle = C.g6; gg.font = LF(600, 18); gg.textAlign = 'left'; gg.textBaseline = 'middle'; gg.fillText('OFFSET  /  DIGITAL  /  BINDING  /  SHIPPING', 152, 782); });
+  reveal(g, T_D + 1.9, t, 90, gg => {
+    gg.fillStyle = C.navy; gg.fillRect(150, 830, 280, 66);
+    gg.fillStyle = C.white; gg.font = GF(700, 20); gg.textAlign = 'center'; gg.textBaseline = 'middle'; gg.fillText('ご相談はこちら', 290, 863);
+  });
+  g.restore();
+  // スクロールの合図
+  g.fillStyle = C.g6; g.font = LF(600, 16); g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText('SCROLL', 150, 1000);
+  g.fillStyle = C.g3; g.fillRect(232, 999, 140, 2);
+  const sp = ((t * 0.8) % 1); g.fillStyle = C.navy; g.fillRect(232 + 110 * sio(sp), 997, 30, 6);
+}
+
+/* ---------------- 最後：FVの紙がめくれて、下から紙帯（0秒目） ---------------- */
+const T_E = 13.9;
+function drawEnd(g, t) {
+  drawWeb(g, t - 15);
+  drawFV(octx, t);
+  const e = eio((t - T_E) / (15 - T_E));
+  const Cc = [W, H], T = [-2200, -1380];
+  const P = [lerp(Cc[0], T[0], e) + 260 * Math.sin(Math.PI * e), lerp(Cc[1], T[1], e) - 120 * Math.sin(Math.PI * e)];
+  const front = gg => gg.drawImage(off, 0, 0);
+  for (const mode of ['rem', 'flap']) fold(g, W, H, Cc, P, front, () => {}, mode);
+}
+
+function label(g) {
+  g.fillStyle = C.g6; g.font = LF(400, 16); g.textAlign = 'right'; g.textBaseline = 'alphabetic';
+  g.fillText('REEL — 029   Claude', W - 40, H - 34);
+}
+
+function render(t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (t < 3.2) { ctx.save(); camA(ctx, t); drawWeb(ctx, t); ctx.restore(); }
+  else if (t < T_F0) drawBook(ctx, t);
+  else if (t < T_D) drawFan(ctx, t);
+  else if (t < T_E) drawFV(ctx, t);
+  else drawEnd(ctx, t);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  label(ctx);
+}
+
+(async () => {
+  await document.fonts.ready;
+  const jp = COPY.join('') + 'ホシノメ印刷事業内容制作実績会社概要採用情報お問い合わせ企画・デザインから、印刷・製本・発送まで。ご相談はこちら色見本0123456789';
+  await Promise.all([
+    document.fonts.load(KF(150), COPY.join('')),
+    document.fonts.load(GF(400, 20), jp), document.fonts.load(GF(700, 20), jp),
+    document.fonts.load(LF(400, 16), 'REEL — 029 Claude'), document.fonts.load(LF(600, 18), 'HOSHINOME PRINTING OFFSET/DIGITAL#0123456789ABCDEF SCROLL'),
+  ]);
+  layoutWeb(); layoutFV();
+  window.__seek = t => { render(Math.max(0, Math.min(14.9999, t))); };
+  if (!location.search.includes('render')) {
+    const t0 = performance.now();
+    const loop = () => { window.__seek(((performance.now() - t0) / 1000) % 15); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  }
+})();
+</script>
+</body>
+</html>
