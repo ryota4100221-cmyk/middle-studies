@@ -898,5 +898,43 @@
     },
     "review_rounds": 3,
     "review": "1周目（試し撮り18枚）：elastic の山と cubic-bezier の注記が題字に重なる→値の範囲を狭めて注記を題字の下へ。ドープシートの菱形が小さく潰れる→行間13→17px・菱形10→14px。背景の SQUASH が暗すぎ→少し明るく。2周目（本番の場面のつなぎ目13枚）：4回の塗りつぶしの切り替えは色がそのまま次の背景になってつながっている。3周目（グラフとドープシートを等倍で切り出し、14.95秒→0秒の継ぎ目）：文字は18px以上で読め、ループは T=0.55→0.6 で連続。許容した差：グラフの value の字に再生ヘッドの線が重なる瞬間がある。"
+  },
+  {
+    "id": "025",
+    "slug": "match-cut",
+    "title": "Match Cut",
+    "date": "2026-10-24",
+    "concept": "128BPMでちょうど32拍＝15秒を、拍の上で13ショットに切ったモンタージュ。つなぎ目はすべてマッチカットで、前のショットの形・位置・色を次が受け取る：CUTの字を切った斜めの切れ目→縞→9本の帯→帯に刻まれたMATCH→Aのカウンターへ寄って三角形→12枚の輪→円→32拍の時計→点→点の格子の波紋→市松→ピクセルのMATCH。見せ場は7.0秒、MATCHの5文字に半拍ごとにそれまでのショットの模様が叩き込まれるところ。そのあと字は1本の線に潰れて波形になり、7本の行、4-3-2-1の数取り、6枚のフラッシュを経て、最初の切れ目が閉じて0秒目のCUTに戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/025_match-cut.mp4",
+    "techniques": [
+      "beat-locked-edit-128bpm-32-beats",
+      "graphic-match-cuts",
+      "half-plane-split-reveal-next-shot",
+      "stripes-rotate-into-bars",
+      "sliced-type-stagger-assembly",
+      "zoom-into-letter-counter-via-pixel-scan",
+      "triangle-to-circle-polygon-morph",
+      "radial-ripple-dot-grid-to-checker",
+      "tile-flip-waves-into-pixel-word",
+      "pattern-filled-letters-recap",
+      "odometer-countdown",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#0b0b0d",
+        "#f3efe6",
+        "#5b3bff",
+        "#ff5a3c"
+      ],
+      "type": [
+        "Unbounded 900",
+        "Geist Mono"
+      ],
+      "structure": "13 shots cut on the beat, every cut a graphic match: slashed CUT → diagonal stripes → 9 bars carrying MATCH → zoom into the A's counter → triangle → ring of 12 → disc → beat clock → dot → ripple grid → checker → pixel word → pattern-filled MATCH (hero) → flattened into a line → waveform → 7 baselines of scrolling rows → 4-3-2-1 odometer → 6 half-beat flashes → the slash closes back into CUT",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 4,
+    "review": "1周目：Cの拡大で帯の継ぎ目の細線が残る→帯が閉じたら切り抜きをやめて1枚で描く／左下のショット名がタイムラインに重なる→タイムラインを右へ／F・G・Kの細かい地の上でUI文字が読めない→上下に地色の帯を敷く／時計の円周テキストが文の途中で切れる→文字数を文の長さの倍数に／Dの合体が凸凹→合体を早める。2周目：ヒーローの字が跳ねると模様の箱で頭が切れる→箱を上へ広げた。3周目：ループの継ぎ目（14.97s→0s）とUIの等倍を確認、Dの合体途中がまだ凸凹→中心から円を育てて覆う。4周目：合体を確認。許容した差：Dの合体途中の数フレームに残るわずかな凸凹と、各ショット頭の0.1秒ほどの溜め。"
   }
 ]
