@@ -159,14 +159,11 @@ DEPTH_WORDS = re.compile(r"depth|3d|perspective|parallax|projection|fly-through|
 
 
 def check_condition(w, d, src):
-    try:
-        days = json.load(open(os.path.join(REEL, "conditions.json")))["days"]
-    except FileNotFoundError:
-        days = {}
-    c = days.get(w.get("condition_day") or w["date"])   # condition_day＝前倒しで作った回
+    from condition import condition_for   # reel.sh と同じ判定（唯一の根拠）
+    c = condition_for(w["date"], w.get("condition_day"))
     if not c:
         if w.get("condition") and w["condition"] != "control":
-            R(f"condition={w['condition']} だが conditions.json に {w['date']} の行が無い")
+            R(f"condition={w['condition']} だが {w['date']} は条件の期間外")
         return
     cid = c["id"]
     if w.get("condition") != cid:

@@ -39,8 +39,10 @@ last_is() {
   [[ "$(grep -v '^[[:space:]]*$' "$2" | tail -1 | tr -d '[:space:]*`')" == "$1" ]]
 }
 
-[[ -n "${REEL_COND_DAY:-}" ]] && REEL_FORCE=1   # 前倒しは「今日の分は済み」で止めない
-if [[ -z "${REEL_FORCE:-}" ]] && grep -q "=== done (exit 0" "$LOG_FILE" 2>/dev/null; then
+# 「今日の分は済み」は自動の回（launchd）の完走だけで判定する。手で回した回（REEL_MANUAL=1）は数えない
+# （2026-10-25 Ryota「スキップしないで今日から自動で」＝手動の試作が夜の自動を止めないように）
+# 🔴 "=== done (exit 0" は watchdog（routine-watchdog）が生存判定に読むので形を変えない。判定用の印は別に書く
+if [[ -z "${REEL_FORCE:-}" && -z "${REEL_MANUAL:-}" ]] && grep -q "=== auto ok ===" "$LOG_FILE" 2>/dev/null; then
   echo "[$(date)] already succeeded today — skip (catch-up slot)" >> "$LOG_FILE"
   exit 0
 fi
@@ -50,44 +52,20 @@ if ! mkdir "$LOCK" 2>/dev/null; then
   exit 0
 fi
 trap 'rmdir "$LOCK"' EXIT
-# 前倒し（2026-10-25〜）：REEL_COND_DAY=YYYY-MM-DD でその日の条件の回を今日作る。
-# 前倒し済みの日の自動実行は、同じ条件の2本目を作らないようにスキップする
 TODAY="$(TZ=Asia/Tokyo date +%F)"
-COND_DAY="${REEL_COND_DAY:-$TODAY}"
-if [[ -z "${REEL_COND_DAY:-}" ]] && /usr/bin/python3 -c '
-import json,sys; sys.exit(0 if any(w.get("condition_day")==sys.argv[2] for w in json.load(open(sys.argv[1]))) else 1)
-' "$ROOT/reel/works.json" "$TODAY" 2>/dev/null; then
-  echo "[$(date)] $TODAY の条件の回は前倒しで作成済み — skip" >> "$LOG_FILE"
-  echo "[$(date)] === done (exit 0, attempts 0) ===" >> "$LOG_FILE"
-  exit 0
-fi
-if ! head -c 1 "$SKILL_MD" >/dev/null 2>&1; then
-  echo "[$(date)] ABORT: skill file unreadable: $SKILL_MD" >> "$LOG_FILE"
-  notify "🔴 *MIDDLE STUDIES REEL（$(TZ=Asia/Tokyo date +%F)）*：手順書が読めない（$SKILL_MD）"
-  exit 1
-fi
-
-cd "$ROOT" || exit 1
-git pull -q --ff-only >> "$LOG_FILE" 2>&1
-git -C "$HOME/projects/middle-studies-reel" pull -q --ff-only >> "$LOG_FILE" 2>&1
-
-echo "[$(date)] === REEL daily start ===" >> "$LOG_FILE"
-OUT_TMP="$(mktemp /tmp/middle-reel-out.XXXXXX)"
-[[ -n "${REEL_COND_DAY:-}" ]] && REEL_FORCE=1
-PROMPT="まず「$SKILL_MD」を読み、その手順どおりに今日の MIDDLE STUDIES REEL を1本制作・公開して。${REEL_FORCE:+（工程0の「今日の分は済んでいるか」は飛ばしてよい）} 🔴 これは無人の夜間実行で、人は見ていない。質問せず、レンダーは同期で待ち、ターンを途中で終えない。止めるときは SKILL.md 工程7のとおり Slack へ通知してから終わる。完走したときだけ、最後の行に REEL_OK とだけ書く。"
-
-# 今日の条件（reel/conditions.json・2026-10-24〜）。SKILL.md でも読ませるが、読み落としを防ぐためプロンプトにも直接入れる
+# 今日の条件（2026-10-25〜 毎晩ローテーション）。判定は reel/scripts/condition.py が唯一の根拠（check.py も同じ関数）
+# SKILL.md でも読ませるが、読み落としを防ぐためプロンプトにも直接入れる
 COND_LINE="$(/usr/bin/python3 -c '
 import json,sys
-d=json.load(open(sys.argv[1]))["days"].get(sys.argv[2])
+d=json.loads(sys.stdin.read() or "null")
 if d and d["id"]!="control": print("今日の条件（id="+d["id"]+"）："+d["line"])
-' "$ROOT/reel/conditions.json" "$COND_DAY" 2>/dev/null)"
+' < <(/usr/bin/python3 "$ROOT/reel/scripts/condition.py" "$TODAY" 2>/dev/null))"
 if [[ -n "$COND_LINE" ]]; then
   PROMPT="$PROMPT 🔴 $COND_LINE（ブリーフは置き換えない。SKILL.md「今日の条件」の約束も守り、works.json に condition を書く）"
   echo "[$(date)] $COND_LINE" >> "$LOG_FILE"
 fi
-# 前倒しは対照（control）の日も含め、どの日の分かを必ず残す（残さないとその日の夜にもう1本作られる）
-[[ "$COND_DAY" != "$TODAY" ]] && PROMPT="$PROMPT これは $COND_DAY の回の前倒し。works.json の date は今日（$TODAY）のまま、\"condition_day\": \"$COND_DAY\" を足す。"
+# 自動の回は works.json に slot を残す（工程0が「今夜の分は公開済みか」をこれで見る＝途中で落ちた再試行で2本目を作らない）
+[[ -z "${REEL_MANUAL:-}" ]] && PROMPT="$PROMPT これは今夜の自動の回。works.json の新しい1件に \"slot\": \"$TODAY\" を足す。"
 
 MAX_ATTEMPTS=6
 attempt=1
@@ -130,4 +108,5 @@ if (( RC != 0 )); then
 fi
 
 rm -f "$OUT_TMP"
+(( RC == 0 )) && [[ -z "${REEL_MANUAL:-}" ]] && echo "[$(date)] === auto ok ===" >> "$LOG_FILE"
 echo "[$(date)] === done (exit $RC, attempts $attempt) ===" >> "$LOG_FILE"

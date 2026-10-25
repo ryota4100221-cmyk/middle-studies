@@ -17,20 +17,20 @@ description: >
 **このブリーフが唯一の創作上の指示。** 下に書いてあるのは、技術の約束と公開の手順と、
 「毎日同じ絵に落ちない」ための歯止めだけ。見た目・題材・構成・色・書体は毎回自分で決める。
 
-## 今日の条件（`reel/conditions.json`・2026-10-24 Ryota指示）
+## 今日の条件（毎晩ローテーション・2026-10-25 Ryota指示「毎日どれかの条件で回して」）
 
-`TZ=Asia/Tokyo date +%F` の日付が `conditions.json` の `days` にあり、`id` が `control` 以外なら、
-**その `line` をブリーフの直後に足して読む**（条件はブリーフを置き換えない＝「全力のショーリール」のまま、条件の中で全力を出す）。
+**毎晩、条件が1つ付く。** その日の条件は `/usr/bin/python3 scripts/condition.py $(TZ=Asia/Tokyo date +%F)` が返す（`conditions.json` の `rotation` を `rotation_start` から日ごとに回す）。
+reel.sh がプロンプトにも同じ1行を入れる。**その `line` をブリーフの直後に足して読む**（条件はブリーフを置き換えない＝「全力のショーリール」のまま、条件の中で全力を出す）。
 
-- 行が無い日・`control` の日は、元のブリーフだけ（比較用の対照）。何も足さない。
-- works.json に `"condition": "<id>"` を必ず書く（control の日は `"control"`、表に無い日は書かない）。check.py が表と照合する。
+- works.json に `"condition": "<id>"` を必ず書く。check.py が condition.py と照合する。
+- 10/24〜31 の試行週（対照つき）の割り当ては `history` に残してある。`condition_day` を持つ作品（027〜032）だけがそれで照合される。
 - 条件ごとの技術の約束：
   - `vertical`：`window.__format = 'vertical'` を置き、1080×1920 で組む（render.mjs が読んで縦で撮る）。見どころは**最初の3秒**。工程4の1番目を「0〜3秒の間に手を止めさせるか」に読み替え、0.5秒・1.5秒・3秒を等倍で切り出して見る。
   - `logo`：`assets/monaka-logo.svg` を作品フォルダにコピーし、source.html から相対パスで読む（またはパスをインラインで埋める）。字形を描き直さない。最後の1.5秒以上はロゴが読める状態で止まらずに決める。
   - `case-values`：`look.palette` と `look.type` は `palette_allowed`／`type_allowed` の中だけ。和文はGoogle Fontsから読む。
   - `no-depth`：three.js・WebGLの3D・CSS `perspective`・自作の3D投影を使わない。techniques に depth / 3d / perspective / parallax / projection / fly-through を含む語を書かない（書くなら条件違反）。
 - 条件があっても、工程1（前の7本を見る）と変化ゲートはそのまま効く。
-- **前倒し**（2026-10-25〜）：`REEL_COND_DAY=YYYY-MM-DD zsh scripts/reel.sh` で、その日の条件の回を今日作る。プロンプトに日付が入るので、works.json の `date` は今日のまま `"condition_day": "YYYY-MM-DD"` を足す。その日の夜の自動実行はスキップされる。
+- **手で回す**：`REEL_MANUAL=1 zsh scripts/reel.sh`。手の回は夜の自動を止めない（「今日の分は済み」は自動の回の完走＝ログの `=== auto ok ===` だけで見る）。
 
 ## 🔴 無人で走る
 
@@ -54,7 +54,7 @@ description: >
 
 ## 工程0：今日の分は済んでいるか
 
-`TZ=Asia/Tokyo date +%F` を今日とする。works.json の末尾の date が今日なら、何もせず `REEL_OK` で終わる。
+`TZ=Asia/Tokyo date +%F` を今日とする。**プロンプトに「今夜の自動の回」とあるときだけ**、works.json に `"slot": "今日"` の作品が既にあれば、何もせず `REEL_OK` で終わる（手で回した回が同じ日にあっても止まらない）。
 今日の日付の作品フォルダが works/ にあるのに works.json に載っていなければ、前のセッションの途中＝**そのフォルダから続ける**（番号を新しく取らない）。
 
 ## 工程1：前の7本を見る（同じところに着地しないため）
