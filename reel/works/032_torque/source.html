@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MIDDLE STUDIES REEL — 032 Torque</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,800&family=Martian+Mono:wght@400;600&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #121418; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; object-fit: contain; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+(async () => {
+const W = 1920, H = 1080, DUR = 15;
+const cv = document.getElementById('c');
+let ctx = cv.getContext('2d');
+const RENDER = location.search.includes('render');
+const TAU = Math.PI * 2;
+const C = { bg: '#121418', grid: '#1b1f25', bone: '#ebe5d6', web: '#d9d0bb', hub: '#f6f1e6', ring: '#d3c9b2',
+  red: '#ff4f2e', redWeb: '#e2401f', redDark: '#b52e15', mint: '#7fe0c8', ink: '#121418' };
+const DISPLAY = '"Bricolage Grotesque"', MONO = '"Martian Mono"';
+
+// ---------- utils ----------
+const clamp = (x, a, b) => x < a ? a : x > b ? b : x;
+const lerp = (a, b, u) => a + (b - a) * u;
+const sm = u => { u = clamp(u, 0, 1); return u * u * (3 - 2 * u); };
+const eio = u => { u = clamp(u, 0, 1); return u < .5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; };
+const eout = u => { u = clamp(u, 0, 1); return 1 - Math.pow(1 - u, 3); };
+const ein = u => { u = clamp(u, 0, 1); return u * u * u; };
+const seg = (t, a, b) => clamp((t - a) / (b - a), 0, 1);
+
+// cosine-interpolated keyed curve
+function keyed(keys) {
+  return t => {
+    if (t <= keys[0][0]) return keys[0][1];
+    for (let i = 1; i < keys.length; i++) {
+      const [t1, v1] = keys[i], [t0, v0] = keys[i - 1];
+      if (t <= t1) { const u = (t - t0) / (t1 - t0); return lerp(v0, v1, (1 - Math.cos(Math.PI * u)) / 2); }
+    }
+    return keys[keys.length - 1][1];
+  };
+}
+// integrate a rate into a lookup table
+function integrate(rate, scaleTo) {
+  const n = 36000, dt = DUR / n, tab = new Float64Array(n + 1);
+  for (let i = 1; i <= n; i++) tab[i] = tab[i - 1] + (rate((i - 1) * dt) + rate(i * dt)) / 2 * dt;
+  const s = scaleTo ? scaleTo(tab[n]) / tab[n] : 1;
+  for (let i = 0; i <= n; i++) tab[i] *= s;
+  const f = t => { t = clamp(t, 0, DUR); const x = t / dt, i = Math.min(n - 1, Math.floor(x)); return lerp(tab[i], tab[i + 1], x - i); };
+  f.scale = s;
+  return f;
+}
+
+// ---------- drive: one angle Θ(t) turns every gear in the train ----------
+const BEATS = [3.0, 3.4, 3.8, 4.2, 4.6, 5.4, 5.8];        // ticks in the transmit section (a gap at 5.0 = the word holds)
+const wBase = keyed([[0, 1.6], [1.5, 1.6], [2.75, 0.1], [6.2, 0.1], [7.2, 0.6], [8.4, 2.3], [9.6, 2.3], [10.6, 0.45], [12.8, 0.45], [14.6, 1.6], [15, 1.6]]);
+const tick = t => { let v = 0; for (const b of BEATS) { const u = (t - b) / 0.15; if (u > 0 && u < 1) v += Math.sin(Math.PI * u) ** 2; } return v * 6.0; };
+const TH = integrate(t => wBase(t) + tick(t), tot => TAU * Math.round(tot / TAU));      // whole turns over 15 s = seamless loop
+const omega = t => (wBase(t) + tick(t)) * TH.scale;
+// planetary carrier: an independent second input
+const CA = integrate(keyed([[0, 0], [6.6, 0], [7.5, 0.9], [8.3, 2.4], [9.6, 2.4], [10.6, 0.25], [15, 0.25]]));
+
+// ---------- gear geometry ----------
+const M = 16;                               // module of the main train (world units)
+function meshExt(thI, Ni, Nj, phi) { return phi + Math.PI - (Math.PI - Ni * (phi - thI)) / Nj; }
+function ringToPlanet(thR, Nr, Np, phi) { return phi - (Nr * (phi - thR) - Math.PI) / Np; }
+
+function teethPath(p, N, m, th, internal, ccw) {
+  const P = TAU / N, rp = m * N / 2;
+  const rt = internal ? rp - m : rp + m, rr = internal ? rp + 1.25 * m : rp - 1.25 * m;
+  const prof = [[rr, -0.31], [rp, -0.235], [lerp(rp, rt, .7), -0.165], [rt, -0.11], [rt, 0.11], [lerp(rp, rt, .7), 0.165], [rp, 0.235], [rr, 0.31]];
+  const pts = [];
+  for (let k = 0; k < N; k++) {
+    const a = th + k * P;
+    for (const [r, f] of prof) pts.push(r * Math.cos(a + f * P), r * Math.sin(a + f * P));
+  }
+  if (ccw) { // reverse winding
+    p.moveTo(pts[pts.length - 2], pts[pts.length - 1]);
+    for (let i = pts.length - 4; i >= 0; i -= 2) p.lineTo(pts[i], pts[i + 1]);
+  } else {
+    p.moveTo(pts[0], pts[1]);
+    for (let i = 2; i < pts.length; i += 2) p.lineTo(pts[i], pts[i + 1]);
+  }
+  p.closePath();
+}
+function circlePath(p, r) { p.moveTo(r, 0); p.arc(0, 0, r, 0, TAU); p.closePath(); }
+function holesPath(p, r0, r1, n, th, spoke) {
+  for (let k = 0; k < n; k++) {
+    const a0 = th + k * TAU / n, w = TAU / n;
+    const s0 = spoke / r0, s1 = spoke / r1;
+    p.moveTo(r1 * Math.cos(a0 + s1), r1 * Math.sin(a0 + s1));
+    p.arc(0, 0, r1, a0 + s1, a0 + w - s1);
+    p.lineTo(r0 * Math.cos(a0 + w - s0), r0 * Math.sin(a0 + w - s0));
+    p.arc(0, 0, r0, a0 + w - s0, a0 + s0, true);
+    p.closePath();
+  }
+}
+
+// draw an external spur gear centred at (x,y)
+function drawGear(g, th, o = {}) {
+  const N = g.N, m = g.m, rp = m * N / 2, rr = rp - 1.25 * m;
+  const col = g.col || (g.red ? C.red : C.bone), web = g.webCol || (g.red ? C.redWeb : C.web);
+  ctx.save(); ctx.translate(g.x, g.y);
+  const body = new Path2D();
+  teethPath(body, N, m, th, false);
+  const spokes = g.spokes || 0;
+  const rWeb = rr - m * 1.1, rHub = Math.max(rp * 0.26, m * 2.2);
+  if (spokes) holesPath(body, rHub + m * 0.9, rWeb - m * 0.5, spokes, th + (g.spokePhase || 0), m * 1.15);
+  if (g.innerRing) teethPath(body, g.innerRing.N, g.innerRing.m, g.innerRing.th, true, true);
+  // shadow
+  if (!o.noShadow) {
+    ctx.save(); ctx.translate(m * 0.55, m * 0.8); ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.fill(body, 'evenodd'); ctx.restore();
+  }
+  ctx.fillStyle = col; ctx.fill(body, 'evenodd');
+  // web (recessed face)
+  if (!g.innerRing) {
+    const wp = new Path2D(); circlePath(wp, rWeb);
+    if (spokes) holesPath(wp, rHub + m * 0.9, rWeb - m * 0.5, spokes, th + (g.spokePhase || 0), m * 1.15);
+    circlePath(wp, rHub);
+    ctx.fillStyle = web; ctx.fill(wp, 'evenodd');
+    // hub (letter gears keep a clean face)
+    if (!g.letter) {
+    ctx.fillStyle = g.red ? C.red : C.hub;
+    ctx.beginPath(); ctx.arc(0, 0, rHub, 0, TAU); ctx.fill();
+    ctx.fillStyle = C.bg; ctx.beginPath(); ctx.arc(0, 0, rHub * 0.42, 0, TAU); ctx.fill();
+    // keyway mark
+    ctx.fillStyle = g.red ? C.bone : C.red;
+    ctx.beginPath(); ctx.arc(rHub * 0.7 * Math.cos(th), rHub * 0.7 * Math.sin(th), rHub * 0.12, 0, TAU); ctx.fill();
+    }
+  } else {
+    // rim band between teeth
+    const wp = new Path2D(); circlePath(wp, rr - m * 0.5); teethPath(wp, g.innerRing.N, g.innerRing.m, g.innerRing.th, true, true);
+    circlePath(wp, g.innerRing.m * g.innerRing.N / 2 + g.innerRing.m * 2.6);
+    ctx.fillStyle = web; ctx.fill(wp, 'evenodd');
+  }
+  if (g.letter) {
+    ctx.save(); ctx.rotate(th + g.letterOff);
+    ctx.fillStyle = C.ink; ctx.font = `800 ${g.letterSize}px ${DISPLAY}`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText(g.letter, 0, g.letterSize * 0.36);
+    ctx.restore();
+  }
+  if (g.engrave) engrave(g, th, rWeb);
+  ctx.restore();
+}
+function engrave(g, th, rWeb) {
+  const txt = g.engrave, r = rWeb - g.m * 1.1, fs = g.m * 2.1;
+  ctx.save(); ctx.fillStyle = C.redDark; ctx.font = `600 ${fs}px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const step = TAU / txt.length;
+  for (let i = 0; i < txt.length; i++) {
+    const a = th + i * step;
+    ctx.save(); ctx.translate(r * Math.cos(a), r * Math.sin(a)); ctx.rotate(a + Math.PI / 2); ctx.fillText(txt[i], 0, 0); ctx.restore();
+  }
+  ctx.restore();
+}
+
+// ---------- the machine ----------
+const gears = [];
+function addGear(o) { gears.push(o); return o; }
+const D = addGear({ name: 'D', N: 48, m: M, x: 0, y: 0, red: true, spokes: 6, te: -1, engrave: 'TORQUE · 48T · M16 · τ = r × F · REEL 032 · ' });
+function chain(parent, N, deg, extra = {}) {
+  const phi = deg * Math.PI / 180, d = M * (parent.N + N) / 2;
+  return addGear(Object.assign({ N, m: M, x: parent.x + d * Math.cos(phi), y: parent.y + d * Math.sin(phi), parent, phi, spokes: 0 }, extra));
+}
+const G1 = chain(D, 20, -32, { spokes: 5, te: -1 });
+const G2 = chain(G1, 32, 14, { te: 1.95, letter: 'T' });
+const G3 = chain(G2, 24, -22, { te: 2.2, letter: 'O' });
+const G4 = chain(G3, 36, 18, { te: 2.42, letter: 'R' });
+const G5 = chain(G4, 24, -20, { te: 2.62, letter: 'Q' });
+const G6 = chain(G5, 30, 16, { te: 2.8, letter: 'U' });
+const G7 = chain(G6, 24, -14, { te: 2.95, letter: 'E' });
+const TRAIN = [D, G1, G2, G3, G4, G5, G6, G7];
+// planetary: ring with outside teeth driven by G7
+const PL = { Nre: 96, Nr: 84, Ns: 28, Np: 28, n: 3 };
+{
+  const phi = 6 * Math.PI / 180, d = M * (G7.N + PL.Nre) / 2;
+  PL.x = G7.x + d * Math.cos(phi); PL.y = G7.y + d * Math.sin(phi); PL.phi = phi;
+}
+// gear angle with freeze-before-engage
+function gearTheta(g, t) {
+  if (g === D) return TH(t);
+  const tau = Math.max(t, g.te);
+  return meshExt(gearTheta(g.parent, tau), g.parent.N, g.N, g.phi);
+}
+// letters upright at the hold
+const T_WORD = 5.1;
+for (const g of TRAIN) if (g.letter) { g.letterOff = -gearTheta(g, T_WORD); g.letterSize = 250; }
+// drop-in offset
+function dropY(g, t) {
+  if (g.te < 0) return 0;
+  const T = 0.42, A = 1400;
+  if (t < g.te - T) return null;
+  if (t < g.te) { const u = (g.te - t) / T; return -A * u * u; }
+  const s = t - g.te; return -60 * Math.exp(-s * 9) * Math.abs(Math.sin(s * 22));
+}
+
+// pistons: one crank pin on D drives two cylinders (left & down)
+const PIST = { g: D, a: 0.42, l: 1.5, axes: [Math.PI, Math.PI / 2] };
+function drawPistons(t) {
+  const g = PIST.g, th = gearTheta(g, t), r = g.m * g.N / 2, a = r * PIST.a, l = r * PIST.l;
+  const cw = r * 0.62, head = r * 0.55, x0 = r + g.m * 2, x1 = l + a + head * 0.35 + g.m * 2;
+  for (const al of PIST.axes) {
+    ctx.save(); ctx.translate(g.x, g.y); ctx.rotate(al);
+    const px = a * Math.cos(th - al), py = a * Math.sin(th - al);
+    const xs = px + Math.sqrt(l * l - py * py);
+    // cylinder
+    ctx.fillStyle = 'rgba(0,0,0,0.38)';
+    ctx.save(); ctx.rotate(-al); ctx.translate(g.m * 0.55, g.m * 0.8); ctx.rotate(al); ctx.fillRect(x0, -cw / 2 - g.m, x1 - x0, cw + 2 * g.m); ctx.restore();
+    ctx.fillStyle = '#343a43'; ctx.fillRect(x0, -cw / 2 - g.m, x1 - x0, cw + 2 * g.m);
+    ctx.fillStyle = '#1a1d22'; ctx.fillRect(x0 + g.m * 3, -cw / 2, x1 - x0 - g.m * 4, cw);
+    for (let k = 0; k < 6; k++) { ctx.fillStyle = '#2a2f37'; ctx.fillRect(x1 - g.m * 1.2 - k * g.m * 2.2, -cw / 2 - g.m * 2.2, g.m * 1.1, cw + g.m * 4.4); }
+    // piston head (pin at its near end)
+    ctx.fillStyle = C.bone; ctx.fillRect(xs - g.m * 1.2, -cw / 2 + 4, head, cw - 8);
+    ctx.fillStyle = C.web;
+    for (let k = 0; k < 3; k++) ctx.fillRect(xs + head - g.m * (3.0 + k * 1.6), -cw / 2 + 4, g.m * 0.55, cw - 8);
+    // rod
+    ctx.strokeStyle = C.mint; ctx.lineWidth = g.m * 2.2; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(xs, 0); ctx.stroke();
+    ctx.fillStyle = C.ink; ctx.beginPath(); ctx.arc(xs, 0, g.m * 0.9, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  // crank pin
+  const px = g.x + a * Math.cos(th), py = g.y + a * Math.sin(th);
+  ctx.fillStyle = C.mint; ctx.beginPath(); ctx.arc(px, py, g.m * 2.0, 0, TAU); ctx.fill();
+  ctx.fillStyle = C.ink; ctx.beginPath(); ctx.arc(px, py, g.m * 0.8, 0, TAU); ctx.fill();
+}
+
+// ---------- planetary (recursive) ----------
+// given ring angle R and carrier angle Ca (absolute), returns sun/planets
+function solvePlanetary(p, R, Ca) {
+  const rr = R - Ca, out = { planets: [] };
+  for (let j = 0; j < p.n; j++) {
+    const ph = j * TAU / p.n;
+    out.planets.push({ ph, th: ringToPlanet(rr, p.Nr, p.Np, ph) + Ca });
+  }
+  const p0 = out.planets[0], phs = p0.ph + Math.PI;
+  out.sun = meshExt(p0.th - Ca, p.Np, p.Ns, phs) + Ca;
+  return out;
+}
+function drawCarrier(dist, ca, m, n) {
+  ctx.save(); ctx.rotate(ca);
+  ctx.fillStyle = C.mint;
+  ctx.beginPath();
+  for (let j = 0; j < n; j++) {
+    const a = j * TAU / n;
+    ctx.moveTo(0, 0); ctx.lineTo(dist * Math.cos(a), dist * Math.sin(a));
+  }
+  ctx.strokeStyle = C.mint; ctx.lineWidth = m * 5; ctx.lineCap = 'round'; ctx.stroke();
+  ctx.restore();
+}
+// level: {m, Nr, Ns, Np, n}; center at origin of current transform
+function drawPlanetLevel(m, R, Ca, depth, scr, t) {
+  const p = PL, sol = solvePlanetary(p, R, Ca);
+  const dist = m * (p.Ns + p.Np) / 2;
+  drawCarrier(dist, Ca, m, p.n);
+  // sun
+  drawGear({ N: p.Ns, m, x: 0, y: 0, red: true, spokes: 4 }, sol.sun, { noShadow: depth > 0 && scr * m < 0.6 });
+  for (let j = 0; j < p.n; j++) {
+    const pl = sol.planets[j], a = Ca + pl.ph;
+    const x = dist * Math.cos(a), y = dist * Math.sin(a);
+    const childM = m * NEST;
+    const hasChild = depth < 2 && scr * m * p.Np > 6;
+    const g = { N: p.Np, m, x, y, spokes: hasChild ? 0 : 3 };
+    if (hasChild) g.innerRing = { N: p.Nr, m: childM, th: pl.th };
+    drawGear(g, pl.th);
+    if (hasChild) {
+      ctx.save(); ctx.translate(x, y);
+      drawPlanetLevel(childM, pl.th, pl.th + 0.9 * t + j * 1.3, depth + 1, scr, t);
+      ctx.restore();
+    }
+  }
+}
+const NEST = 0.21;   // inner ring sits inside the planet body
+const CA2 = t => 0.6 * t;
+function drawPlanetary(t, scr) {
+  const thG7 = gearTheta(G7, t);
+  const R = meshExt(thG7, G7.N, PL.Nre, PL.phi);
+  const Ca = CA(t);
+  ctx.save(); ctx.translate(PL.x, PL.y);
+  // outer ring: external teeth + internal teeth
+  const ring = { col: '#3b414b', webCol: '#30353e', N: PL.Nre, m: M, x: 0, y: 0, innerRing: { N: PL.Nr, m: M, th: R0(R) } };
+  drawGear(ring, R);
+  drawPlanetLevel(M, R0(R), Ca, 0, scr, t);
+  ctx.restore();
+}
+const R0 = R => R * PL.Nre / PL.Nre;   // internal teeth turn with the ring (same body)
+
+function planet0Center(t) {
+  const Ca = CA(t), dist = M * (PL.Ns + PL.Np) / 2;
+  return [PL.x + dist * Math.cos(Ca), PL.y + dist * Math.sin(Ca)];
+}
+
+// ---------- camera ----------
+const MP = [D.x + 384 * Math.cos(G1.phi), D.y + 384 * Math.sin(G1.phi)];   // the mesh point D–G1
+let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+for (const g of TRAIN) { const r = g.m * g.N / 2 + g.m; minX = Math.min(minX, g.x - r); maxX = Math.max(maxX, g.x + r); minY = Math.min(minY, g.y - r); maxY = Math.max(maxY, g.y + r); }
+minX = Math.min(minX, -384 * 1.5 - 384 * 0.42 - 300); maxY = Math.max(maxY, 384 * 2.3);
+const RP = M * PL.Nre / 2 + M;
+minX = Math.min(minX, PL.x - RP); maxX = Math.max(maxX, PL.x + RP); minY = Math.min(minY, PL.y - RP); maxY = Math.max(maxY, PL.y + RP);
+const ALL = { x: (minX + maxX) / 2, y: (minY + maxY) / 2, z: Math.min(W / (maxX - minX + 300), H / (maxY - minY + 300)) };
+const WORD = { x: (G2.x + G7.x) / 2, y: (G2.y + G7.y) / 2 };
+const wordW = G7.x - G2.x + 2 * 220;
+const Z_CLOSE = 3.3;
+
+// hermite keyframes on x, y, log z
+const KEYS = [
+  { t: 0, x: MP[0], y: MP[1], z: Z_CLOSE, hold: 1 },
+  { t: 1.5, x: MP[0] + 10, y: MP[1] - 6, z: Z_CLOSE * 1.08, hold: 1 },
+  { t: 2.75, x: (D.x + G5.x) / 2 + 120, y: -150, z: 0.42, hold: 0 },
+  { t: 3.9, x: G4.x - 40, y: G4.y + 10, z: 0.62, hold: 0 },
+  { t: 4.9, x: WORD.x, y: WORD.y - 30, z: W / (wordW + 260), hold: 1 },
+  { t: 6.1, x: WORD.x + 140, y: WORD.y - 20, z: W / (wordW + 160), hold: 0 },
+  { t: 7.1, x: PL.x, y: PL.y, z: 0.56, hold: 1 },
+];
+function hermiteCam(t) {
+  const K = KEYS;
+  if (t >= K[K.length - 1].t) return { x: K[K.length - 1].x, y: K[K.length - 1].y, lz: Math.log(K[K.length - 1].z) };
+  let i = 0; while (t > K[i + 1].t) i++;
+  const a = K[i], b = K[i + 1], h = b.t - a.t, u = (t - a.t) / h;
+  const tan = (k, f) => {
+    const kk = K[k]; if (kk.hold || k === 0 || k === K.length - 1) return 0;
+    const v = q => f === 'lz' ? Math.log(q.z) : q[f];
+    return (v(K[k + 1]) - v(K[k - 1])) / (K[k + 1].t - K[k - 1].t);
+  };
+  const h00 = 2 * u ** 3 - 3 * u ** 2 + 1, h10 = u ** 3 - 2 * u ** 2 + u, h01 = -2 * u ** 3 + 3 * u ** 2, h11 = u ** 3 - u ** 2;
+  const out = {};
+  for (const f of ['x', 'y', 'lz']) {
+    const va = f === 'lz' ? Math.log(a.z) : a[f], vb = f === 'lz' ? Math.log(b.z) : b[f];
+    out[f] = h00 * va + h10 * h * tan(i, f) + h01 * vb + h11 * h * tan(i + 1, f);
+  }
+  return out;
+}
+const T_LOCK0 = CA(7.0);
+const UNW = TAU * Math.round((CA(9.7) - T_LOCK0) / TAU);
+function camera(t) {
+  let x, y, lz, rot = 0;
+  if (t < 7.1) { const c = hermiteCam(t); x = c.x; y = c.y; lz = c.lz; }
+  else {
+    // hero: carrier-locked, dive into planet 0, snap back
+    const dive = eio(seg(t, 8.1, 9.0)) * (1 - eio(seg(t, 9.75, 10.35)));
+    const c0 = planet0Center(t);
+    const lockW = sm(seg(t, 7.0, 7.5)) * (1 - eio(seg(t, 9.75, 10.5)));
+    rot = lockW * (CA(t) - T_LOCK0 - (t > 9.7 ? UNW : 0) * 1);
+    const zHero = lerp(Math.log(0.56), Math.log(3.1), eio(seg(t, 8.1, 9.0))) + (Math.log(4.8) - Math.log(3.1)) * eio(seg(t, 8.95, 9.75));
+    const pc = [lerp(PL.x, c0[0], dive), lerp(PL.y, c0[1], dive)];
+    // nested centre: inner sun of planet 0 is its centre, so the deep dive stays put
+    if (t < 9.75) { x = pc[0]; y = pc[1]; lz = zHero; }
+    else if (t < 12.8) {
+      const u = eio(seg(t, 9.75, 10.45));
+      x = lerp(pc[0], ALL.x, u); y = lerp(pc[1], ALL.y, u);
+      lz = lerp(Math.log(4.8), Math.log(ALL.z), eio(seg(t, 9.75, 10.4)));
+      const d = (t - 10.45); if (d > 0) { lz += Math.log(1 + 0.03 * d); x += 30 * d; }
+    } else {
+      // dive into the mesh point: keep the mesh point moving on screen from its overview position to centre
+      const u = eio(seg(t, 12.8, 15));
+      const z0 = ALL.z * (1 + 0.03 * 2.35), x0 = ALL.x + 30 * 2.35, y0 = ALL.y;
+      lz = lerp(Math.log(z0), Math.log(Z_CLOSE), u);
+      const z = Math.exp(lz);
+      // screen offset of MP shrinks from overview to zero
+      const sx0 = (MP[0] - x0) * z0, sy0 = (MP[1] - y0) * z0;
+      const k = 1 - eio(seg(t, 12.8, 14.6));
+      x = MP[0] - sx0 * k / z; y = MP[1] - sy0 * k / z;
+    }
+  }
+  return { x, y, z: Math.exp(lz), rot };
+}
+function planet0Theta(t) {
+  const R = meshExt(gearTheta(G7, t), G7.N, PL.Nre, PL.phi);
+  return solvePlanetary(PL, R, CA(t)).planets[0].th;
+}
+const T_DIVE = 8.1, P0_D = planet0Theta(T_DIVE);
+function rotRaw(t) {
+  const lock = sm(seg(t, 7.0, 7.5)) * (CA(t) - T_LOCK0);
+  const w = eio(seg(t, 8.1, 9.0)) * (1 - eio(seg(t, 9.75, 10.35)));
+  const pl = (CA(T_DIVE) - T_LOCK0) + (planet0Theta(t) - P0_D);
+  return lerp(lock, pl, w);
+}
+const UNW_K = TAU * Math.round(rotRaw(10.65) / TAU);
+function camRot(t) {
+  if (t < 7.0 || t >= 10.65) return 0;
+  return lerp(rotRaw(t), UNW_K, eio(seg(t, 9.75, 10.65)));
+}
+
+// ---------- HUD ----------
+function sectionName(t) {
+  if (t < 1.5) return '01  BITE';
+  if (t < 3.0) return '02  ENGAGE';
+  if (t < 6.5) return '03  TRANSMIT';
+  if (t < 10.3) return '04  PLANETARY';
+  if (t < 12.8) return '05  TORQUE';
+  return '01  BITE';
+}
+function hud(t) {
+  ctx.save();
+  const px = panelX(t);
+  const fg = (x, c) => (px !== null && x > px - 30 && x < px + W + 30) ? C.ink : c;
+  ctx.lineWidth = 5; ctx.lineJoin = 'round';
+  const ft = (s, x, y) => { ctx.strokeStyle = ctx.fillStyle === C.ink ? 'rgba(235,229,214,0.9)' : 'rgba(18,20,24,0.85)'; ctx.strokeText(s, x, y); ctx.fillText(s, x, y); };
+  ctx.font = `600 18px ${MONO}`; ctx.textBaseline = 'top'; ctx.fillStyle = fg(40, C.bone);
+  ctx.textAlign = 'left'; ft('MIDDLE STUDIES   REEL — 032', 40, 34);
+  ctx.fillStyle = fg(W - 60, C.bone);
+  ctx.textAlign = 'right'; ft(sectionName(t), W - 40, 34);
+  ctx.textBaseline = 'bottom';
+  const th = TH(t) * 180 / Math.PI;
+  ctx.textAlign = 'left'; ctx.fillStyle = fg(40, C.bone);
+  const w = omega(t);
+  const rpm = w * 60 / TAU;
+  ft(`Θ ${th.toFixed(1).padStart(7, ' ')}°`, 40, H - 32);
+  ft(`ω ${w.toFixed(2)} rad/s`, 250, H - 32);
+  ft(`${rpm.toFixed(1).padStart(5, ' ')} rpm`, 470, H - 32);
+  ctx.fillStyle = fg(660, C.mint);
+  { const rl = ratioLabel(t); if (rl) ft(`i = ${rl}`, 660, H - 32); }
+  ctx.fillStyle = fg(W - 60, C.bone);
+  ctx.textAlign = 'right'; ft('Claude', W - 40, H - 32);
+  // rpm bar
+  ctx.fillStyle = 'rgba(235,229,214,0.18)'; ctx.fillRect(40, H - 24, 400, 3);
+  ctx.fillStyle = C.red; ctx.fillRect(40, H - 24, clamp(w / 4.0, 0, 1) * 400, 3);
+  ctx.restore();
+}
+function ratioLabel(t) {
+  if (t < 1.5 || t >= 12.8) return '48 : 20';
+  if (t < 3.0) return '48 : 20 : 32 : 24 : 36 : 24 : 30 : 24';
+  if (t < 6.5) return 'TORQUE  ' + (t > 4.85 && t < 5.45 ? '● in phase' : '○ out of phase');
+  if (t < 10.3) return `sun : ring = ${PL.Ns} : ${PL.Nr}   carrier ${(CA(t) * 180 / Math.PI).toFixed(0)}°`;
+  return '';
+}
+
+// ---------- scene ----------
+function drawGrid(cam) {
+  // blueprint grid in world space (light)
+  const step = 160;
+  const halfW = W / 2 / cam.z * 1.5, halfH = H / 2 / cam.z * 1.5, rr = Math.max(halfW, halfH);
+  if (step * cam.z < 6) return;
+  ctx.strokeStyle = C.grid; ctx.lineWidth = 1.5 / cam.z;
+  ctx.beginPath();
+  const x0 = Math.floor((cam.x - rr) / step) * step, x1 = cam.x + rr;
+  const y0 = Math.floor((cam.y - rr) / step) * step, y1 = cam.y + rr;
+  for (let x = x0; x <= x1; x += step) { ctx.moveTo(x, y0); ctx.lineTo(x, y1); }
+  for (let y = y0; y <= y1; y += step) { ctx.moveTo(x0, y); ctx.lineTo(x1, y); }
+  ctx.stroke();
+}
+function scene(c, t) {
+  const cam = camera(t); cam.rot = camRot(t);
+  c.save();
+  c.fillStyle = C.bg; c.fillRect(0, 0, W, H);
+  c.translate(W / 2, H / 2); c.rotate(-cam.rot); c.scale(cam.z, cam.z); c.translate(-cam.x, -cam.y);
+  drawGrid(cam);
+  drawPlanetary(t, cam.z);
+  // train (later-engaging gears on top while dropping)
+  const order = TRAIN.slice().sort((a, b) => (a.te < 0 ? -1 : a.te) - (b.te < 0 ? -1 : b.te));
+  for (const g of order) {
+    const dy = dropY(g, t); if (dy === null) continue;
+    drawGear(Object.assign({}, g, { y: g.y + dy }), gearTheta(g, t));
+  }
+  drawPistons(t);
+  c.restore();
+}
+
+// ---------- TORQUE panel (a rack sliding across, the word knocked out) ----------
+const pcv = document.createElement('canvas'); pcv.width = W; pcv.height = H;
+const pctx = pcv.getContext('2d');
+function panelX(t) {
+  if (t < 10.5 || t > 13.25) return null;
+  const inn = eout(seg(t, 10.5, 10.95)), out = ein(seg(t, 12.6, 13.25));
+  // overshoot spring on arrival
+  const s = t - 10.95, spring = s > 0 ? Math.exp(-s * 7) * Math.sin(s * 18) * 40 : 0;
+  return lerp(-W - 140, 0, inn) + spring + 70 * sm(seg(t, 10.95, 12.6)) + out * (W + 160);
+}
+function drawPanel(t) {
+  const px = panelX(t); if (px === null) return;
+  const p = pctx;
+  p.clearRect(0, 0, W, H);
+  p.save(); p.translate(px, 0);
+  // rack body with toothed leading/trailing edges
+  const tm = 22, pitch = Math.PI * tm;
+  p.fillStyle = C.bone;
+  p.beginPath();
+  p.moveTo(0, -20);
+  const edge = (x0, sgn) => {
+    const pts = [];
+    for (let y = -20; y < H + 40; y += pitch) {
+      pts.push([x0, y], [x0, y + pitch * 0.18], [x0 + sgn * tm * 1.1, y + pitch * 0.3], [x0 + sgn * tm * 1.1, y + pitch * 0.7], [x0, y + pitch * 0.82]);
+    }
+    return pts;
+  };
+  const right = edge(W, 1), left = edge(0, -1).reverse();
+  p.moveTo(right[0][0], right[0][1]);
+  for (const [x, y] of right) p.lineTo(x, y);
+  p.lineTo(W, H + 40);
+  for (const [x, y] of left) p.lineTo(x, y);
+  p.closePath(); p.fill();
+  // text cut-out
+  p.globalCompositeOperation = 'destination-out';
+  p.font = `800 430px ${DISPLAY}`; p.textAlign = 'left'; p.textBaseline = 'alphabetic';
+  const word = 'TORQUE', ws = [...word].map(ch => p.measureText(ch).width), tw = ws.reduce((a, b) => a + b, 0);
+  let lx = W / 2 - tw / 2;
+  for (let i = 0; i < word.length; i++) {
+    const g = TRAIN[i + 2], ph = gearTheta(g, t) + g.letterOff;
+    p.save(); p.translate(lx + ws[i] / 2, H / 2 + 16 * Math.sin(ph)); p.rotate(0.05 * Math.sin(ph));
+    p.fillText(word[i], -ws[i] / 2, 150); p.restore();
+    lx += ws[i];
+  }
+  p.globalCompositeOperation = 'source-over';
+  // small print
+  p.fillStyle = C.ink; p.font = `600 20px ${MONO}`; p.textBaseline = 'top';
+  p.textAlign = 'left'; p.fillText('τ = r × F', 120, 170);
+  p.fillText('8 SPUR GEARS · 1 PLANETARY × 3 LEVELS · 2 PISTONS', 120, 202);
+  p.textAlign = 'right'; p.fillText('ONE INPUT  Θ(t)', W - 120, 170);
+  p.fillText('REEL — 032', W - 120, 202);
+  p.textAlign = 'left'; p.textBaseline = 'alphabetic';
+  p.fillText('everything you see is turned by one shaft.', 120, H - 150);
+  p.fillStyle = C.red; p.fillRect(120, H - 132, 340 * eout(seg(t, 10.8, 11.6)), 4);
+  p.restore();
+  ctx.drawImage(pcv, 0, 0);
+}
+
+const acc = document.createElement('canvas'); acc.width = W; acc.height = H;
+const actx = acc.getContext('2d');
+// scene() draws into the global ctx; route it to the accumulation canvas
+const mainCtx = ctx;
+function sceneTo(target, t) { ctx = target; scene(target, t); ctx = mainCtx; }
+
+await document.fonts.load(`800 100px ${DISPLAY}`);
+await document.fonts.load(`600 16px ${MONO}`);
+await document.fonts.load(`400 16px ${MONO}`);
+await document.fonts.ready;
+
+window.__duration = DUR;
+window.__poster = 5.1;
+function camSpeed(t, h) {
+  const a = camera(t - h), b = camera(t + h), za = a.z, zb = b.z;
+  const ra = camRot(t - h), rb = camRot(t + h);
+  return Math.hypot((b.x - a.x) * zb, (b.y - a.y) * zb) + Math.abs(Math.log(zb / za)) * 1100 + Math.abs(rb - ra) * 900;
+}
+window.__seek = t => {
+  const SH = 1 / 110;
+  const SUBS = Math.round(clamp(camSpeed(clamp(t, SH, DUR - SH), SH / 2) / 7, 6, 28));
+  for (let k = 0; k < SUBS; k++) {
+    const tt = ((t - SH * (k / (SUBS - 1) - 0.5)) % DUR + DUR) % DUR;
+    sceneTo(actx, tt);
+    mainCtx.globalAlpha = 1 / (k + 1);
+    mainCtx.drawImage(acc, 0, 0);
+    mainCtx.globalAlpha = 1;
+  }
+  drawPanel(t);
+  hud(t);
+};
+if (!RENDER) {
+  const t0 = performance.now();
+  const loop = () => { window.__seek(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(loop); };
+  loop();
+}
+})();
+</script>
+</body>
+</html>

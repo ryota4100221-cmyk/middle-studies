@@ -1177,5 +1177,44 @@
     "review": "1周目：ring が散った位置のまま2つの塊に分かれ輪にならない→現在角の順位で角度を均等に割り当て。雲が広く薄い→雲を縮めて芯を濃く。字の下の注記が太陽に重なる→左寄せで字の下へ。2周目：最初の1秒の波が見えない→振幅1.6・幅70pxに。字がざらついて読みにくい→字の場面だけ鳥を1.3倍。鷹が小さい→42pxに。3周目：ループの継ぎ目は平均差4.4/255で問題なし。6.6〜7.3秒で群れが画面外へ流れて空が空く→散開を6.6秒で切り上げ、まとまる力を強め、輪の呼び込みを0.4秒前倒し。4周目：7.2秒もまとまり直しが見える。直すことなし。許容した差：crf 29 で細かい羽が少し潰れる／輪に追いかけの隙間が1つ残る（流れが見えるので残した）。",
     "condition": "control",
     "condition_day": "2026-10-30"
+  },
+  {
+    "id": "032",
+    "slug": "torque",
+    "title": "Torque",
+    "date": "2026-10-25",
+    "concept": "1本の駆動角 Θ(t) だけで回る1台の機械を、1台のカメラで巡る15秒。歯の位相を正しく噛ませた歯車列で、0秒目は朱の駆動歯車と5本スポークの歯車の接点の寄り。カメラが引くと、文字を載せた歯車が上から1つずつ落ちてきて噛み、回り出す。拍で刻む歯車の上で字はばらばらに転がり、5.1秒にだけ全部の位相が揃って TORQUE と正立して読める（見せ場）。そのあと遊星歯車のキャリアにカメラを固定して世界ごと回し、遊星の中の遊星（3段）へ潜って引き戻る。歯形の縁を持つ板が TORQUE の抜き文字で横切り、カメラはまた接点へ潜って0秒目に戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/032_torque.mp4",
+    "techniques": [
+      "phase-correct-involute-style-gear-meshing",
+      "single-drive-angle-whole-turn-loop",
+      "beat-ticked-drive-profile",
+      "drop-in-engage-freeze-before-mesh",
+      "letters-on-gears-phase-aligned-word",
+      "crank-slider-twin-pistons",
+      "nested-planetary-three-levels",
+      "carrier-locked-rotating-camera",
+      "speed-adaptive-shutter-motion-blur",
+      "toothed-rack-panel-knockout-type"
+    ],
+    "look": {
+      "palette": [
+        "#121418",
+        "#ebe5d6",
+        "#ff4f2e",
+        "#7fe0c8",
+        "#3b414b"
+      ],
+      "type": [
+        "Bricolage Grotesque 800",
+        "Martian Mono"
+      ],
+      "structure": "one machine, one camera, no cuts / macro on the D–G1 mesh → pull back while letter gears drop in and engage → train ticks on the beat, letters tumble until they phase-align into TORQUE (hero, 5.1 s) → planetary: camera locked to the carrier so the world spins → dive into a planet holding another planetary (3 levels) → snap back to the whole machine → a toothed rack panel slides across with TORQUE knocked out → dive back into the mesh = frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 4,
+    "review": "1周目：遊星から引く9.75〜10.4秒のブレが6枚の残像に割れて見える／抜き文字板の上で下の読み値が骨色に溶ける／ピストンのロッドが5.1秒の R を縦に切る→ブレのサンプル数をカメラの速さに応じて6〜28枚に／読み値の色を板の位置で切り替え／ピストンを朱の駆動歯車の左と下へ移した。板の静止を避けるため、抜き文字の6字を対応する歯車の角度で上下させた。2周目：遊星の本体が画面を埋める8.8〜9.4秒に読み値が見えない→読み値に縁取りを付けた。3周目：字の歯車の中心の軸穴が R と Q の字の中に食い込み、字の大きさも歯車ごとにばらつく→字の歯車は軸穴を描かず、字は全部250に揃えた。4周目：直すことなし。許容した差：遊星から全景へ引き戻る約0.5秒は回転を巻き戻すブレの塊になる（つなぎの振り）。",
+    "condition": "control",
+    "condition_day": "2026-10-31"
   }
 ]
