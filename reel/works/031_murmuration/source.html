@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MIDDLE STUDIES REEL — 031 Murmuration</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;600&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #0d0a14; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; object-fit: contain; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+(async () => {
+const W = 1920, H = 1080, FPS = 60, DUR = 15;
+const PRE = 1.4;                       // warm-up seconds simulated before t=0 (used to close the loop)
+const N = 4500;
+const SUB = 2, DT = 1 / (FPS * SUB);
+const FRAMES = Math.round((DUR + PRE) * FPS) + 2;
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const RENDER = location.search.includes('render');
+
+// ---------- utils ----------
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const rnd = mulberry32(31031);
+const clamp = (x, a, b) => x < a ? a : x > b ? b : x;
+const ss = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const lerp = (a, b, t) => a + (b - a) * t;
+const TAU = Math.PI * 2;
+const gauss = () => { let u = 0, v = 0; while (u === 0) u = rnd(); v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(TAU * v); };
+const easeIO = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+
+await document.fonts.load('400 200px Anton');
+await document.fonts.load('400 40px "JetBrains Mono"');
+await document.fonts.load('600 40px "JetBrains Mono"');
+await document.fonts.load('italic 400 40px "Instrument Serif"');
+
+// ---------- per-bird constants ----------
+const ox = new Float32Array(N), oy = new Float32Array(N), zz = new Float32Array(N);
+const flapW = new Float32Array(N), flapP = new Float32Array(N), jitP = new Float32Array(N);
+for (let i = 0; i < N; i++) {
+  let gx = gauss(), gy = gauss();
+  const r = Math.hypot(gx, gy); if (r > 2.4) { gx *= 2.4 / r; gy *= 2.4 / r; }
+  ox[i] = gx; oy[i] = gy;
+  zz[i] = 0.7 + 0.6 * rnd();
+  flapW[i] = TAU * (30 + Math.floor(rnd() * 16)) / DUR;   // whole cycles per 15 s → loops exactly
+  flapP[i] = rnd() * TAU;
+  jitP[i] = rnd() * TAU;
+}
+// rank along the cloud's long axis → order along the stream → order across the word
+const order = Array.from({ length: N }, (_, i) => i).sort((a, b) => ox[a] - ox[b]);
+const uu = new Float32Array(N);
+order.forEach((id, r) => uu[id] = r / (N - 1));
+
+// ---------- word targets (sampled from the set type) ----------
+const WORD = 'MURMUR';
+const wordX = new Float32Array(N), wordY = new Float32Array(N);
+{
+  const oc = document.createElement('canvas'); oc.width = W; oc.height = H;
+  const o = oc.getContext('2d');
+  let fs = 600; o.font = `400 ${fs}px Anton`;
+  const mw = o.measureText(WORD).width; fs = fs * 1560 / mw;
+  o.font = `400 ${fs}px Anton`; o.textAlign = 'center'; o.textBaseline = 'alphabetic';
+  o.fillStyle = '#fff';
+  const m = o.measureText(WORD);
+  const capH = m.actualBoundingBoxAscent;
+  o.fillText(WORD, W / 2, 520 + capH / 2);
+  const img = o.getImageData(0, 0, W, H).data;
+  const inside = (x, y) => { x |= 0; y |= 0; return x >= 0 && y >= 0 && x < W && y < H && img[(y * W + x) * 4 + 3] > 140; };
+  let s = 9, pts = [];
+  for (let iter = 0; iter < 30; iter++) {
+    pts = [];
+    const rr = mulberry32(777);
+    for (let y = 0; y < H; y += s) for (let x = 0; x < W; x += s) {
+      const jx = x + rr() * s, jy = y + rr() * s;
+      if (inside(jx, jy)) pts.push([jx, jy]);
+    }
+    if (pts.length >= N && pts.length < N * 1.08) break;
+    s *= Math.sqrt(pts.length / (N * 1.03));
+  }
+  const rr = mulberry32(4242);
+  for (let i = pts.length - 1; i > 0; i--) { const j = Math.floor(rr() * (i + 1)); [pts[i], pts[j]] = [pts[j], pts[i]]; }
+  pts = pts.slice(0, N);
+  while (pts.length < N) pts.push(pts[pts.length % Math.max(1, pts.length)]);
+  pts.sort((a, b) => a[0] - b[0]);
+  order.forEach((id, r) => { wordX[id] = pts[r][0]; wordY[id] = pts[r][1]; });
+}
+
+// ---------- choreography: targets as functions of time ----------
+// cloud: fixed offsets per bird, the blob deforms periodically (every period divides 15 s)
+function cloudT(i, t, out) {
+  const w = TAU / DUR;
+  const cx = 960 + 170 * Math.sin(w * t + 0.4) + 60 * Math.sin(3 * w * t);
+  const cy = 470 + 60 * Math.sin(2 * w * t + 1.0);
+  const rot = 0.32 * Math.sin(2 * w * t) + 0.12 * Math.sin(5 * w * t + 1);
+  const sx = 235 + 70 * Math.sin(4 * w * t + 0.5);
+  const sy = 92 + 34 * Math.cos(6 * w * t);
+  let x = ox[i] * sx, y = oy[i] * sy;
+  y += 70 * Math.sin(ox[i] * 1.4 + 8 * w * t);                // the blob bends like a wing
+  x += 40 * Math.sin(oy[i] * 2.0 - 6 * w * t);
+  const c = Math.cos(rot), s = Math.sin(rot);
+  out[0] = cx + x * c - y * s; out[1] = cy + x * s + y * c;
+}
+// stream: the cloud pulls out into one undulating ribbon
+function streamT(i, t, out) {
+  const st = ss(1.8, 3.4, t);
+  const u = uu[i];
+  const len = lerp(700, 2100, st);
+  const x = 960 + (u - 0.5) * len;
+  const thick = 26 + 40 * Math.pow(Math.sin(Math.PI * u), 0.6) * (0.6 + 0.4 * Math.sin(u * 9 - t * 3));
+  const y = 520 + 210 * Math.sin(TAU * u * 1.25 - 5.2 * t) * Math.sin(Math.PI * u) + oy[i] * thick;
+  out[0] = x; out[1] = y;
+}
+function wordT(i, t, out) {
+  const a = jitP[i] + t * 5.0;
+  out[0] = wordX[i] + 2.6 * Math.cos(a); out[1] = wordY[i] + 2.6 * Math.sin(a * 1.3);
+}
+const ringTh = new Float32Array(N);                    // assigned in the sim when the ring is called
+const RC = [960, 520];
+function ringPt(i, t, out) {
+  const th = ringTh[i] + 1.5 * (t - 7.0);
+  const R = 360 + 40 * Math.sin(t * 2.2) + oy[i] * 26 + 8 * Math.sin(th * 6 - t * 4);
+  out[0] = RC[0] + R * 1.25 * Math.cos(th); out[1] = RC[1] + R * 0.95 * Math.sin(th);
+}
+function eightPt(i, t, out) {
+  const th = ringTh[i] + 1.5 * (t - 7.0);
+  const s = Math.sin(th), c = Math.cos(th), d = 1 + s * s;
+  const a = 820, lat = oy[i] * 24;
+  let x = a * c / d, y = a * 0.9 * s * c / d;
+  // lateral offset along the path normal
+  const s2 = Math.sin(th + 0.01), c2 = Math.cos(th + 0.01), d2 = 1 + s2 * s2;
+  const tx = a * c2 / d2 - x, ty = a * 0.9 * s2 * c2 / d2 - y, tl = Math.hypot(tx, ty) || 1;
+  x += -ty / tl * lat; y += tx / tl * lat;
+  out[0] = RC[0] + x; out[1] = RC[1] + y;
+}
+// mixing weights per phase
+function weights(t) {
+  const wc0 = 1 - ss(1.8, 3.0, t);
+  const wst = ss(1.8, 3.0, t) * (1 - ss(3.7, 4.6, t));
+  const wwd = ss(3.7, 4.6, t) * (1 - ss(5.95, 6.05, t));
+  const wri = ss(6.6, 7.8, t) * (1 - ss(9.9, 11.0, t));
+  const wei = ss(9.9, 11.0, t) * (1 - ss(12.3, 13.4, t));
+  const wc1 = ss(12.3, 13.4, t);
+  return [wc0 + wc1, wst, wwd, wri, wei];
+}
+function stiffness(t) {           // natural frequency of the pull toward the target (rad/s)
+  if (t < 3.7) return lerp(4, 6, ss(1.8, 3.0, t));
+  if (t < 6.0) return lerp(6, 13, ss(3.7, 4.8, t));
+  if (t < 6.6) return 0;
+  if (t < 9.9) return lerp(0.5, 7, ss(6.6, 8.0, t));
+  if (t < 12.3) return 7;
+  return lerp(7, 4, ss(12.3, 13.6, t));
+}
+const tmp = [0, 0];
+function target(i, t, out) {
+  if (t < 0) t += DUR;            // warm-up uses the end of the cloud → same field as t=15
+  const w = weights(t);
+  let x = 0, y = 0;
+  if (w[0] > 0) { cloudT(i, t, tmp); x += w[0] * tmp[0]; y += w[0] * tmp[1]; }
+  if (w[1] > 0) { streamT(i, t, tmp); x += w[1] * tmp[0]; y += w[1] * tmp[1]; }
+  if (w[2] > 0) { wordT(i, t, tmp); x += w[2] * tmp[0]; y += w[2] * tmp[1]; }
+  if (w[3] > 0) { ringPt(i, t, tmp); x += w[3] * tmp[0]; y += w[3] * tmp[1]; }
+  if (w[4] > 0) { eightPt(i, t, tmp); x += w[4] * tmp[0]; y += w[4] * tmp[1]; }
+  const sum = w[0] + w[1] + w[2] + w[3] + w[4];
+  out[0] = sum > 0 ? x / sum : 960; out[1] = sum > 0 ? y / sum : 520;
+}
+
+// hawk: one dive through the word
+const HAWK0 = 5.45, HAWK1 = 6.95;
+function hawk(t) {
+  if (t < HAWK0 || t > HAWK1) return null;
+  const u = (t - HAWK0) / (HAWK1 - HAWK0);
+  const e = u < 0.5 ? 0.5 * Math.pow(u * 2, 1.6) : 1 - 0.5 * Math.pow((1 - u) * 2, 1.6);
+  const P0 = [2250, -260], P1 = [1500, 820], P2 = [600, 160], P3 = [-360, 1180];
+  const b = (a, b, c, d, s) => (1 - s) ** 3 * a + 3 * (1 - s) ** 2 * s * b + 3 * (1 - s) * s * s * c + s ** 3 * d;
+  return [b(P0[0], P1[0], P2[0], P3[0], e), b(P0[1], P1[1], P2[1], P3[1], e)];
+}
+
+// ---------- simulation (precomputed once, then __seek only reads) ----------
+const PX = new Float32Array(FRAMES * N), PY = new Float32Array(FRAMES * N);
+{
+  const px = new Float32Array(N), py = new Float32Array(N), vx = new Float32Array(N), vy = new Float32Array(N);
+  const T0 = -PRE;
+  const a = [0, 0], b = [0, 0];
+  for (let i = 0; i < N; i++) {
+    target(i, T0, a); target(i, T0 + 0.01, b);
+    px[i] = a[0] + gauss() * 3; py[i] = a[1] + gauss() * 3;
+    vx[i] = (b[0] - a[0]) / 0.01; vy[i] = (b[1] - a[1]) / 0.01;
+  }
+  const CS = 10, GW = Math.ceil((W + 800) / CS), GH = Math.ceil((H + 800) / CS), OFF = 400;
+  const head = new Int32Array(GW * GH), next = new Int32Array(N);
+  const RS = 9.5, SEP = 5200;
+  let ringAssigned = false;
+  let f = 0;
+  const store = () => { const o = f * N; PX.set(px, o); PY.set(py, o); f++; };
+  store();
+  const steps = (FRAMES - 1) * SUB;
+  for (let st = 0; st < steps; st++) {
+    const t = T0 + st * DT;
+    if (!ringAssigned && t >= 6.6) {
+      ringAssigned = true;
+      // rank by current angle → spread evenly round the ring (the flock pours along it to fill the gaps)
+      const ang = new Float32Array(N);
+      for (let i = 0; i < N; i++) ang[i] = Math.atan2((py[i] - RC[1]) / 0.95, (px[i] - RC[0]) / 1.25);
+      const ids = Array.from({ length: N }, (_, i) => i).sort((p, q) => ang[p] - ang[q]);
+      const a0 = ang[ids[0]];
+      ids.forEach((id, r) => { ringTh[id] = lerp(ang[id], a0 + TAU * r / N, 0.85); });
+    }
+    head.fill(-1);
+    for (let i = 0; i < N; i++) {
+      const gx = clamp(((px[i] + OFF) / CS) | 0, 0, GW - 1), gy = clamp(((py[i] + OFF) / CS) | 0, 0, GH - 1);
+      const k = gy * GW + gx; next[i] = head[k]; head[k] = i;
+    }
+    const k = stiffness(t < 0 ? t + DUR : t), damp = 2 * 0.7 * k;
+    const hk = hawk(t), hk2 = hawk(t + DT) || hk;
+    const tt = t < 0 ? t + DUR : t;
+    const free = tt >= 6.0 && tt < 7.2;
+    for (let i = 0; i < N; i++) {
+      let ax = 0, ay = 0;
+      if (k > 0.001) {
+        target(i, t, a); target(i, t + DT, b);
+        const tvx = (b[0] - a[0]) / DT, tvy = (b[1] - a[1]) / DT;
+        ax += k * k * (a[0] - px[i]) + damp * (tvx - vx[i]);
+        ay += k * k * (a[1] - py[i]) + damp * (tvy - vy[i]);
+      }
+      // separation
+      const gx = clamp(((px[i] + OFF) / CS) | 0, 1, GW - 2), gy = clamp(((py[i] + OFF) / CS) | 0, 1, GH - 2);
+      let cnt = 0;
+      for (let yy = gy - 1; yy <= gy + 1 && cnt < 10; yy++) for (let xx = gx - 1; xx <= gx + 1 && cnt < 10; xx++) {
+        for (let j = head[yy * GW + xx]; j >= 0 && cnt < 10; j = next[j]) {
+          if (j === i) continue;
+          const dx = px[i] - px[j], dy = py[i] - py[j], d2 = dx * dx + dy * dy;
+          if (d2 < RS * RS && d2 > 1e-4) { const d = Math.sqrt(d2), s = SEP * (1 - d / RS) / d; ax += dx * s; ay += dy * s; cnt++; }
+        }
+      }
+      // turbulence (smooth, deterministic)
+      ax += 260 * Math.sin(py[i] * 0.011 + tt * 1.7 + ox[i]) + 140 * Math.sin(px[i] * 0.007 - tt * 2.3);
+      ay += 260 * Math.cos(px[i] * 0.010 - tt * 1.3 + oy[i]) + 140 * Math.cos(py[i] * 0.008 + tt * 1.9);
+      // hawk: flash expansion
+      if (hk) {
+        const hvx = (hk2[0] - hk[0]) / DT, hvy = (hk2[1] - hk[1]) / DT;
+        const dx = px[i] - hk[0], dy = py[i] - hk[1], d = Math.hypot(dx, dy) + 1e-3;
+        const R = 300;
+        if (d < R) {
+          const f2 = (1 - d / R); const s = 90000 * f2 * f2 / d;
+          ax += dx * s; ay += dy * s;
+          // pulled sideways off the hawk's line
+          const hl = Math.hypot(hvx, hvy) + 1e-3, nx = -hvy / hl, ny = hvx / hl;
+          const side = Math.sign(dx * nx + dy * ny) || 1;
+          ax += nx * side * 26000 * f2; ay += ny * side * 26000 * f2;
+        }
+      }
+      if (free) {
+        // loose cohesion while the flock is scattered
+        ax += (RC[0] - px[i]) * 3.6; ay += (RC[1] - py[i]) * 3.6;
+        ax -= vx[i] * 0.6; ay -= vy[i] * 0.6;
+      }
+      vx[i] += ax * DT; vy[i] += ay * DT;
+      const sp = Math.hypot(vx[i], vy[i]), MAX = 2400;
+      if (sp > MAX) { vx[i] *= MAX / sp; vy[i] *= MAX / sp; }
+    }
+    for (let i = 0; i < N; i++) { px[i] += vx[i] * DT; py[i] += vy[i] * DT; }
+    if ((st + 1) % SUB === 0) store();
+  }
+}
+
+// ---------- drawing ----------
+const SKY = [ // key colours over 15 s: [t, top, mid, horizon]
+  [0.0, '#1c1530', '#6b2f57', '#f08a5d'],
+  [4.5, '#221737', '#7a3358', '#f49a62'],
+  [6.0, '#2a1438', '#a2384e', '#ffb067'],
+  [8.5, '#160f2a', '#4d2752', '#e0704f'],
+  [11.5, '#1a1330', '#5f2c57', '#ec7f58'],
+  [15.0, '#1c1530', '#6b2f57', '#f08a5d'],
+];
+const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const SKYc = SKY.map(r => [r[0], hex(r[1]), hex(r[2]), hex(r[3])]);
+function skyAt(t) {
+  let j = 0; while (j < SKYc.length - 2 && t > SKYc[j + 1][0]) j++;
+  const A = SKYc[j], B = SKYc[j + 1], u = ss(A[0], B[0], t);
+  const m = (p, q) => `rgb(${p.map((v, k) => Math.round(lerp(v, q[k], u))).join(',')})`;
+  return [m(A[1], B[1]), m(A[2], B[2]), m(A[3], B[3])];
+}
+const fmt = (x, n = 2) => x.toFixed(n);
+const SCENES = [[0, '01 CLOUD'], [2.0, '02 STREAM'], [3.9, '03 WORD'], [5.6, '04 HAWK'], [6.9, '05 VORTEX'], [10.2, '06 FIGURE EIGHT'], [12.6, '07 CLOUD']];
+
+const QX = new Float32Array(N), QY = new Float32Array(N), HX = new Float32Array(N), HY = new Float32Array(N);
+function frameAt(t, X, Y, HXo, HYo) {
+  // positions with sub-frame interpolation; heading from neighbouring frames
+  const ft = (t + PRE) * FPS;
+  const f0 = clamp(Math.floor(ft), 1, FRAMES - 2), u = clamp(ft - f0, 0, 1);
+  const o0 = f0 * N, o1 = (f0 + 1) * N, om = (f0 - 1) * N;
+  for (let i = 0; i < N; i++) {
+    X[i] = lerp(PX[o0 + i], PX[o1 + i], u); Y[i] = lerp(PY[o0 + i], PY[o1 + i], u);
+    HXo[i] = PX[o1 + i] - PX[om + i]; HYo[i] = PY[o1 + i] - PY[om + i];
+  }
+}
+const BX = new Float32Array(N), BY = new Float32Array(N), BHX = new Float32Array(N), BHY = new Float32Array(N);
+
+function wave(t, x, y) {
+  // agitation waves: bands of banking birds that run through the flock
+  let b = 0;
+  const W1 = [[0.05, 250, 1900, 1.6, 0.25], [1.15, 1700, -1600, 1.2, -0.3], [8.4, 0, 0, 1, 0], [9.3, 0, 0, 1, 0], [11.2, 200, 1700, 0.9, 0.2]];
+  for (const [t0, x0, sp, amp, sl] of W1) {
+    const dtw = t - t0; if (dtw < 0 || dtw > 1.6) continue;
+    let d;
+    if (sp === 0) { d = Math.hypot((x - RC[0]) / 1.25, (y - RC[1]) / 0.95) - (60 + dtw * 520); }
+    else d = (x + (y - 540) * sl) - (x0 + sp * dtw);
+    const env = Math.sqrt(Math.sin(Math.PI * clamp(dtw / 1.6, 0, 1)));
+    b += amp * env * Math.exp(-(d * d) / (2 * 70 * 70));
+  }
+  return b;
+}
+
+function drawBirds(t, X, Y, HXa, HYa, alphaMul) {
+  const wordBoost = 1 + 0.3 * weights(t)[2];
+  const batches = 3;
+  for (let bt = 0; bt < batches; bt++) {
+    ctx.beginPath();
+    for (let i = bt; i < N; i += batches) {
+      const x = X[i], y = Y[i];
+      if (x < -40 || x > W + 40 || y < -40 || y > H + 40) continue;
+      let hx = HXa[i], hy = HYa[i];
+      const sp = Math.hypot(hx, hy) * FPS / 2;
+      if (sp < 1e-3) { hx = 1; hy = 0; } else { hx /= sp * 2 / FPS; hy /= sp * 2 / FPS; }
+      const bank = wave(t, x, y);
+      // banking turns the bird and opens the wing silhouette
+      const ca = Math.cos(bank * 0.9), sa = Math.sin(bank * 0.9);
+      const dx = hx * ca - hy * sa, dy = hx * sa + hy * ca;
+      const nx = -dy, ny = dx;
+      const s = 3.1 * zz[i] * (1 + 0.55 * bank) * wordBoost;
+      const flap = Math.abs(Math.sin(flapP[i] + flapW[i] * t));
+      const span = s * (0.55 + 1.05 * flap) * (1 + 0.9 * bank);
+      const body = s * (1.1 + Math.min(sp, 2400) * 0.0006);
+      const sweep = s * (0.35 + 0.5 * (1 - flap));
+      ctx.moveTo(x + dx * body, y + dy * body);
+      ctx.lineTo(x - dx * sweep + nx * span, y - dy * sweep + ny * span);
+      ctx.lineTo(x - dx * s * 0.25, y - dy * s * 0.25);
+      ctx.lineTo(x - dx * sweep - nx * span, y - dy * sweep - ny * span);
+      ctx.closePath();
+    }
+    ctx.globalAlpha = alphaMul * (0.62 + 0.12 * bt);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawHawk(t) {
+  const h = hawk(t); if (!h) return;
+  const h2 = hawk(Math.min(t + 1 / 60, HAWK1)) || h;
+  let dx = h2[0] - h[0], dy = h2[1] - h[1]; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
+  const nx = -dy, ny = dx;
+  for (let g = 5; g >= 0; g--) {          // shutter streak
+    const hg = hawk(Math.max(HAWK0, t - g * 0.008)); if (!hg) continue;
+    const s = 42, flap = Math.abs(Math.sin(t * TAU * 3.2));
+    const span = s * (1.4 + 0.9 * flap), sweep = s * (0.5 + 0.4 * (1 - flap));
+    ctx.beginPath();
+    ctx.moveTo(hg[0] + dx * s * 1.5, hg[1] + dy * s * 1.5);
+    ctx.quadraticCurveTo(hg[0] + nx * span * 0.4, hg[1] + ny * span * 0.4, hg[0] - dx * sweep + nx * span, hg[1] - dy * sweep + ny * span);
+    ctx.lineTo(hg[0] - dx * s * 0.3, hg[1] - dy * s * 0.3);
+    ctx.lineTo(hg[0] - dx * sweep - nx * span, hg[1] - dy * sweep - ny * span);
+    ctx.quadraticCurveTo(hg[0] - nx * span * 0.4, hg[1] - ny * span * 0.4, hg[0] + dx * s * 1.5, hg[1] + dy * s * 1.5);
+    ctx.globalAlpha = g === 0 ? 1 : 0.13;
+    ctx.fillStyle = '#0b0710'; ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function draw(t) {
+  t = ((t % DUR) + DUR) % DUR;
+  const [top, mid, hor] = skyAt(t);
+  // camera: a slow breath + a punch when the hawk hits (periodic → loops)
+  const punch = Math.exp(-Math.pow((t - 6.05) / 0.22, 2));
+  const zoom = 1 + 0.025 * Math.sin(TAU * t / DUR) + 0.05 * punch;
+  const shx = 7 * punch * Math.sin(t * 90), shy = 5 * punch * Math.cos(t * 77);
+
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, top); g.addColorStop(0.55, mid); g.addColorStop(0.9, hor); g.addColorStop(1, hor);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.translate(W / 2 + shx, H / 2 + shy); ctx.scale(zoom, zoom); ctx.translate(-W / 2, -H / 2);
+  // sun, low over the marsh
+  const sunX = 1380 - 60 * Math.sin(TAU * t / DUR), sunY = 900 + 14 * Math.cos(TAU * t / DUR);
+  const sg = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, 520);
+  sg.addColorStop(0, 'rgba(255,214,150,0.55)'); sg.addColorStop(1, 'rgba(255,214,150,0)');
+  ctx.fillStyle = sg; ctx.fillRect(0, 0, W, H);
+  ctx.beginPath(); ctx.arc(sunX, sunY, 150, 0, TAU); ctx.fillStyle = '#ffd59a'; ctx.fill();
+  // marsh: flat silhouettes of reed beds
+  ctx.fillStyle = '#2a1428';
+  ctx.beginPath(); ctx.moveTo(-60, H + 40);
+  for (let x = -60; x <= W + 60; x += 12) ctx.lineTo(x, 968 + 10 * Math.sin(x * 0.011) + 6 * Math.sin(x * 0.037 + 1) + 3 * Math.sin(x * 0.21));
+  ctx.lineTo(W + 60, H + 40); ctx.fill();
+  ctx.fillStyle = '#170b18';
+  ctx.beginPath(); ctx.moveTo(-60, H + 40);
+  for (let x = -60; x <= W + 60; x += 8) ctx.lineTo(x, 1012 + 8 * Math.sin(x * 0.006 + 2) + 5 * Math.abs(Math.sin(x * 0.09)) * -1);
+  ctx.lineTo(W + 60, H + 40); ctx.fill();
+
+  // flock: closing blend of the last 1.4 s into the warm-up = frame 0
+  frameAt(t, QX, QY, HX, HY);
+  const lb = ss(DUR - PRE, DUR, t);
+  if (lb > 0) {
+    frameAt(t - DUR, BX, BY, BHX, BHY);
+    for (let i = 0; i < N; i++) { QX[i] = lerp(QX[i], BX[i], lb); QY[i] = lerp(QY[i], BY[i], lb); HX[i] = lerp(HX[i], BHX[i], lb); HY[i] = lerp(HY[i], BHY[i], lb); }
+  }
+  ctx.fillStyle = '#120a16';
+  drawBirds(t, QX, QY, HX, HY, 1);
+  drawHawk(t);
+  ctx.restore();
+
+  // ---------- overlay ----------
+  ctx.fillStyle = 'rgba(255,232,210,0.82)';
+  ctx.font = '600 19px "JetBrains Mono"'; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
+  ctx.fillText('MIDDLE STUDIES  REEL — 031', 48, 40);
+  ctx.textAlign = 'right';
+  let sc = SCENES[0][1]; for (const [s0, n] of SCENES) if (t >= s0) sc = n;
+  ctx.fillText(sc, W - 48, 40);
+  ctx.font = '400 19px "JetBrains Mono"'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  const w = weights(t), k = stiffness(t);
+  ctx.fillStyle = 'rgba(255,236,214,0.86)';
+  ctx.fillText(`n ${N.toLocaleString('en-US')}   sep 9.5px   pull ${fmt(k, 1).padStart(4, ' ')}   t ${fmt(t).padStart(5, '0')}s`, 48, H - 40);
+  ctx.textAlign = 'right';
+  ctx.fillText('Claude', W - 48, H - 40);
+  // caption under the word
+  const cap = ss(4.4, 4.9, t) * (1 - ss(5.75, 5.95, t));
+  if (cap > 0) {
+    ctx.globalAlpha = cap;
+    ctx.textAlign = 'left';
+    ctx.font = 'italic 400 40px "Instrument Serif"';
+    ctx.fillStyle = 'rgba(255,236,214,0.95)';
+    ctx.fillText('murmuration (n.) — 4,500 starlings, no leader.', 190, 812 + 8 * (1 - cap));
+    ctx.globalAlpha = 1;
+  }
+}
+
+window.__duration = DUR;
+window.__poster = 5.3;
+window.__seek = t => { draw(t); };
+if (!RENDER) {
+  const t0 = performance.now();
+  const loop = () => { draw(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(loop); };
+  loop();
+}
+})();
+</script>
+</body>
+</html>

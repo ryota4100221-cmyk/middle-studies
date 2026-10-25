@@ -1137,5 +1137,45 @@
     "review": "1周目：12.9〜14.1秒が文字の出た市松のまま1.2秒止まっていた（静止で🔴）。蝶番の45°の保持も0.65秒あった→終盤は FLAT. の背後で列を2タイル分ずつ上下に走らせ、文字の入りを11.95秒に前倒しし、45→90°の閉じを早めた。2周目：静止は最長0.43秒に。圧縮（crf 26）を等倍で見て、トゥルシェの回転中と水玉の場面も崩れていないことを確かめた。3周目：場面のつなぎ（2.05・4.75・7.0・7.6・11.5・11.95・15→0）を前後のコマの差で測り、段差がないことを確かめた（2.05の差は蝶番の開き始めの初速）。許容した差：蝶番は初速が速く、開き始めの1コマで格子が跳ぶ。0秒目は行が高速で走っていて字は読めず、読めるのは0.9秒から。",
     "condition": "no-depth",
     "condition_day": "2026-10-29"
+  },
+  {
+    "id": "031",
+    "slug": "murmuration",
+    "title": "Murmuration",
+    "date": "2026-10-25",
+    "concept": "夕焼けの湿原の上で、4,500羽のムクドリの群れ（ボイド）だけが形を変えて15秒をつなぐ。各羽は分離と乱流と『目標へのばね』だけで飛び、シミュレーションは読み込み時に全コマ解いてある。雲のような群れに暗い波（バンクする羽の帯）が走り、群れは1本のうねる帯に伸び、MURMUR の字に降りて止まる。見せ場は6.1秒：鷹が字の真ん中へ急降下して群れを裂き（フラッシュ・エクスパンション）、散った群れは渦の輪に集まり、輪がねじれて8の字になり、また雲に戻って0秒目につながる。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/031_murmuration.mp4",
+    "techniques": [
+      "boids-flock-4500-agents",
+      "precomputed-deterministic-flock-sim",
+      "target-spring-choreography-blend",
+      "agitation-wave-banking-bands",
+      "flock-as-type-sampled-glyph-targets",
+      "predator-flash-expansion",
+      "rank-by-angle-ring-assignment",
+      "ring-to-lemniscate-morph",
+      "per-bird-flapping-silhouettes",
+      "warmup-blend-seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#1c1530",
+        "#6b2f57",
+        "#f08a5d",
+        "#ffd59a",
+        "#120a16"
+      ],
+      "type": [
+        "Anton (flown by birds)",
+        "Instrument Serif Italic",
+        "JetBrains Mono"
+      ],
+      "structure": "one flock, one static sky, no cuts / cloud with agitation waves → stretched into an undulating stream → lands as MURMUR → hawk dives through the word and splits the flock (hero) → regroup into a rotating ring → twists into a figure eight → back into the cloud of frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 4,
+    "review": "1周目：ring が散った位置のまま2つの塊に分かれ輪にならない→現在角の順位で角度を均等に割り当て。雲が広く薄い→雲を縮めて芯を濃く。字の下の注記が太陽に重なる→左寄せで字の下へ。2周目：最初の1秒の波が見えない→振幅1.6・幅70pxに。字がざらついて読みにくい→字の場面だけ鳥を1.3倍。鷹が小さい→42pxに。3周目：ループの継ぎ目は平均差4.4/255で問題なし。6.6〜7.3秒で群れが画面外へ流れて空が空く→散開を6.6秒で切り上げ、まとまる力を強め、輪の呼び込みを0.4秒前倒し。4周目：7.2秒もまとまり直しが見える。直すことなし。許容した差：crf 29 で細かい羽が少し潰れる／輪に追いかけの隙間が1つ残る（流れが見えるので残した）。",
+    "condition": "control",
+    "condition_day": "2026-10-30"
   }
 ]
