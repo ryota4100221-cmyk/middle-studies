@@ -1097,5 +1097,45 @@
     "review": "1周目：頁から扇への変形で、幅の広い頁が一斉に縮んで白い塊が0.3秒できていた→頁は頁のまま背の1点を軸に先に振り出し、遅れて細くする順に変えた（色見本のHEXが扇の根元に覗く）。2周目：FVでコピーの字がカメラの引きと別の座標で落ちてきて、ヘッダより先に大きく出ていた→字もカメラの中に入れ、引き終わり近く（+0.7秒）から落とした。3周目：つなぎ目（3.2断裁・6.6扇・10.6リベット・13.9めくり→0秒）と見せ場9.2を等倍で確認、直すことなし。許容した差：紙帯は面で見せたまま平面内で曲げている（実際の紙は面内に曲がらない）。紙帯の弧の上で字が少し歪む。",
     "condition": "case-values",
     "condition_day": "2026-10-28"
+  },
+  {
+    "id": "030",
+    "slug": "flatland",
+    "title": "Flatland",
+    "date": "2026-10-25",
+    "concept": "奥行きを一切使わず、1枚の平面の敷き詰め（タイリング）だけを機構として動かした15秒。画面の隅の読み値は最初から最後まで z = 0.000。0秒目は市松の行が左右へ1〜2周ずつ走っていて、ばねで止まると朱と黄の市松で刷り分けた FLAT. が読める。正方形は角でつながったまま互い違いに回って開き（回転する正方形の機構）、45°で黄と青緑の穴が新しい市松になり、90°で閉じる。辺がエッシャーのように曲がって平面ごと渦を巻いたあと、タイルが4つに分かれて二色のトゥルシェ（Truchet）タイルになり、576枚が波のように90°ずつ回って、蛇行→(x,y) の字（見せ場は9.3秒）→水玉の秩序へと組み替わる。最後は市松に戻り、FLAT. の背後で列が上下に走ってから、行がまた走り出して0秒目に戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/030_flatland.mp4",
+    "techniques": [
+      "row-shear-laps-with-spring-snap",
+      "shutter-averaged-motion-blur-per-row",
+      "rotating-squares-auxetic-mechanism",
+      "dual-checker-holes-at-45-degrees",
+      "escher-edge-bending-shared-edges",
+      "vertex-vortex-warp-of-tiling",
+      "tile-subdivision-144-to-576",
+      "two-colour-truchet-vertex-parity",
+      "rotation-waves-with-colour-swap",
+      "cell-by-cell-word-palette-swap",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#f3eee2",
+        "#141414",
+        "#ff4a1c",
+        "#ffc933",
+        "#1fa59a"
+      ],
+      "type": [
+        "Archivo Black",
+        "DM Mono"
+      ],
+      "structure": "one flat plane, no cuts, every change is a tiling transformation: rows lap and snap into a checker carrying FLAT. → squares hinge open at the corners into a 45° dual checker and close at 90° → edges bend Escher-like while the vertices swirl → every tile splits into four → two-colour Truchet tiles grow and turn in waves: meander → (x,y) (hero) → ordered dots → back to checker, merge, FLAT. with columns running behind it → rows lap again into frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：12.9〜14.1秒が文字の出た市松のまま1.2秒止まっていた（静止で🔴）。蝶番の45°の保持も0.65秒あった→終盤は FLAT. の背後で列を2タイル分ずつ上下に走らせ、文字の入りを11.95秒に前倒しし、45→90°の閉じを早めた。2周目：静止は最長0.43秒に。圧縮（crf 26）を等倍で見て、トゥルシェの回転中と水玉の場面も崩れていないことを確かめた。3周目：場面のつなぎ（2.05・4.75・7.0・7.6・11.5・11.95・15→0）を前後のコマの差で測り、段差がないことを確かめた（2.05の差は蝶番の開き始めの初速）。許容した差：蝶番は初速が速く、開き始めの1コマで格子が跳ぶ。0秒目は行が高速で走っていて字は読めず、読めるのは0.9秒から。",
+    "condition": "no-depth",
+    "condition_day": "2026-10-29"
   }
 ]

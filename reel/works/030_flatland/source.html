@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 030 Flatland</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=DM+Mono:wght@500&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #141414; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; object-fit: contain; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// REEL — 030 Flatland. One plane, z = 0 the whole time.
+// Everything is a tiling of the xy-plane: rows slide, squares hinge, edges bend,
+// tiles split and turn. No 3D, no perspective, no parallax.
+const W = 1920, H = 1080, S = 120, CX = W / 2, CY = H / 2;
+const C = { iv: '#f3eee2', ink: '#141414', or: '#ff4a1c', te: '#1fa59a', yo: '#ffc933' };
+const PA = [C.iv, C.ink];            // plane
+const PB = [C.or, C.yo];             // inside the word
+window.__duration = 15;
+window.__poster = 9.3;
+
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const mk = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; return c; };
+const P = mk(), pc = P.getContext('2d');      // plane in palette B
+const T = mk(), tc = T.getContext('2d');      // word layer
+const F = mk(), fc = F.getContext('2d');      // plane + word (for row slides)
+const M1 = mk(), M2 = mk();                   // word masks
+
+// ---------- helpers ----------
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const inOut = k => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+const outC = k => 1 - Math.pow(1 - k, 3);
+const outBack = (k, s = 1.9) => 1 + (s + 1) * Math.pow(k - 1, 3) + s * Math.pow(k - 1, 2);
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+// ---------- word masks ----------
+function wordMask(cnv, text, size, dy, track) {
+  const g = cnv.getContext('2d'); g.clearRect(0, 0, W, H);
+  g.fillStyle = '#000'; g.font = `${size}px "Archivo Black"`; g.textBaseline = 'alphabetic';
+  const chars = [...text]; let w = 0; const adv = chars.map(ch => g.measureText(ch).width + track);
+  w = adv.reduce((a, b) => a + b, 0) - track;
+  let x = CX - w / 2;
+  chars.forEach((ch, i) => { g.fillText(ch, x, CY + dy); x += adv[i]; });
+}
+// which cells of size s touch the mask (so we only animate those)
+function maskCells(cnv, s) {
+  const d = cnv.getContext('2d').getImageData(0, 0, W, H).data, out = [];
+  for (let j = 0; j < H / s; j++) for (let i = 0; i < W / s; i++) {
+    let hit = false;
+    for (let y = j * s; y < (j + 1) * s && !hit; y += 4) for (let x = i * s; x < (i + 1) * s; x += 4)
+      if (d[(y * W + x) * 4 + 3] > 0) { hit = true; break; }
+    if (hit) out.push([i, j]);
+  }
+  return out;
+}
+let cells1, cells2;
+
+// ---------- planes ----------
+function checkerCols(g, pal, s, colOff) {
+  g.fillStyle = pal[0]; g.fillRect(0, 0, W, H);
+  g.fillStyle = pal[1]; g.beginPath();
+  for (let i = 0; i < W / s; i++) {
+    const oy = ((colOff(i) % (2 * s)) + 2 * s) % (2 * s);
+    for (let j = -2; j <= H / s + 1; j++) if (((i + j) % 2 + 2) % 2 === 1) g.rect(i * s, j * s + oy, s, s);
+  }
+  g.fill();
+}
+function checker(g, pal, s, ox = 0, oy = 0) {
+  g.fillStyle = pal[0]; g.fillRect(0, 0, W, H);
+  g.fillStyle = pal[1]; g.beginPath();
+  for (let j = -1; j <= H / s + 1; j++) for (let i = -1; i <= W / s + 1; i++)
+    if (((i + j) % 2 + 2) % 2 === 1) g.rect(i * s + ox, j * s + oy, s, s);
+  g.fill();
+}
+
+// word layer: plane-B pixels inside the word, revealed cell by cell (squares growing from cell centres)
+function wordLayer(drawB, mask, cells, s, rev) {
+  drawB(pc);
+  tc.globalCompositeOperation = 'source-over'; tc.clearRect(0, 0, W, H);
+  tc.fillStyle = '#000'; tc.beginPath(); let any = false;
+  for (const [i, j] of cells) {
+    const k = rev(i, j); if (k <= 0) continue; any = true;
+    const q = s * Math.min(1, k) / 2 + .5, x = i * s + s / 2, y = j * s + s / 2;
+    tc.rect(x - q, y - q, 2 * q, 2 * q);
+  }
+  if (!any) return false;
+  tc.fill();
+  tc.globalCompositeOperation = 'source-in'; tc.drawImage(mask, 0, 0);
+  tc.globalCompositeOperation = 'source-in'; tc.drawImage(P, 0, 0);
+  tc.globalCompositeOperation = 'source-over';
+  return true;
+}
+
+// ---------- 01 SLIDE / 06 FLAT : rows lap the screen and snap back ----------
+// tau runs across the loop seam: t = 13.5..15 -> -1.5..0
+const ROWDIR = [1, -1, 1, -1, 1, -1, 1, -1, 1], ROWLAP = [2, 1, 2, 2, 1, 2, 1, 2, 2];
+function rowOffset(j, tau) {
+  const st = -0.92 + 0.07 * Math.abs(j - 4) + (j % 2) * 0.05, len = 1.62;
+  const k = clamp((tau - st) / len);
+  // accelerate from rest, overshoot the snap, settle
+  let e;
+  if (k < .62) e = .62 * Math.pow(k / .62, 2.2) * 1.0;   // ramp
+  else { const u = (k - .62) / .38; e = .62 + .38 * outBack(u, 1.6); }
+  return ROWDIR[j] * ROWLAP[j] * W * e;
+}
+function wordRev1(t) {   // FLAT. : on at the seam, out 1.25–2.0, back in 12.35–13.3
+  return (i, j) => {
+    const dl = ((i + j) / 24) * .45;
+    if (t < 5) return 1 - outC(seg(t, 1.25 + dl, 1.25 + dl + .28));
+    return outC(seg(t, 11.95 + dl, 11.95 + dl + .3));
+  };
+}
+function drawSlide(t) {
+  const tau = t > 7 ? t - 15 : t;
+  // 06: behind the finished word the columns run up and down by two tiles
+  const colOff = i => t < 7 ? 0 : (i % 2 ? 1 : -1) * 2 * S * inOut(seg(t, 12.45 + i * .025, 13.75 + i * .025));
+  checkerCols(fc, PA, S, colOff);
+  if (wordLayer(g => checkerCols(g, PB, S, colOff), M1, cells1, S, wordRev1(t))) fc.drawImage(T, 0, 0);
+  const N = 8, sh = 1 / 60;
+  for (let j = 0; j < 9; j++) {
+    const o0 = rowOffset(j, tau - sh / 2), o1 = rowOffset(j, tau + sh / 2);
+    const n = Math.abs(o1 - o0) < 1 ? 1 : N;
+    for (let k = 0; k < n; k++) {
+      const o = n === 1 ? rowOffset(j, tau) : lerp(o0, o1, (k + .5) / n);
+      const x = ((o % W) + W) % W;
+      ctx.globalAlpha = 1 / (k + 1);
+      ctx.drawImage(F, 0, j * S, W, S, x, j * S, W, S);
+      ctx.drawImage(F, 0, j * S, W, S, x - W, j * S, W, S);
+    }
+  }
+  ctx.globalAlpha = 1;
+  let v = 0; for (let j = 0; j < 9; j++) v = Math.max(v, Math.abs(rowOffset(j, tau + .01) - rowOffset(j, tau - .01)) / .02);
+  return { sec: t < 7 ? '01 SLIDE' : '06 FLAT', read: `row v ${String(Math.round(v)).padStart(5, ' ')} px/s` };
+}
+
+// ---------- 02 HINGE : rotating-squares mechanism ----------
+function hingeTheta(t) {
+  const a = seg(t, 2.05, 3.05), b = seg(t, 3.3, 4.6);
+  return (Math.PI / 4) * (a < 1 ? outBack(a, 1.4) : 1) + (Math.PI / 4) * inOut(b);
+}
+function drawHinge(t) {
+  const th = hingeTheta(t), d = S * (Math.cos(th) + Math.abs(Math.sin(th)));
+  const gx = i => CX + (i - 7.5) * d, gy = j => CY + (j - 4) * d;
+  // holes: dual diamonds at the vertices, two colours
+  ctx.fillStyle = C.te; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = C.yo; ctx.beginPath();
+  for (let j = -3; j <= 11; j++) for (let i = -3; i <= 18; i++) {
+    if (((i + j) % 2 + 2) % 2) continue;
+    const x = gx(i + .5), y = gy(j + .5), r = d / 2;
+    ctx.moveTo(x - r, y); ctx.lineTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.closePath();
+  }
+  ctx.fill();
+  for (const pass of [0, 1]) {
+    ctx.fillStyle = PA[pass]; ctx.beginPath();
+    for (let j = -3; j <= 11; j++) for (let i = -3; i <= 18; i++) {
+      const p = ((i + j) % 2 + 2) % 2; if (p !== pass) continue;
+      const x = gx(i), y = gy(j); if (x < -d || x > W + d || y < -d || y > H + d) continue;
+      const a = p ? -th : th, c = Math.cos(a), s = Math.sin(a), h = S / 2;
+      const pts = [[-h, -h], [h, -h], [h, h], [-h, h]].map(([u, v]) => [x + u * c - v * s, y + u * s + v * c]);
+      ctx.moveTo(...pts[0]); for (let k = 1; k < 4; k++) ctx.lineTo(...pts[k]); ctx.closePath();
+    }
+    ctx.fill();
+  }
+  return { sec: '02 HINGE', read: `θ ${(th * 180 / Math.PI).toFixed(1).padStart(5, ' ')}°  gap ${(d / S).toFixed(3)}` };
+}
+
+// ---------- 03 BEND : Escher-style edges + a flat vortex of the vertices ----------
+function drawBend(t) {
+  const e1 = inOut(seg(t, 4.75, 5.45)) * (1 - inOut(seg(t, 6.45, 7.05)));
+  const e2 = inOut(seg(t, 4.9, 5.5)) * (1 - inOut(seg(t, 6.3, 6.95)));
+  const sw = 1.15 * inOut(seg(t, 5.0, 6.15)) * (1 - inOut(seg(t, 6.15, 7.05)));
+  const a1 = .27 * e1, a2 = .16 * e2, ph = 2 * Math.PI * 1.5 * t;
+  const V = (i, j) => {
+    let x = i * S, y = j * S; const dx = x - CX, dy = y - CY, r = Math.hypot(dx, dy);
+    const ang = sw * Math.exp(-Math.pow(r / 520, 2)), c = Math.cos(ang), s = Math.sin(ang);
+    return [CX + dx * c - dy * s, CY + dx * s + dy * c];
+  };
+  const NS = 12, cache = new Map();
+  const edge = (i, j, horiz) => {
+    const key = (horiz ? 'h' : 'v') + i + ',' + j; if (cache.has(key)) return cache.get(key);
+    const p = V(i, j), q = horiz ? V(i + 1, j) : V(i, j + 1);
+    const ex = q[0] - p[0], ey = q[1] - p[1], L = Math.hypot(ex, ey), nx = -ey / L, ny = ex / L, pts = [];
+    for (let k = 0; k <= NS; k++) {
+      const u = k / NS;
+      const f = (horiz ? 1 : -1) * a1 * Math.sin(2 * Math.PI * u) + a2 * Math.sin(Math.PI * u) * Math.sin(ph - .55 * (i + j) + (horiz ? 0 : 1.6));
+      pts.push([p[0] + ex * u + nx * S * f, p[1] + ey * u + ny * S * f]);
+    }
+    cache.set(key, pts); return pts;
+  };
+  ctx.fillStyle = PA[0]; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = PA[1]; ctx.beginPath();
+  for (let j = -2; j <= 10; j++) for (let i = -2; i <= 17; i++) {
+    if ((((i + j) % 2) + 2) % 2 !== 1) continue;
+    const top = edge(i, j, true), right = edge(i + 1, j, false), bot = edge(i, j + 1, true), left = edge(i, j, false);
+    ctx.moveTo(...top[0]);
+    for (const p of top) ctx.lineTo(...p);
+    for (const p of right) ctx.lineTo(...p);
+    for (let k = bot.length - 1; k >= 0; k--) ctx.lineTo(...bot[k]);
+    for (let k = left.length - 1; k >= 0; k--) ctx.lineTo(...left[k]);
+    ctx.closePath();
+  }
+  ctx.fill();
+  return { sec: '03 BEND', read: `edge ${(a1 * 100).toFixed(0).padStart(3, ' ')}%  swirl ${(sw * 180 / Math.PI).toFixed(0).padStart(3, ' ')}°` };
+}
+
+// ---------- 04 SPLIT : every tile becomes four (and back at 11.55) ----------
+function drawSplit(t, forward) {
+  checker(ctx, PA, S);
+  for (const pass of [0, 1]) {
+    ctx.fillStyle = PA[pass]; ctx.beginPath();
+    for (let j = 0; j < 9; j++) for (let i = 0; i < 16; i++) {
+      const c = (i + j) % 2; if (1 - c !== pass) continue;
+      const dl = forward ? ((i + j) / 23) * .32 : ((15 - i + 8 - j) / 23) * .32;
+      let k = forward ? outC(seg(t, 7.0 + dl, 7.0 + dl + .24)) : 1 - inOut(seg(t, 11.5 + dl * .5, 11.5 + dl * .5 + .2));
+      if (k <= 0) continue;
+      const subs = c === 0 ? [[1, 0], [0, 1]] : [[0, 0], [1, 1]];
+      const q = 30 * k;
+      for (const [a, b] of subs) { const x = i * S + a * 60 + 30, y = j * S + b * 60 + 30; ctx.rect(x - q, y - q, 2 * q, 2 * q); }
+    }
+    ctx.fill();
+  }
+  return { sec: '04 SPLIT', read: `tiles ${forward ? (seg(t, 7.0, 7.56) < 1 ? '144 → 576' : '576') : '576 → 144'}` };
+}
+
+// ---------- 05 TURN : two-colour Truchet tiles turning in waves ----------
+const TS = 60, TC = 32, TR = 18, rnd = mulberry32(30);
+const R1 = [], J1 = [];
+for (let k = 0; k < TC * TR; k++) { R1.push(rnd() < .5 ? 0 : 1); J1.push(rnd()); }
+const WAVES = [
+  // random meander, sweeping in from the left
+  { to: (I, J, k) => R1[k], at: (I, J, k) => 7.95 + (I / TC) * .75 + J1[k] * .12, dur: .34 },
+  // ordered circles, sweeping out from the centre
+  { to: (I, J) => (I + J) % 2, at: (I, J) => 9.3 + Math.hypot(I - 15.5, (J - 8.5) * 1.1) / 18 * .6, dur: .3 },
+  // back to uniform, sweeping in from the right
+  { to: () => 1, at: (I, J) => 10.45 + ((TC - 1 - I) / TC) * .55 + ((I * 7 + J * 3) % 5) * .012, dur: .3 },
+];
+function tileState(I, J, t) {
+  const k = J * TC + I; let o = 1, rot = null;
+  for (const w of WAVES) {
+    const t0 = w.at(I, J, k);
+    if (t < t0) break;
+    const to = w.to(I, J, k); if (to === o) continue;
+    const p = (t - t0) / w.dur;
+    if (p < 1) { rot = { from: o, p: inOut(p), dir: (I + J) % 2 ? 1 : -1 }; break; }
+    o = to;
+  }
+  return { o, rot };
+}
+function truchetR(t) { return 30 * outC(seg(t, 7.6, 8.15)) * (1 - inOut(seg(t, 10.95, 11.5))); }
+function drawTruchet(g, pal, t, bg) {
+  const r = truchetR(t), h = TS / 2;
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  // batch by colour: band squares first, then quarter disks
+  const bands = [[], []], disks = [[], []];
+  for (let J = 0; J < TR; J++) for (let I = 0; I < TC; I++) {
+    const st = tileState(I, J, t);
+    let o = st.o, ang = 0, sc = 1, swap = false;
+    if (st.rot) {
+      o = st.rot.from; ang = st.rot.dir * st.rot.p * Math.PI / 2;
+      sc = 1 / (Math.abs(Math.cos(ang)) + Math.abs(Math.sin(ang)));
+      swap = st.rot.p > .5;
+    }
+    let cd = o === 1 ? (I + J + 1) % 2 : (I + J) % 2;   // disk colour = parity of its vertex
+    if (swap) cd = 1 - cd;
+    const cb = 1 - cd, x = I * TS + h, y = J * TS + h;
+    bands[cb].push([x, y, ang, sc]);
+    if (r > .5) disks[cd].push([x, y, ang, sc, o]);
+  }
+  for (const c of [0, 1]) {
+    g.fillStyle = pal[c]; g.beginPath();
+    for (const [x, y, a, sc] of bands[c]) {
+      if (a === 0) { g.rect(x - h, y - h, TS, TS); continue; }
+      const cs = Math.cos(a) * sc * h, sn = Math.sin(a) * sc * h;
+      g.moveTo(x - cs + sn, y - sn - cs); g.lineTo(x + cs + sn, y + sn - cs); g.lineTo(x + cs - sn, y + sn + cs); g.lineTo(x - cs - sn, y - sn + cs); g.closePath();
+    }
+    g.fill();
+  }
+  for (const c of [0, 1]) {
+    g.fillStyle = pal[c]; g.beginPath();
+    for (const [x, y, a, sc, o] of disks[c]) {
+      const corners = o === 1 ? [[h, -h, Math.PI / 2], [-h, h, -Math.PI / 2]] : [[-h, -h, 0], [h, h, Math.PI]];
+      const cs = Math.cos(a) * sc, sn = Math.sin(a) * sc;
+      for (const [u, v, a0] of corners) {
+        const px = x + u * cs - v * sn, py = y + u * sn + v * cs;
+        g.moveTo(px, py); g.arc(px, py, r * sc, a0 + a, a0 + a + Math.PI / 2); g.closePath();
+      }
+    }
+    g.fill();
+  }
+}
+function wordRev2(t) {
+  return (i, j) => {
+    const dl = (i / 32) * .5 + ((i * 5 + j * 3) % 7) * .01;
+    return outC(seg(t, 8.45 + dl, 8.45 + dl + .22)) * (1 - inOut(seg(t, 10.15 + dl, 10.15 + dl + .22)));
+  };
+}
+function drawTurn(t) {
+  drawTruchet(ctx, PA, t, C.te);
+  if (wordLayer(g => drawTruchet(g, PB, t, C.ink), M2, cells2, TS, wordRev2(t))) ctx.drawImage(T, 0, 0);
+  let turning = 0;
+  for (let J = 0; J < TR; J++) for (let I = 0; I < TC; I++) if (tileState(I, J, t).rot) turning++;
+  return { sec: '05 TURN', read: `turning ${String(turning).padStart(3, ' ')} / 576` };
+}
+
+// ---------- labels ----------
+function chip(text, x, y, align) {
+  ctx.font = '500 20px "DM Mono"'; ctx.textBaseline = 'middle';
+  const w = ctx.measureText(text).width + 28, x0 = align === 'right' ? x - w : x;
+  ctx.fillStyle = C.ink; ctx.fillRect(x0, y - 19, w, 38);
+  ctx.fillStyle = C.iv; ctx.textAlign = 'left'; ctx.fillText(text, x0 + 14, y + 1);
+}
+function labels(info) {
+  chip('MIDDLE STUDIES  REEL — 030', 36, 40, 'left');
+  chip(info.sec, W - 36, 40, 'right');
+  chip(`z = 0.000   ${info.read}`, 36, H - 40, 'left');
+  chip('Claude', W - 36, H - 40, 'right');
+}
+
+function render(t) {
+  t = ((t % 15) + 15) % 15;
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+  let info;
+  if (t < 2.05 || t >= 11.95) info = drawSlide(t);
+  else if (t < 4.75) info = drawHinge(t);
+  else if (t < 7.0) info = drawBend(t);
+  else if (t < 7.6) info = drawSplit(t, true);
+  else if (t < 11.5) info = drawTurn(t);
+  else info = drawSplit(t, false);
+  labels(info);
+}
+
+(async () => {
+  await Promise.all([document.fonts.load('400 600px "Archivo Black"'), document.fonts.load('500 20px "DM Mono"')]);
+  await document.fonts.ready;
+  wordMask(M1, 'FLAT.', 560, 200, 6);
+  wordMask(M2, '(x,y)', 520, 185, 10);
+  cells1 = maskCells(M1, S); cells2 = maskCells(M2, TS);
+  window.__seek = t => { render(t); };
+  if (!location.search.includes('render')) {
+    const t0 = performance.now();
+    const loop = () => { render(((performance.now() - t0) / 1000) % 15); requestAnimationFrame(loop); };
+    loop();
+  }
+})();
+</script>
+</body>
+</html>
