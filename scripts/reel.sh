@@ -84,9 +84,10 @@ if d and d["id"]!="control": print("今日の条件（id="+d["id"]+"）："+d["l
 ' "$ROOT/reel/conditions.json" "$COND_DAY" 2>/dev/null)"
 if [[ -n "$COND_LINE" ]]; then
   PROMPT="$PROMPT 🔴 $COND_LINE（ブリーフは置き換えない。SKILL.md「今日の条件」の約束も守り、works.json に condition を書く）"
-  [[ "$COND_DAY" != "$TODAY" ]] && PROMPT="$PROMPT これは $COND_DAY の条件の前倒し。works.json の date は今日（$TODAY）のまま、\"condition_day\": \"$COND_DAY\" を足す。"
   echo "[$(date)] $COND_LINE" >> "$LOG_FILE"
 fi
+# 前倒しは対照（control）の日も含め、どの日の分かを必ず残す（残さないとその日の夜にもう1本作られる）
+[[ "$COND_DAY" != "$TODAY" ]] && PROMPT="$PROMPT これは $COND_DAY の回の前倒し。works.json の date は今日（$TODAY）のまま、\"condition_day\": \"$COND_DAY\" を足す。"
 
 MAX_ATTEMPTS=6
 attempt=1
