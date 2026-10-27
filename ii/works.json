@@ -744,5 +744,38 @@
     "compose_note": {
       "下": "塊は水に沈んで立つ＝下辺は水際で、その下に塊自身の桃の映り込みが同じ色で続く（基準と同じ組み方。溶けて見えるのが正しい）"
     }
+  },
+  {
+    "id": "023",
+    "slug": "procession",
+    "title": "PROCESSION",
+    "title_ja": "列",
+    "date": "2026-10-28",
+    "track": "OBJECT",
+    "concept": "自作の細口ケトル13台を一列に並べ、1台ごとに10°ずつ向きを変えて、注ぎ口の曲線が扇のように奥へ開く反復を注ぎ口の高さの望遠で撮った。黒の列の3台目だけを白にして、ピントの主役に置いている。",
+    "source": {
+      "url": "https://fellowproducts.com/cdn/shop/files/Web_PDP_2_StaggEKGElectricKettle_HowItWorks_Desktop.jpg",
+      "took": "光：曇天のような上奥の大きく柔らかい1灯・胴は左が起き右が黒へ落ちる / 素材：艶消しの黒の焼付け塗装・コンクリートの床・漆喰の壁 / 構図：1:1・注ぎ口の高さすれすれの望遠で列が消失点へ、手前はぼけて縁を切る / 色：無彩色のみ・明るい灰の地6割に黒の反復3割・白1割"
+    },
+    "look": {
+      "track": "OBJECT",
+      "palette_family": "achromatic-black-on-light-grey",
+      "background": "concrete-floor-plaster-wall",
+      "lighting": "overcast-top-back-soft",
+      "lens": "tele",
+      "aspect": "1:1",
+      "material": "matte-powder-coat-steel"
+    },
+    "review_rounds": 29,
+    "film": {
+      "sec": 11.6,
+      "shots": [
+        "マクロ",
+        "物の動き",
+        "スライド",
+        "決め"
+      ]
+    },
+    "use": "キッチン家電・生活道具ブランドのFVやカラー展開の告知に。左上の明るい壁にコピーを置け、列の中の1台の色を差し替えれば新色の紹介にそのまま使える"
   }
 ]
