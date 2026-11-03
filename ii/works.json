@@ -810,5 +810,38 @@
       ]
     },
     "use": "FVの背景・章の区切りに。右の柱と開口の白い壁にコピーを置け、色の束を差し替えればブランドの色展開にも使える"
+  },
+  {
+    "id": "025",
+    "slug": "turn",
+    "title": "TURN",
+    "title_ja": "挽く木",
+    "date": "2026-11-02",
+    "track": "OBJECT",
+    "concept": "タモとウェンジ、2本の挽物のペッパーミル。白の無限背景紙に上前方の大きな柔光1つで立たせ、見どころは輪の詰んだ木目——タモの細い平行線とアーチ、ウェンジの千切れた破線の輪と導管の点を、すべて手続き的な成長輪から起こした。",
+    "source": {
+      "url": "https://www.timeandstyle.com/wp-content/uploads/2026/05/pz_peppermill_01.jpg",
+      "took": "光：上前方の大きな柔光1つ・胴の右の縁が1段落ち、落ち影はほぼ無い / 素材：淡いタモと焦げ茶のウェンジの油仕上げ・艶はかすか / 構図：8:5 の横長に2本を中央、高さ6割・左右に大きな余白 / 色：白〜明るい灰の地9割に淡い木と焦げ茶を1本ずつ"
+    },
+    "look": {
+      "track": "OBJECT",
+      "palette_family": "pale-ash-wenge-on-white",
+      "background": "white-seamless-sweep",
+      "lighting": "large-overhead-front-softbox",
+      "lens": "tele",
+      "aspect": "8:5",
+      "material": "turned-oiled-wood"
+    },
+    "review_rounds": 27,
+    "film": {
+      "sec": 12.0,
+      "shots": [
+        "回り込み",
+        "マクロ",
+        "スライド",
+        "決め"
+      ]
+    },
+    "use": "キッチン用品・木工・ライフスタイル系の商品紹介FV。左右の白い余白にそのままコピーを置ける"
   }
 ]
