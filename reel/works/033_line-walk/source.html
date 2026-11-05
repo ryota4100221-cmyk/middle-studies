@@ -1,0 +1,425 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>REEL — 033 Line Walk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@800&family=Azeret+Mono:wght@500&display=block" rel="stylesheet">
+<style>html,body{margin:0;background:#efe9dd;overflow:hidden}canvas{display:block;width:100vw;height:100vh;object-fit:contain}</style>
+</head><body><canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// REEL — 033  LINE WALK  — one line on one flat plane. Claude.
+// Everything is a function of t (no rAF state). No Math.random.
+const W = 1920, H = 1080;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+window.__duration = 15;
+window.__poster = 8.6;
+const C = { bone: '#efe9dd', blue: '#1f28c9', ink: '#111111', yel: '#ffd23f', pink: '#ff7aa8' };
+const BIG = '800 300px Syne', MONO = '500 18px "Azeret Mono"';
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const io3 = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const oc = t => 1 - Math.pow(1 - t, 3);
+const ic = t => t * t * t;
+const oBack = (t, s = 1.7) => 1 + (s + 1) * Math.pow(t - 1, 3) + s * Math.pow(t - 1, 2);
+const iBack = (t, s = 1.4) => (s + 1) * t * t * t - s * t * t;
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const rnd = mulberry32(33);
+
+// ---------------- string (acts 1 & 6) ----------------
+const NS = 640, X0 = -40, X1 = W + 40, LS = X1 - X0, M = 64, CW = 1700;
+const W1 = Math.PI * CW / LS;
+const SX = new Float32Array(NS);
+for (let i = 0; i < NS; i++) SX[i] = X0 + LS * i / (NS - 1);
+const SIN = [];
+for (let n = 1; n <= M; n++) { const a = new Float32Array(NS); for (let i = 0; i < NS; i++) a[i] = Math.sin(n * Math.PI * i / (NS - 1)); SIN.push(a); }
+const IMP = [];
+function addImp(t0, xi, h, press, d0, d2) {
+  const a = [];
+  for (let n = 1; n <= M; n++) a.push(2 * h * Math.sin(n * Math.PI * xi) / (n * n * Math.PI * Math.PI * xi * (1 - xi)));
+  IMP.push({ t0, xi, h, press, d0, d2, a });
+}
+const BX0 = X0 + 0.36 * LS;
+addImp(0.0, 0.36, 170, 0.10, 0.75, 0.0015);
+addImp(1.30, 0.72, 105, 0.08, 0.9, 0.0015);
+addImp(11.60, 0.5, 46, 0.05, 3.0, 0.002);   // curtain lands
+const D = new Float32Array(NS);
+function computeD(t) {
+  D.fill(0);
+  for (const im of IMP) {
+    if (t < im.t0) continue;
+    const tau = t - im.t0 - im.press;
+    if (tau > 4) continue;
+    for (let n = 1; n <= M; n++) {
+      let T;
+      if (tau < 0) T = Math.sin(Math.PI / 2 * (t - im.t0) / im.press);
+      else T = Math.cos(n * W1 * tau) * Math.exp(-(im.d0 + im.d2 * n * n) * tau);
+      const k = im.a[n - 1] * T; if (Math.abs(k) < 1e-4) continue;
+      const s = SIN[n - 1];
+      for (let i = 0; i < NS; i++) D[i] += k * s[i];
+    }
+  }
+}
+function dAt(x) { const f = clamp((x - X0) / LS * (NS - 1), 0, NS - 1.001); const i = Math.floor(f), r = f - i; return D[i] * (1 - r) + D[i + 1] * r; }
+
+// ---------------- letters A LINE ----------------
+let LET = [];     // {ch, x, w, land, vx, w0, r0}
+// ---------------- walk path (act 4) ----------------
+const PA = 62, PB = 186, K = 4;
+let PHS = 0;      // phi*
+const PHI0 = -Math.PI, PHIE = 2 * Math.PI * (K - 1) + Math.PI, DPHI = 0.008;
+const XS = 200 + PA * Math.PI;
+const yc = p => 340 + 36 * Math.sin(0.45 * p);
+const pathPt = p => [XS + PA * p - PB * Math.sin(p), yc(p) + PB * (1 - Math.cos(p))];
+let PX, PY, PS, NP, SEND;
+const LOOPS = [];
+const WALK0 = 5.75, WALK1 = 10.0;
+function walkPhi(t) { const p = seg(t, WALK0, WALK1); const e = lerp(p, io3(p), 0.3); return lerp(PHI0, PHIE, e); }
+const QUOTE = 'THAT WENT FOR A WALK.';
+let QW = [];   // glyph widths at 58px
+// ---------------- roll (act 2) ----------------
+const Y1 = H / 2, NR = 1600, RMIN = 6, RK = 0.13;
+const ROUTF = RMIN + RK * LS / 2;
+function rollPts(r, ox, oy) {
+  const rl = r * LS / 2, rout = RMIN + RK * rl;
+  for (let j = 0; j < NR; j++) {
+    const s = LS * j / (NR - 1);
+    const left = s <= LS / 2; const sl = left ? s : LS - s;
+    let x, y;
+    if (sl >= rl) { x = left ? X0 + sl : X1 - sl; y = Y1; }
+    else {
+      const d = rl - sl; const rho = Math.max(RMIN, rout - RK * d);
+      const th = -Math.log(rho / rout) / RK;
+      const cx = left ? X0 + rl : X1 - rl;
+      x = left ? cx - rho * Math.sin(th) : cx + rho * Math.sin(th);
+      y = Y1 + rout - rho * Math.cos(th);
+    }
+    ox[j] = x; oy[j] = y;
+  }
+  return rl;
+}
+const RX = new Float32Array(NR), RY = new Float32Array(NR);
+const FX = new Float32Array(NR), FY = new Float32Array(NR);
+let QSIZE = 118, QWORDS = [];
+
+function setup() {
+  ctx.font = BIG;
+  const chars = ['A', ' ', 'L', 'I', 'N', 'E'];
+  const ws = chars.map(c => ctx.measureText(c).width);
+  const tot = ws.reduce((a, b) => a + b, 0);
+  let x = W / 2 - tot / 2; let k = 0;
+  LET = chars.map((ch, i) => {
+    const o = { ch, x: x + ws[i] / 2, w: ws[i] };
+    x += ws[i];
+    o.vx = (rnd() - .5) * 700; o.spin = (rnd() - .5) * 5; o.kick = 300 + rnd() * 400;
+    if (ch !== ' ') { o.land = 12.40 + 0.13 * k; o.r0 = (rnd() - .5) * 0.9; k++; addImp(o.land, (o.x - X0) / LS, 15, 0.04, 3.2, 0.003); }
+    return o;
+  });
+  // walk path
+  let ph = 2.2; for (let i = 0; i < 30; i++) { const f = PA * ph - PB * Math.sin(ph), df = PA - PB * Math.cos(ph); ph -= f / df; }
+  PHS = ph;
+  NP = Math.ceil((PHIE - PHI0) / DPHI) + 1;
+  PX = new Float32Array(NP); PY = new Float32Array(NP); PS = new Float32Array(NP);
+  for (let i = 0; i < NP; i++) { const [x, y] = pathPt(PHI0 + i * DPHI); PX[i] = x; PY[i] = y; if (i) PS[i] = PS[i - 1] + Math.hypot(x - PX[i - 1], y - PY[i - 1]); }
+  SEND = PS[NP - 1];
+  const cols = [C.yel, C.blue, C.pink, C.yel];
+  for (let k2 = 0; k2 < K; k2++) {
+    const pa = 2 * Math.PI * k2 - PHS, pb = 2 * Math.PI * k2 + PHS;
+    let ia = Math.round((pa - PHI0) / DPHI), ib = Math.round((pb - PHI0) / DPHI);
+    { let best = 1e9, ba = ia, bb = ib; for (let i = ia - 50; i <= ia + 50; i++) for (let j = ib - 50; j <= ib + 50; j++) { const d = Math.hypot(PX[i] - PX[j], PY[i] - PY[j]); if (d < best) { best = d; ba = i; bb = j; } } ia = ba; ib = bb; }
+    let tf = WALK1; for (let tt = WALK0; tt <= WALK1; tt += 0.002) if (walkPhi(tt) >= pb) { tf = tt; break; }
+    let cx = 0, cy = 0; for (let i = ia; i <= ib; i++) { cx += PX[i]; cy += PY[i]; } cx /= (ib - ia + 1); cy /= (ib - ia + 1);
+    LOOPS.push({ ia, ib, tf, col: cols[k2], cx, cy });
+  }
+  computeD(2.3);
+  for (const L of LET) { L.y0 = H / 2 + dAt(L.x) - 7; L.r00 = Math.atan((dAt(L.x + 6) - dAt(L.x - 6)) / 12); }
+  ctx.font = '800 58px Syne'; QW = [...QUOTE].map(c => ctx.measureText(c).width);
+  rollPts(1, FX, FY);
+  ctx.font = `800 ${QSIZE}px Syne`;
+  const words = ['IS', 'A', 'DOT.']; const sp = ctx.measureText(' ').width + QSIZE * 0.22;
+  let tw = words.reduce((a, w) => a + ctx.measureText(w).width, 0) + sp * 2;
+  if (tw > 500) { QSIZE = QSIZE * 500 / tw; ctx.font = `800 ${QSIZE}px Syne`; tw = 500; }
+  let qx = -tw / 2;
+  QWORDS = words.map((w, i) => { const ww = ctx.measureText(w).width; const o = { w, x: qx + ww / 2, t: 4.52 + 0.11 * i }; qx += ww + ctx.measureText(' ').width + QSIZE * 0.22; return o; });
+}
+
+// ---------------- ball / dot ----------------
+const BR = 34, G = 4200;
+function ballPos(t) {
+  const yb = H / 2 - BR;
+  if (t < 0.10) return [BX0, yb + 170 * Math.sin(Math.PI / 2 * t / 0.10), 1];
+  if (t < 1.30) {
+    const T = 1.2, x0 = BX0, y0 = yb + 170, x1 = 0.72 * W, y1 = yb; const tau = t - 0.10;
+    const vy = (y1 - y0 - G * T * T / 2) / T;
+    return [lerp(x0, x1, tau / T), y0 + vy * tau + G * tau * tau / 2, 1];
+  }
+  if (t < 1.38) return [0.72 * W, yb + 105 * Math.sin(Math.PI / 2 * (t - 1.30) / 0.08), 1];
+  if (t < 2.4) { const tau = t - 1.38; return [0.72 * W + 900 * tau, yb + 105 - 2500 * tau + G * tau * tau / 2, 1]; }
+  if (t >= 14.5) {
+    const T = 0.5, tau = t - 14.5, y0 = -60; const v0 = (yb - y0 - G * T * T / 2) / T;
+    return [BX0, y0 + v0 * tau + G * tau * tau / 2, 1];
+  }
+  return null;
+}
+function headAt(t, X, Y) {
+  // dot during leap / walk / pull
+  if (t < 5.3) return null;
+  if (t < WALK0) {
+    const p = seg(t, 5.36, WALK0 - 0.02); const e = io3(p);
+    return [lerp(W / 2, PX[0], e), lerp(H / 2, PY[0], e) - 420 * 4 * e * (1 - e)];
+  }
+  if (t < 10.05) { const f = (walkPhi(t) - PHI0) / DPHI; const i = Math.min(NP - 2, Math.floor(f)), r = f - i; return [lerp(PX[i], PX[i + 1], r), lerp(PY[i], PY[i + 1], r)]; }
+  if (t < 11.05 && X) return [X[NP - 1], Y[NP - 1]];
+  return null;
+}
+function drawDot(x, y, vx, vy, squash) {
+  const sp = Math.hypot(vx, vy);
+  const k = 1 + clamp(sp / 9000, 0, 0.45);
+  const a = Math.atan2(vy, vx);
+  ctx.save(); ctx.translate(x, y);
+  if (squash) { ctx.translate(0, BR); ctx.scale(1 / squash, squash); ctx.translate(0, -BR); }
+  ctx.rotate(a); ctx.scale(k, 1 / k);
+  ctx.beginPath(); ctx.arc(0, 0, BR, 0, Math.PI * 2); ctx.fillStyle = C.yel; ctx.fill();
+  ctx.restore();
+}
+
+// ---------------- helpers ----------------
+let blueP = null;
+function inv(colBlue, colBone, fn) {
+  if (!blueP) { fn(colBone); return; }
+  ctx.save(); ctx.clip(blueP); fn(colBlue); ctx.restore();
+  const p = new Path2D(); p.rect(0, 0, W, H); p.addPath(blueP);
+  ctx.save(); ctx.clip(p, 'evenodd'); fn(colBone); ctx.restore();
+}
+function strokePoly(X, Y, n, w, col, from = 0) {
+  if (n - from < 2) return;
+  ctx.beginPath(); ctx.moveTo(X[from], Y[from]);
+  for (let i = from + 1; i < n; i++) ctx.lineTo(X[i], Y[i]);
+  ctx.lineWidth = w; ctx.strokeStyle = col; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
+}
+const fmt = (v, d = 0) => v.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+const MX = new Float32Array(16000), MY = new Float32Array(16000);
+const SXa = new Float32Array(NS), SYa = new Float32Array(NS);
+
+function draw(t) {
+  t = ((t % 15) + 15) % 15;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = C.bone; ctx.fillRect(0, 0, W, H);
+  blueP = null;
+  let act = '', read = '';
+  let dotS = null;     // [x,y,vx,vy,squash]
+
+  // ===== string acts =====
+  const stringAct = t < 2.6 || t >= 11.05;
+  if (stringAct) {
+    computeD(t);
+    let base = H / 2, amp = 1;
+    if (t < 2.6) { amp = 1 - io3(seg(t, 2.2, 2.6)); }
+    let mx = 0;
+    for (let i = 0; i < NS; i++) { SXa[i] = SX[i]; SYa[i] = base + D[i] * amp; mx = Math.max(mx, Math.abs(D[i])); }
+    // blue region
+    const cur = t >= 11.05 ? lerp(-20, H / 2 + 200, ic(seg(t, 11.05, 11.6))) : 1e9;
+    if (!(t >= 11.05 && cur <= 0)) {
+      blueP = new Path2D(); blueP.moveTo(X0, -10);
+      for (let i = 0; i < NS; i++) blueP.lineTo(SXa[i], Math.min(cur, SYa[i]));
+      blueP.lineTo(X1, -10); blueP.closePath();
+      ctx.fillStyle = C.blue; ctx.fill(blueP);
+    }
+    strokePoly(SXa, SYa, NS, 7, C.ink);
+    act = t < 2.3 ? '01  PLUCK' : t < 2.6 ? '02  ROLL' : '06  LINE';
+    read = `y(x,t) = Σ aₙ sin(nπx/L) cos(nω₁t) e^(−δₙt)    n ≤ ${M}    |y|max ${fmt(mx)} px`;
+    // letters
+    const lineY = x => base + dAt(x) * amp;
+    for (const L of LET) {
+      if (L.ch === ' ') continue;
+      let x = L.x, y, rot, sx = 1, sy = 1, vis = true;
+      const slope = (lineY(L.x + 6) - lineY(L.x - 6)) / 12;
+      if (t < 2.3) { y = lineY(L.x) - 7; rot = Math.atan(slope); }
+      else if (t < 3.4) { vis = false; }
+      else {
+        if (t < L.land - 0.42) vis = false;
+        else if (t < L.land) { const p = seg(t, L.land - 0.42, L.land); y = lerp(-40, lineY(L.x) - 7, p * p); rot = L.r0 * (1 - oc(p)); sy = 1.08; sx = 0.94; }
+        else { const tau = t - L.land; y = lineY(L.x) - 7; rot = Math.atan(slope); const q = 0.24 * Math.exp(-9 * tau) * Math.cos(20 * tau); sy = 1 - q; sx = 1 + q * 0.6; }
+      }
+      if (!vis) continue;
+      inv(C.bone, C.blue, col => {
+        ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(sx, sy);
+        ctx.font = BIG; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = col; ctx.fillText(L.ch, 0, 0);
+        ctx.restore();
+      });
+    }
+    // subtitle under the line
+    let subA = 0, chars = 99;
+    if (t < 2.45) subA = 1 - seg(t, 2.1, 2.4);
+    else if (t >= 12.9) { subA = 1; chars = Math.floor(seg(t, 12.95, 13.75) * 100); }
+    if (subA > 0) {
+      inv(C.bone, C.ink, col => {
+        ctx.save(); ctx.globalAlpha = subA; ctx.fillStyle = col; ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+        const s1 = 'TAKING A LINE FOR A WALK';
+        ctx.font = '800 40px Syne'; ctx.fillText(s1.slice(0, chars), 120, H / 2 + 270 + dAt(120) * amp * 0.0 + (t < 2.45 ? 30 * ic(seg(t, 2.1, 2.4)) : 0));
+        ctx.font = MONO; ctx.fillText('one line, never lifted — one flat plane — after Paul Klee, 1925'.slice(0, Math.max(0, chars - 30)), 122, H / 2 + 310 + (t < 2.45 ? 30 * ic(seg(t, 2.1, 2.4)) : 0));
+        ctx.restore();
+      });
+    }
+    const b = ballPos(t);
+    if (b) {
+      const b2 = ballPos(Math.max(0, t - 1 / 240)) || b;
+      let sq = 0; if ((t < 0.10) || (t >= 1.30 && t < 1.38)) sq = 0.78;
+      drawDot(b[0], b[1], (b[0] - b2[0]) * 240, (b[1] - b2[1]) * 240, sq || 0);
+    }
+  }
+
+  // ===== roll =====
+  if (t >= 2.6 && t < 3.85) {
+    const r = io3(seg(t, 2.6, 3.85));
+    const rl = rollPts(r, RX, RY);
+    const xl = X0 + rl, xr = X1 - rl;
+    if (xr - xl > 0.5) { blueP = new Path2D(); blueP.rect(xl, -10, xr - xl, Y1 + 10); ctx.fillStyle = C.blue; ctx.fill(blueP); }
+    strokePoly(RX, RY, NR, 7, C.ink);
+    act = '02  ROLL'; read = `rolled ${fmt(rl * 2)} / ${fmt(LS)} px    R = ${fmt(RMIN + RK * rl)} px    sky left ${fmt(Math.max(0, xr - xl))} px`;
+  }
+
+  // ===== spiral -> circle -> dot =====
+  if (t >= 3.85 && t < 5.3) {
+    const pm = io3(seg(t, 3.85, 4.35));
+    const cx0 = W / 2, cy0 = Y1 + ROUTF; const cx = W / 2, cy = lerp(cy0, H / 2, pm);
+    const al = -1.25 * Math.PI * io3(seg(t, 3.85, 4.6));
+    const P = seg(t, 3.95, 4.45);
+    let R = 300; const sp = seg(t, 4.9, 5.3); if (sp > 0) R = 300 - 266 * clamp(iBack(sp), -0.2, 1);
+    const ca = Math.cos(al), sa = Math.sin(al); const gs = lerp(1, 2.3, io3(seg(t, 3.8, 4.35)));
+    for (let j = 0; j < NR; j++) {
+      const u = j / (NR - 1); const dx = FX[j] - cx0, dy = FY[j] - cy0;
+      const sx = cx + (dx * ca - dy * sa) * gs, sy = cy + (dx * sa + dy * ca) * gs;
+      const ang = -Math.PI / 2 + 2 * Math.PI * (u - 0.5);
+      const tx = cx + R * Math.cos(ang), ty = cy + R * Math.sin(ang);
+      const p = io3(clamp(P * 1.8 - 0.8 * 2 * Math.abs(u - .5)));
+      RX[j] = lerp(sx, tx, p); RY[j] = lerp(sy, ty, p);
+    }
+    const fl = oc(seg(t, 4.62, 4.86));
+    if (fl > 0) { ctx.beginPath(); ctx.arc(cx, cy, R * fl, 0, Math.PI * 2); ctx.fillStyle = C.yel; ctx.fill(); }
+    const sa2 = 1 - seg(t, 5.12, 5.3);
+    if (sa2 > 0) { ctx.save(); ctx.globalAlpha = sa2; strokePoly(RX, RY, NR, 7 * Math.sqrt(R / 300), C.ink); ctx.restore(); }
+    if (t >= 5.24) { ctx.beginPath(); ctx.arc(cx, cy, BR, 0, Math.PI * 2); ctx.fillStyle = C.yel; ctx.fill(); }
+    // IS A DOT.
+    ctx.save(); ctx.translate(cx, cy); ctx.scale(R / 300, R / 300);
+    for (const q of QWORDS) {
+      const p = seg(t, q.t, q.t + 0.28); if (p <= 0) continue;
+      const s = oBack(p, 2.4);
+      ctx.save(); ctx.translate(q.x, QSIZE * 0.36); ctx.scale(s, s);
+      ctx.font = `800 ${QSIZE}px Syne`; ctx.textAlign = 'center'; ctx.fillStyle = C.ink; ctx.fillText(q.w, 0, 0); ctx.restore();
+    }
+    ctx.restore();
+    act = '03  DOT'; read = `r = ${fmt(Math.max(R, BR))} px    →    ${BR} px`;
+  }
+
+  // ===== leap / walk / pull =====
+  if (t >= 5.3 && t < 11.05) {
+    let n = 0, X = PX, Y = PY;
+    if (t < WALK0) { n = 0; }
+    else if (t < 10.05) { n = Math.min(NP, Math.floor((walkPhi(t) - PHI0) / DPHI) + 1); }
+    else {
+      n = NP; X = MX; Y = MY;
+      const P = seg(t, 10.05, 11.0);
+      for (let i = 0; i < NP; i++) {
+        const u = PS[i] / SEND;
+        const p = io3(clamp(P * 2 - (1 - u)));
+        const tx = X1 + 40 - (SEND - PS[i]), ty = H / 2;
+        MX[i] = lerp(PX[i], tx, p); MY[i] = lerp(PY[i], ty, p);
+      }
+    }
+    // loop fills
+    for (const L of LOOPS) {
+      if (t < L.tf) continue;
+      const p = oBack(seg(t, L.tf, L.tf + 0.34), 2.2);
+      ctx.save(); ctx.translate(L.cx, L.cy); ctx.scale(p, p); ctx.translate(-L.cx, -L.cy);
+      ctx.beginPath(); ctx.moveTo(X[L.ia], Y[L.ia]); for (let i = L.ia + 1; i <= L.ib; i++) ctx.lineTo(X[i], Y[i]); ctx.closePath();
+      ctx.fillStyle = L.col; ctx.fill(); ctx.restore();
+    }
+    const h = headAt(t, X, Y);
+    if (n > 1) {
+      // trail + interpolated head
+      strokePoly(X, Y, n, 7, C.ink);
+      if (h && t < 10.05) { ctx.beginPath(); ctx.moveTo(X[n - 1], Y[n - 1]); ctx.lineTo(h[0], h[1]); ctx.stroke(); }
+    }
+    // quote riding the line
+    if (t >= WALK0 && n > 1) {
+      const sHead = t < 10.05 ? (() => { const f = (walkPhi(t) - PHI0) / DPHI; const i = Math.min(NP - 2, Math.floor(f)); return lerp(PS[i], PS[i + 1], f - i); })() : SEND;
+      const slide = t >= 10.05 ? 3200 * ic(seg(t, 10.05, 10.75)) : 0;
+      let off = 70;
+      ctx.font = '800 58px Syne'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      for (let g = QUOTE.length - 1; g >= 0; g--) {
+        const s = sHead - off - QW[g] / 2 + slide; off += QW[g];
+        if (s < 0 || s > sHead - 20) continue;
+        // locate by arc length
+        let lo = 0, hi = NP - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (PS[m] < s) lo = m; else hi = m; }
+        const r = (s - PS[lo]) / (PS[hi] - PS[lo] || 1);
+        const x = lerp(X[lo], X[hi], r), y = lerp(Y[lo], Y[hi], r);
+        const i2 = Math.min(NP - 1, hi + 3), i1 = Math.max(0, lo - 3);
+        const a = Math.atan2(Y[i2] - Y[i1], X[i2] - X[i1]);
+        const ap = clamp((sHead - s - 40) / 140);
+        ctx.save(); ctx.translate(x, y); ctx.rotate(a); ctx.translate(0, -10); ctx.scale(ap, ap);
+        ctx.fillStyle = C.ink; ctx.fillText(QUOTE[g], 0, 0); ctx.restore();
+      }
+    }
+    if (h) {
+      const h2 = headAt(t - 1 / 240, X === MX ? null : X, Y) || headAt(t - 1 / 240, X, Y) || h;
+      let sq = 0;
+      if (t < 5.38) sq = 1 - 0.25 * Math.sin(Math.PI * seg(t, 5.3, 5.38));
+      else if (t >= WALK0 - 0.02 && t < WALK0 + 0.12) sq = 1 - 0.22 * Math.sin(Math.PI * seg(t, WALK0 - 0.02, WALK0 + 0.12));
+      dotS = [h[0], h[1], (h[0] - h2[0]) * 240, (h[1] - h2[1]) * 240, sq];
+    }
+    // attribution
+    const aa = seg(t, 8.9, 9.25) * (1 - seg(t, 10.1, 10.4));
+    if (aa > 0) {
+      ctx.save(); ctx.globalAlpha = aa; ctx.font = '500 22px "Azeret Mono"'; ctx.fillStyle = C.ink; ctx.textAlign = 'right';
+      ctx.fillText('“A line is a dot that went for a walk.” — Paul Klee, Pedagogical Sketchbook, 1925', W - 120 + 30 * (1 - oc(seg(t, 8.9, 9.25))), H - 150);
+      ctx.restore();
+    }
+    if (t < WALK0) { act = '03  DOT'; read = `r = ${BR} px    hop ${fmt(seg(t, 5.36, WALK0) * 100)}%`; }
+    else if (t < 10.05) {
+      const ph = walkPhi(t); const done = LOOPS.filter(L => t >= L.tf).length;
+      act = '04  WALK'; read = `x = ${PA}φ − ${PB} sin φ    φ = ${fmt(ph, 2)} rad    loops ${done} / ${K}`;
+    } else { act = '05  PULL'; read = `straight ${fmt(seg(t, 10.05, 11.0) * 100)}%    length ${fmt(SEND)} px`; }
+  }
+  if (t >= 2.3 && t < 3.4) {
+    for (const L of LET) {
+      if (L.ch === ' ') continue;
+      const tau = t - 2.3;
+      const x = L.x + L.vx * tau, y = L.y0 - L.kick * tau + 0.5 * 5200 * tau * tau, rot = L.r00 + L.spin * tau;
+      if (y - 320 > H) continue;
+      inv(C.bone, C.blue, col => {
+        ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+        ctx.font = BIG; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = col; ctx.fillText(L.ch, 0, 0);
+        ctx.restore();
+      });
+    }
+  }
+  if (dotS) drawDot(dotS[0], dotS[1], dotS[2], dotS[3], dotS[4]);
+
+  // ===== HUD =====
+  inv(C.bone, C.ink, col => {
+    ctx.save(); ctx.fillStyle = col; ctx.font = MONO; ctx.textBaseline = 'top';
+    ctx.textAlign = 'left'; ctx.fillText('MIDDLE STUDIES   REEL — 033', 40, 34);
+    ctx.textAlign = 'right'; ctx.fillText(act, W - 40, 34);
+    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'left'; ctx.fillText(read, 40, H - 34);
+    ctx.textAlign = 'right'; ctx.fillText(`Claude    t ${t.toFixed(2)} s`, W - 40, H - 34);
+    ctx.restore();
+  });
+}
+
+(async () => {
+  await document.fonts.load(BIG); await document.fonts.load('800 58px Syne'); await document.fonts.load(MONO);
+  await document.fonts.ready;
+  setup();
+  window.__seek = t => draw(t);
+  draw(0);
+  if (!location.search.includes('render')) {
+    const t0 = performance.now();
+    const loop = () => { draw(((performance.now() - t0) / 1000) % 15); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  }
+})();
+</script>
+</body></html>

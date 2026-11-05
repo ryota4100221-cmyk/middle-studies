@@ -1216,5 +1216,45 @@
     "review": "1周目：遊星から引く9.75〜10.4秒のブレが6枚の残像に割れて見える／抜き文字板の上で下の読み値が骨色に溶ける／ピストンのロッドが5.1秒の R を縦に切る→ブレのサンプル数をカメラの速さに応じて6〜28枚に／読み値の色を板の位置で切り替え／ピストンを朱の駆動歯車の左と下へ移した。板の静止を避けるため、抜き文字の6字を対応する歯車の角度で上下させた。2周目：遊星の本体が画面を埋める8.8〜9.4秒に読み値が見えない→読み値に縁取りを付けた。3周目：字の歯車の中心の軸穴が R と Q の字の中に食い込み、字の大きさも歯車ごとにばらつく→字の歯車は軸穴を描かず、字は全部250に揃えた。4周目：直すことなし。許容した差：遊星から全景へ引き戻る約0.5秒は回転を巻き戻すブレの塊になる（つなぎの振り）。",
     "condition": "control",
     "condition_day": "2026-10-31"
+  },
+  {
+    "id": "033",
+    "slug": "line-walk",
+    "title": "Line Walk",
+    "date": "2026-11-05",
+    "slot": "2026-11-05",
+    "concept": "奥行きを使わず、1本の線だけで15秒をつないだ。クレーの「線は散歩に出た点である」を、線が実際に形を変えて言う。0秒目に黄色い点が水平線を叩いて弦のようにはじき（60モードの弦の振動を解いている）、線に乗った A LINE が揺れる。線は両端から巻物のように巻き取られて青い空を中央へ畳み、渦は円になって IS A DOT. の点へ縮む。点は散歩に出て、プロレート・サイクロイドを描きながら4つのループを閉じるたびに平らな色で塗り、その線の上を THAT WENT FOR A WALK. が走る（見せ場は8.6秒）。最後は頭を引かれて全部のループがほどけ、まっすぐな水平線に戻って青い幕が落ち、0秒目につながる。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/033_line-walk.mp4",
+    "techniques": [
+      "modal-string-pluck-64-modes",
+      "type-riding-a-vibrating-line",
+      "colour-inversion-by-field-clip",
+      "double-scroll-roll-up-wipe",
+      "spiral-to-circle-staggered-morph",
+      "circle-collapse-into-dot",
+      "prolate-cycloid-walk",
+      "loop-closure-flat-fills",
+      "text-on-path-by-arc-length",
+      "yank-to-straight-stagger-untie",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#efe9dd",
+        "#1f28c9",
+        "#111111",
+        "#ffd23f",
+        "#ff7aa8"
+      ],
+      "type": [
+        "Syne 800",
+        "Azeret Mono"
+      ],
+      "structure": "one line, one fixed frame, no cuts / dot hits the horizon and plucks it, A LINE rides the string → letters fall off and the line rolls up from both ends, folding the blue sky into the centre → the double scroll swells into a circle: IS A DOT. → the circle collapses into the dot, the dot hops and walks a prolate cycloid, each closed loop filled flat while THAT WENT FOR A WALK. rides the line (hero) → the head is yanked, loops untie into a straight line → blue curtain drops onto the string, A LINE lands back = frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：0.5秒で弦がほぼ平ら（中央をはじいた弦は1/4周期で全体が平らになる）→はじく位置をξ=0.36へずらし波速を1700px/sに。4.45秒で円の下に渦の内端が残りコブ→円へのモーフを3.95–4.45秒に早めた。巻き取りが画面上端で小さく中央が空く→線を中央のまま巻き取り青い空を大きな四角として畳む形に。ループの塗りが交点からはみ出す→交点を数値で探して閉じた。2周目：0.1秒で弦の凹みとボールが副題に重なる→副題を100px下げた。終端で副題の打ち込みが途中で切れて0秒目と合わない→打ち切りを修正。3周目：4.9秒「IS ADOT.」の語間が詰まる→語間を広げた。許容した差：10.6秒の引き抜き中、最後のループの塗りが一瞬ゆがんだ帯になる（ほどける途中の形として残す）。",
+    "condition": "no-depth"
   }
 ]
