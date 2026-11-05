@@ -843,5 +843,38 @@
       ]
     },
     "use": "キッチン用品・木工・ライフスタイル系の商品紹介FV。左右の白い余白にそのままコピーを置ける"
+  },
+  {
+    "id": "026",
+    "slug": "drift",
+    "title": "DRIFT",
+    "title_ja": "漂い",
+    "date": "2026-11-06",
+    "track": "FORM",
+    "concept": "白い壁に立てた約290枚のダイクロイックガラスの小片。片は壁にほぼ垂直で小口の線にしか見えず、色の正体は壁に落ちる光——透過した色が小口から扇状に生えて白へ溶け、反対側に白い照り返しが出る。片の行を大きく波打つ流線にして杉綾に交互に傾け、2本の白い波線で流れの形を見せた。",
+    "source": {
+      "url": "https://www.thisiscolossal.com/wp-content/uploads/2014/09/glass-1.jpg",
+      "took": "光：1灯で片ごとに色の光と影を壁へ落とす・暗部はほぼ無い / 素材：ダイクロイックガラスの薄片・反射色と透過色が補色で角度により回る・小口は緑みの線 / 構図：1:1 正対・作品が画面の9割弱 / 色：青みの灰白の壁6割・色は片と壁の光にだけ（シアン・青・黄・橙・マゼンタ）"
+    },
+    "look": {
+      "track": "FORM",
+      "palette_family": "dichroic-cmy-on-white",
+      "background": "flat-wall-frontal",
+      "lighting": "large-area-top-right",
+      "lens": "tele",
+      "aspect": "1:1",
+      "material": "dichroic-glass"
+    },
+    "review_rounds": 23,
+    "film": {
+      "sec": 11.8,
+      "shots": [
+        "光の走り",
+        "物の動き",
+        "マクロ",
+        "決め"
+      ]
+    },
+    "use": "FVの背景・セクションの区切り。光の走りのカットは、スクロールで色が移るヒーロー映像にそのまま使える"
   }
 ]
