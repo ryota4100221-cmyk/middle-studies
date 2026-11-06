@@ -1256,5 +1256,45 @@
     "review_rounds": 3,
     "review": "1周目：0.5秒で弦がほぼ平ら（中央をはじいた弦は1/4周期で全体が平らになる）→はじく位置をξ=0.36へずらし波速を1700px/sに。4.45秒で円の下に渦の内端が残りコブ→円へのモーフを3.95–4.45秒に早めた。巻き取りが画面上端で小さく中央が空く→線を中央のまま巻き取り青い空を大きな四角として畳む形に。ループの塗りが交点からはみ出す→交点を数値で探して閉じた。2周目：0.1秒で弦の凹みとボールが副題に重なる→副題を100px下げた。終端で副題の打ち込みが途中で切れて0秒目と合わない→打ち切りを修正。3周目：4.9秒「IS ADOT.」の語間が詰まる→語間を広げた。許容した差：10.6秒の引き抜き中、最後のループの塗りが一瞬ゆがんだ帯になる（ほどける途中の形として残す）。",
     "condition": "no-depth"
+  },
+  {
+    "id": "034",
+    "slug": "cut-to-the-chase",
+    "title": "Cut to the Chase",
+    "date": "2026-11-06",
+    "concept": "縦9:16で、親指の流し見を止めるために「切る」ことだけで15秒をつないだ。0.3秒目に刃が朱の CUT を斜めに断ち、半分ずつ滑り落ちた下から TO、THE、CHASE が1.3秒までに続けて現れて、一言の慣用句になる。傾いた CHASE の面は13本の刃で帯に切られ、帯が拍ごとに横へずれて字の上下が食い違い、また揃う。帯を縦にも切り、三角に割った面はひびの入った板のように浮く。9.2秒に水平の刃が上から下へ抜け、通ったところから破片が CHASE から CUT に塗り替わり、最後に破片が寄り集まって1コマ目の CUT に戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/034_cut-to-the-chase.mp4",
+    "techniques": [
+      "half-plane-polygon-split-peel",
+      "stacked-layer-peel-reveal",
+      "scored-blade-line-then-flash",
+      "periodic-type-field-modular-slide",
+      "band-slice-offset-kicks-overback",
+      "tile-to-triangle-fracture",
+      "coherent-exploded-view-hover",
+      "screen-space-sweep-content-swap",
+      "staggered-reassembly-by-distance",
+      "cut-counter-hud-difference-blend"
+    ],
+    "look": {
+      "palette": [
+        "#ff3b1f",
+        "#0d0d0f",
+        "#f4efe6",
+        "#3a2bff",
+        "#c6ff3d"
+      ],
+      "type": [
+        "Big Shoulders Display 900",
+        "Fragment Mono"
+      ],
+      "structure": "vertical, one blade grammar, no fades / CUT is scored and split (0.3 s) → TO → THE → tilted CHASE field (1.3 s) → 13 blades slice it into bands that slip on the beat and realign → cross-cut into tiles, split into triangles → the plate hovers cracked (exploded view) → a horizontal blade sweeps down and recolours the shards into CUT (hero, 9.2 s) → shards reassemble into frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：1・5番目の帯のずれが周期Pの整数倍で、ずれても字が揃って見えた→P/4・0.75Pに変えて上下の半字が食い違うように。破片の飛散が大きく中央に黒い穴が5秒続き、何を塗り替えているか読めない→飛散と回転を半分以下に。2周目：まだ黒が画面の半分。shardを止めて描き分けを確かめたら描画は正しく、破片ごとに方向がばらばらなのが原因と分かった→中心から17%の一様な膨張＋小さなゆらぎに変え、ひびの入った板が浮いて見える分解図にした。3周目：9.2秒で刃の上下がCUT/CHASEにはっきり分かれて読め、0.5・1.5・3秒の等倍でも字が読める。許容した差：ひびの黒が星形に太く見える区間（7〜12秒）は、割れた面の手触りとして残した。",
+    "condition": "vertical",
+    "format": "vertical",
+    "slot": "2026-11-06"
   }
 ]

@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 034 Cut to the Chase</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@900&family=Fragment+Mono&display=block" rel="stylesheet">
+<style>
+  html,body{margin:0;height:100%;background:#0d0d0f;overflow:hidden}
+  canvas{display:block;margin:0 auto;height:100vh;width:auto;max-width:100vw;object-fit:contain}
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+window.__format = 'vertical';
+window.__duration = 15;
+window.__poster = 9.2;
+
+const W = 1080, H = 1920, CX = 540, CY = 960;
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const RED = '#ff3b1f', INK = '#0d0d0f', CREAM = '#f4efe6', VIO = '#3a2bff', LIME = '#c6ff3d';
+const DISP = '"Big Shoulders Display"', MONO = '"Fragment Mono"';
+
+// ---------- utilities ----------
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;}}
+const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const eInCubic=x=>x*x*x;
+const eOutCubic=x=>1-Math.pow(1-x,3);
+const eOutQuart=x=>1-Math.pow(1-x,4);
+const eInOutCubic=x=>x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;
+const eInOutSine=x=>-(Math.cos(Math.PI*x)-1)/2;
+const eOutBack=(x,s=1.9)=>1+(s+1)*Math.pow(x-1,3)+s*Math.pow(x-1,2);
+const mod=(a,n)=>((a%n)+n)%n;
+
+// Sutherland–Hodgman: keep side where dot(n,p) - d >= 0
+function clipHalf(poly,nx,ny,d){
+  const out=[];
+  for(let i=0;i<poly.length;i++){
+    const a=poly[i],b=poly[(i+1)%poly.length];
+    const da=nx*a[0]+ny*a[1]-d, db=nx*b[0]+ny*b[1]-d;
+    if(da>=0) out.push(a);
+    if((da>=0)!==(db>=0)){const k=da/(da-db);out.push([a[0]+(b[0]-a[0])*k,a[1]+(b[1]-a[1])*k]);}
+  }
+  return out;
+}
+function centroid(p){let x=0,y=0;for(const q of p){x+=q[0];y+=q[1];}return[x/p.length,y/p.length];}
+function inflate(p,px){const c=centroid(p);return p.map(q=>{const dx=q[0]-c[0],dy=q[1]-c[1],l=Math.hypot(dx,dy)||1;return[q[0]+dx/l*px,q[1]+dy/l*px];});}
+function pathPoly(p){ctx.beginPath();ctx.moveTo(p[0][0],p[0][1]);for(let i=1;i<p.length;i++)ctx.lineTo(p[i][0],p[i][1]);ctx.closePath();}
+
+function fitFont(text,targetW,maxCap){
+  const c=document.createElement('canvas').getContext('2d');
+  c.font=`900 100px ${DISP}`;
+  const m=c.measureText(text);
+  let fs=100*targetW/m.width;
+  const cap=(m.actualBoundingBoxAscent)*fs/100;
+  if(maxCap&&cap>maxCap) fs*=maxCap/cap;
+  return fs;
+}
+function makeCanvas(w,h){const c=document.createElement('canvas');c.width=w;c.height=h;return c;}
+// draw text centred optically on (x,y) using real ink bounds
+function centerText(g,text,x,y,fs,mode,col,lw){
+  g.font=`900 ${fs}px ${DISP}`;
+  const m=g.measureText(text);
+  const bx=x-(m.actualBoundingBoxRight-m.actualBoundingBoxLeft)/2+m.actualBoundingBoxLeft;
+  const by=y+(m.actualBoundingBoxAscent-m.actualBoundingBoxDescent)/2;
+  if(mode==='fill'){g.fillStyle=col;g.fillText(text,bx,by);}
+  else{g.strokeStyle=col;g.lineWidth=lw;g.lineJoin='miter';g.strokeText(text,bx,by);}
+  return m;
+}
+function monoText(g,s,x,y,size,col,align='left'){g.font=`${size}px ${MONO}`;g.fillStyle=col;g.textAlign=align;g.textBaseline='alphabetic';g.fillText(s,x,y);g.textAlign='left';}
+
+// ---------- layers (prebuilt bitmaps) ----------
+let L = [];          // L[0..2] screen layers
+let L3, L3x0, P;     // local-frame CHASE layer, its left origin, x-period
+const TH = -10*Math.PI/180;            // CHASE layer tilt
+const X0 = 740, Y0 = 1140;             // local half extents covered
+const ROWH = 320;
+
+function buildLayers(){
+  // L0 — CUT
+  {const c=makeCanvas(W,H),g=c.getContext('2d');
+   g.fillStyle=RED;g.fillRect(0,0,W,H);
+   const fs=fitFont('CUT',900,1200);
+   centerText(g,'CUT',CX,930,fs,'fill',CREAM);
+   g.fillStyle=INK;g.fillRect(64,1392,W-128,4);
+   monoText(g,'a fifteen-second reel',64,1446,30,INK);
+   monoText(g,'made of nothing but cuts',64,1486,30,INK);
+   monoText(g,'↓ keep watching',W-64,1486,30,INK,'right');
+   monoText(g,'NO.',64,430,30,INK); monoText(g,'034',64,470,30,INK);
+   monoText(g,'BLADE',W-64,430,30,INK,'right'); monoText(g,'—28°',W-64,470,30,INK,'right');
+   L[0]=c;}
+  // L1 — TO
+  {const c=makeCanvas(W,H),g=c.getContext('2d');
+   g.fillStyle=INK;g.fillRect(0,0,W,H);
+   const fs=fitFont('TO',960,1250);
+   centerText(g,'TO',CX,960,fs,'fill',LIME);
+   monoText(g,'02 / 04',64,330,30,CREAM); monoText(g,'cut 62°',W-64,330,30,CREAM,'right');
+   L[1]=c;}
+  // L2 — THE
+  {const c=makeCanvas(W,H),g=c.getContext('2d');
+   g.fillStyle=CREAM;g.fillRect(0,0,W,H);
+   const fs=fitFont('THE',1000,1150);
+   centerText(g,'THE',CX,960,fs,'fill',VIO);
+   monoText(g,'03 / 04',64,330,30,INK); monoText(g,'cut —8°',W-64,330,30,INK,'right');
+   L[2]=c;}
+  // L3 — CHASE rows, local frame, periodic in x with period P
+  {
+   const g0=makeCanvas(10,10).getContext('2d');
+   g0.font=`900 100px ${DISP}`;const m=g0.measureText('CHASE');
+   const f=230/m.actualBoundingBoxAscent*100;           // cap height 230
+   g0.font=`900 ${f}px ${DISP}`;const tw=g0.measureText('CHASE').width;
+   P=Math.round(tw+96);
+   const Wb=2*X0+P, Hb=2*Y0;
+   L3x0=-X0-P;
+   const c=makeCanvas(Wb,Hb),g=c.getContext('2d');
+   g.fillStyle=VIO;g.fillRect(0,0,Wb,Hb);
+   g.translate(-L3x0,Y0);                               // now in local coords
+   for(let r=-4;r<=4;r++){
+     const y=r*ROWH, ph=(r&1)?P/2:0;
+     for(let n=-3;n<=4;n++){
+       const x=ph+n*P;
+       if(r%2===0) centerText(g,'CHASE',x,y,f,'fill',CREAM);
+       else centerText(g,'CHASE',x,y,f,'stroke',LIME,5);
+       // tick in the gap
+       g.fillStyle=(r%2===0)?LIME:CREAM;
+       g.fillRect(x+P/2-3,y-28,6,56);
+     }
+   }
+   L3=c;}
+}
+
+// ---------- timeline ----------
+const PEEL=[ // layer k is cut at t, along a line through p at angle a
+  {t:0.30,p:[540,1010],a:-28*Math.PI/180},
+  {t:0.80,p:[560,960],a:62*Math.PI/180},
+  {t:1.30,p:[540,940],a:-8*Math.PI/180},
+];
+const PEEL_DUR=0.6, SCORE=0.2;
+const BAND_N=14, BAND_Y0=-1120, BAND_H=160;
+const bandStrike=k=>1.72+k*0.036;                 // k = 1..13 interior boundaries
+const KICKS=[2.4,3.1,3.8,4.5,5.2,5.9];
+const COLS=9, COL_X0=-720, COL_W=160;
+const colStrike=j=>6.42+j*0.045;                  // j = 1..8
+const SHARD_T=6.9, BURST_T=7.0;
+const SWEEP_A=8.4, SWEEP_B=10.0;
+
+function kickTarget(k,i){
+  const s=(i&1)?1:-1;
+  switch(k){
+    case 0: return 0;
+    case 1: return s*P/4;
+    case 2: return (i-6.5)*110;
+    case 3: return 260*Math.sin(i*0.9);
+    case 4: return s*P;
+    case 5: return -s*P*0.75;
+    default: return 0;
+  }
+}
+function bandOffset(i,t){
+  let k=0; // number of kicks started for this band
+  for(let n=0;n<KICKS.length;n++) if(t>=KICKS[n]+i*0.015) k=n+1;
+  if(k===0) return 0;
+  const tk=KICKS[k-1]+i*0.015;
+  return lerp(kickTarget(k-1,i),kickTarget(k,i),eOutBack(clamp((t-tk)/0.42)));
+}
+function drift(t){
+  if(t<6.3) return 60*(t-1.3);
+  if(t<6.9){const x=t-6.3;return 300+60*x-50*x*x;}
+  return 318;
+}
+
+// ---------- local frame helpers ----------
+const cosT=Math.cos(TH), sinT=Math.sin(TH);
+const toScreen=([x,y])=>[CX+x*cosT-y*sinT, CY+x*sinT+y*cosT];
+function setLocal(){ctx.translate(CX,CY);ctx.rotate(TH);}
+function drawL3(shift){ctx.drawImage(L3,L3x0+mod(shift,P),-Y0);}
+
+// ---------- shards ----------
+let SHARDS=[];
+function buildShards(){
+  const rnd=mulberry32(34034);
+  const I=[540,900];
+  const maxD=Math.hypot(700,1100);
+  for(let i=0;i<BAND_N;i++)for(let j=0;j<COLS;j++){
+    const x0=COL_X0+j*COL_W,x1=x0+COL_W,y0=BAND_Y0+i*BAND_H,y1=y0+BAND_H;
+    const quad=[[x0,y0],[x1,y0],[x1,y1],[x0,y1]].map(toScreen);
+    // skip tiles entirely off screen
+    if(quad.every(q=>q[0]<-10)||quad.every(q=>q[0]>W+10)||quad.every(q=>q[1]<-10)||quad.every(q=>q[1]>H+10)) continue;
+    const tris=((i+j)&1)?[[quad[0],quad[1],quad[2]],[quad[0],quad[2],quad[3]]]:[[quad[0],quad[1],quad[3]],[quad[1],quad[2],quad[3]]];
+    for(const tri of tris){
+      const c=centroid(tri);
+      let dx=c[0]-I[0],dy=c[1]-I[1];const dl=Math.hypot(dx,dy)||1;dx/=dl;dy/=dl;
+      const mag=30+190*rnd()*(0.3+0.7*clamp(dl/900));
+      const dist=Math.hypot(c[0]-CX,c[1]-CY)/maxD;
+      SHARDS.push({
+        poly:inflate(tri,0.9), c,
+        bx:(c[0]-I[0])*0.17+(rnd()-.5)*34, by:(c[1]-I[1])*0.17+(rnd()-.5)*34,
+        vx:(rnd()-.5)*8, vy:8+14*rnd(),
+        s0:(rnd()-.5)*0.4, sr:(rnd()-.5)*0.07,
+        back:10.7+2.1*clamp(dist)+0.1*rnd(),
+        z:rnd()
+      });
+    }
+  }
+  SHARDS.sort((a,b)=>a.z-b.z);
+}
+function sweepY(t){return -40+2010*eInOutSine(clamp((t-SWEEP_A)/(SWEEP_B-SWEEP_A)));}
+
+function shardState(s,t){
+  const eb=1-eInOutCubic(clamp((t-s.back)/1.6));
+  const eo=eOutBack(clamp((t-BURST_T)/0.6),2.4);
+  const h=Math.max(0,t-BURST_T);
+  const a=eOutCubic(clamp((t-SHARD_T)/0.1));
+  return{
+    ox:eb*(eo*s.bx+h*s.vx), oy:eb*(eo*s.by+h*s.vy),
+    r:eb*(eo*s.s0+h*s.sr+eo*0.07*Math.sin(2.4*t+s.z*6.283)), sc:1-0.08*a*eb, eb
+  };
+}
+function setShardTransform(s,st){
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.translate(s.c[0]+st.ox,s.c[1]+st.oy);ctx.rotate(st.r);ctx.scale(st.sc,st.sc);ctx.translate(-s.c[0],-s.c[1]);
+}
+function drawShardContent(which){
+  if(which===0){ctx.drawImage(L[0],0,0);}
+  else{setLocal();drawL3(drift(99));}
+}
+function drawShards(t){
+  const ys=sweepY(t);
+  const sweeping=t>=SWEEP_A;
+  const done=t>=SWEEP_B;
+  for(const s of SHARDS){
+    const st=shardState(s,t);
+    // screen-space vertical extent of transformed shard
+    let minY=1e9,maxY=-1e9;
+    const co=Math.cos(st.r),si=Math.sin(st.r);
+    for(const q of s.poly){const dx=(q[0]-s.c[0])*st.sc,dy=(q[1]-s.c[1])*st.sc;const y=s.c[1]+st.oy+dx*si+dy*co;minY=Math.min(minY,y);maxY=Math.max(maxY,y);}
+    let mode; // 0 = L0, 3 = L3, 2 = split
+    if(done||(sweeping&&maxY<=ys)) mode=0; else if(!sweeping||minY>=ys) mode=3; else mode=2;
+    if(mode!==2){
+      ctx.save();setShardTransform(s,st);pathPoly(s.poly);ctx.clip();drawShardContent(mode);ctx.restore();
+    }else{
+      for(const part of [0,3]){
+        ctx.save();ctx.setTransform(1,0,0,1,0,0);
+        ctx.beginPath();if(part===0)ctx.rect(-500,-2000,W+1000,ys+2000);else ctx.rect(-500,ys,W+1000,H*3);ctx.clip();
+        setShardTransform(s,st);pathPoly(s.poly);ctx.clip();drawShardContent(part);ctx.restore();
+      }
+    }
+  }
+}
+
+// ---------- blade marks ----------
+function bladeLine(x0,y0,x1,y1,prog,alpha,width,col='#ffffff'){
+  if(alpha<=0||prog<=0) return;
+  const xe=lerp(x0,x1,prog),ye=lerp(y0,y1,prog);
+  ctx.save();ctx.globalAlpha=alpha;ctx.strokeStyle=col;ctx.lineWidth=width;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(xe,ye);ctx.stroke();
+  if(prog<1){ctx.fillStyle=col;ctx.shadowColor=col;ctx.shadowBlur=24;ctx.beginPath();ctx.arc(xe,ye,width*2.6,0,Math.PI*2);ctx.fill();}
+  ctx.restore();
+}
+function lineAcross(p,a,len=2600){const ux=Math.cos(a),uy=Math.sin(a);return[p[0]-ux*len/2,p[1]-uy*len/2,p[0]+ux*len/2,p[1]+uy*len/2];}
+function strikeMark(tc,t,coords,w=4){
+  // scoring before tc, white flash just after
+  if(t<tc-SCORE||t>tc+0.16) return;
+  if(t<tc){bladeLine(...coords,eInCubic(clamp((t-(tc-SCORE))/SCORE)),0.95,w);}
+  else{const k=(t-tc)/0.16;bladeLine(...coords,1,1-k,w+10*(1-k));}
+}
+
+// ---------- peel halves ----------
+function halfPolys(ev){
+  const rect=[[-30,-30],[W+30,-30],[W+30,H+30],[-30,H+30]];
+  const ux=Math.cos(ev.a),uy=Math.sin(ev.a),nx=-uy,ny=ux;
+  const d=nx*ev.p[0]+ny*ev.p[1];
+  return [{poly:clipHalf(rect,nx,ny,d),sgn:1},{poly:clipHalf(rect,-nx,-ny,-d),sgn:-1}];
+}
+function drawHalves(k,t){
+  const ev=PEEL[k];const s=(t-ev.t)/PEEL_DUR;
+  if(s<0||s>=1) return;
+  const ux=Math.cos(ev.a),uy=Math.sin(ev.a),nx=-uy,ny=ux;
+  for(const h of halfPolys(ev)){
+    // shutter: three faint trailing samples + the real one
+    for(let g=3;g>=0;g--){
+      const ss=Math.max(0,s-g*0.018);
+      const slide=1800*eInCubic(ss)+60*ss, gap=26*eOutCubic(clamp(ss*4))+520*ss*ss, rot=0.22*ss*ss;
+      ctx.save();
+      ctx.globalAlpha=g===0?1:0.22;
+      ctx.translate(ev.p[0]+h.sgn*(nx*gap+ux*slide),ev.p[1]+h.sgn*(ny*gap+uy*slide));
+      ctx.rotate(h.sgn*rot);ctx.translate(-ev.p[0],-ev.p[1]);
+      pathPoly(h.poly);ctx.clip();ctx.drawImage(L[k],0,0);
+      ctx.restore();
+    }
+  }
+}
+
+// ---------- HUD ----------
+const CUT_EVENTS=[];
+function buildCutEvents(){
+  PEEL.forEach(e=>CUT_EVENTS.push(e.t));
+  for(let k=1;k<BAND_N;k++)CUT_EVENTS.push(bandStrike(k));
+  for(let j=1;j<COLS;j++)CUT_EVENTS.push(colStrike(j));
+  for(let n=0;n<SHARDS.length/2;n++)CUT_EVENTS.push(SHARD_T+0.1*n/(SHARDS.length/2));
+  CUT_EVENTS.push(SWEEP_A+0.8);
+}
+function section(t){
+  if(t<1.3) return '01  PEEL';
+  if(t<6.42) return '02  SLICE';
+  if(t<SWEEP_A) return '03  SHATTER';
+  if(t<10.7) return '04  RECUT';
+  return '05  BACK TO CUT';
+}
+function hud(t){
+  const cuts=CUT_EVENTS.filter(x=>t>=x).length;
+  ctx.save();ctx.setTransform(1,0,0,1,0,0);
+  ctx.globalCompositeOperation='difference';
+  monoText(ctx,'MIDDLE STUDIES',56,96,26,'#ffffff');
+  monoText(ctx,'REEL — 034',56,132,26,'#ffffff');
+  monoText(ctx,section(t),W-56,96,26,'#ffffff','right');
+  monoText(ctx,'t '+t.toFixed(2).padStart(5,'0')+' s',W-56,132,26,'#ffffff','right');
+  monoText(ctx,'CUTS',56,1806,26,'#ffffff');
+  ctx.font=`900 64px ${DISP}`;ctx.fillStyle='#ffffff';ctx.fillText(String(cuts).padStart(3,'0'),56,1872);
+  monoText(ctx,'Claude',W-56,1866,26,'#ffffff','right');
+  ctx.restore();
+}
+
+// ---------- frame ----------
+function render(t){
+  t=mod(t,15);
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+  ctx.fillStyle=INK;ctx.fillRect(0,0,W,H);
+
+  let base=3;
+  for(let k=0;k<PEEL.length;k++) if(t<PEEL[k].t){base=k;break;}
+
+  if(t>=14.62||t<PEEL[0].t){ ctx.drawImage(L[0],0,0); }
+  else if(base<3){ ctx.drawImage(L[base],0,0); }
+  else if(t<SHARD_T){
+    // CHASE layer in bands
+    const D=drift(t);
+    if(t<bandStrike(1)){ctx.save();setLocal();drawL3(D);ctx.restore();}
+    else for(let i=0;i<BAND_N;i++){
+      ctx.save();setLocal();
+      ctx.beginPath();ctx.rect(-X0,BAND_Y0+i*BAND_H-0.6,2*X0,BAND_H+1.2);ctx.clip();
+      drawL3(D+bandOffset(i,t));ctx.restore();
+    }
+    // band blade strikes
+    ctx.save();setLocal();
+    for(let k=1;k<BAND_N;k++){const y=BAND_Y0+k*BAND_H;strikeMark(bandStrike(k),t,(k&1)?[-X0,y,X0,y]:[X0,y,-X0,y],3);}
+    for(let j=1;j<COLS;j++){const x=COL_X0+j*COL_W;strikeMark(colStrike(j),t,[x,-1100,x,1100],3);}
+    ctx.restore();
+  } else {
+    drawShards(t);
+    if(t<SHARD_T+0.2){ // last column blade flash still fading
+      ctx.save();setLocal();for(let j=1;j<COLS;j++){const x=COL_X0+j*COL_W;strikeMark(colStrike(j),t,[x,-1100,x,1100],3);}ctx.restore();
+    }
+    // recut blade
+    if(t>=SWEEP_A-0.05&&t<=SWEEP_B+0.05){
+      const y=sweepY(t);
+      ctx.save();ctx.setTransform(1,0,0,1,0,0);
+      const gr=ctx.createLinearGradient(0,y-90,0,y);gr.addColorStop(0,'rgba(198,255,61,0)');gr.addColorStop(1,'rgba(198,255,61,0.35)');
+      ctx.fillStyle=gr;ctx.fillRect(0,y-90,W,90);
+      ctx.fillStyle='#ffffff';ctx.shadowColor='#ffffff';ctx.shadowBlur=30;ctx.fillRect(0,y-2.5,W,5);
+      ctx.shadowBlur=0;monoText(ctx,'RECUT →  CUT',W-56,y-18,26,'#ffffff','right');
+      ctx.restore();
+    }
+  }
+  // peel halves on top (deeper first)
+  for(let k=PEEL.length-1;k>=0;k--) drawHalves(k,t);
+  // peel scoring / flash on the intact layer
+  for(let k=0;k<PEEL.length;k++){
+    const ev=PEEL[k];
+    ctx.save();strikeMark(ev.t,t,lineAcross(ev.p,ev.a),5);ctx.restore();
+  }
+  hud(t);
+}
+
+// ---------- boot ----------
+(async()=>{
+  await Promise.all([document.fonts.load(`900 100px ${DISP}`),document.fonts.load(`26px ${MONO}`)]);
+  await document.fonts.ready;
+  buildLayers();buildShards();buildCutEvents();
+  window.__seek=t=>{render(t);};
+  render(0);
+  if(!location.search.includes('render')){
+    const t0=performance.now();
+    const loop=()=>{render(((performance.now()-t0)/1000)%15);requestAnimationFrame(loop);};
+    requestAnimationFrame(loop);
+  }
+})();
+</script>
+</body>
+</html>
