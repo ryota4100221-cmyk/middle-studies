@@ -1296,5 +1296,48 @@
     "condition": "vertical",
     "format": "vertical",
     "slot": "2026-11-06"
+  },
+  {
+    "id": "035",
+    "slug": "fifteenth-night",
+    "title": "Fifteenth Night",
+    "date": "2026-11-07",
+    "slot": "2026-11-07",
+    "concept": "monaka の名の由来「最中の月」（十五夜の満月）を、ロゴの実パスだけで15秒にした。0秒目の白地のロックアップに夜が落ちてロゴが白抜きに反転し、ライムの三日月へ寄るとそのまま月になって、拍ごとに三日月→上弦と満ちていく。字は月の明るい縁から液体のように芽を出して列になり、見せ場の8.2秒では上弦の月が字の列の後ろを通って、重なった字だけが黒く反転し、潮のように字を持ち上げる。字を1つ吸うごとに月が満ち、十五夜で満月になると夜が明け、満月がロゴの2つの三日月に割れて字が並び、0秒目のロックアップに戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/035_fifteenth-night.mp4",
+    "techniques": [
+      "logo-paths-to-signed-distance-field-atlas",
+      "felzenszwalb-exact-edt-at-load",
+      "sdf-morph-crescent-to-moon-phase",
+      "analytic-moon-phase-terminator",
+      "smooth-min-goo-budding-and-absorption",
+      "topographic-isolines-of-the-union-field",
+      "beat-pulse-rings-along-sdf-contours",
+      "transit-inversion-letters-over-lit-moon",
+      "tidal-bulge-row-with-ring-synced-hops",
+      "curved-terminator-wipe-day-night",
+      "disc-split-into-logo-mark",
+      "vector-lockup-handoff-from-sdf",
+      "seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#0a0a0a",
+        "#ffffff",
+        "#a5e02e",
+        "#303030",
+        "#999999"
+      ],
+      "type": [
+        "monaka design. logo (outlined paths)",
+        "Geist Mono",
+        "Shippori Mincho"
+      ],
+      "structure": "white lockup → night falls across it with a curved terminator (logo inverts) → zoom into the lime crescent, letters blown away → crescent melts into a moon that waxes on the beat to first quarter → letters bud out of the lit limb into a row → the half moon transits behind the row, letters over the lit half invert, the row bulges like a tide and hops as each beat ring passes (hero) → letters are absorbed one by one, each one waxing the moon → full moon (十五夜) → dawn wipe, the disc splits into the two crescents of the mark, letters slide out into the lockup = frame 0",
+      "renderer": "webgl"
+    },
+    "review_rounds": 5,
+    "review": "1周目：6〜10秒の字の列が止まって見える→潮の持ち上がりを130pxに、拍の波紋が通るたびに字が跳ねるように。満ちる区間が単調→引きを拍ごとの段に。等高線が細かく crf29 まで落ちた→間隔44px・減衰を速め crf26・6.9MB に。2周目：最後のロゴの字に波紋が沿ってシール状の縁取り→字まわりの波紋を弱め、13秒以降はマークだけから。3周目：1.5秒の三日月→月相モーフで距離場の外側が箱形近似になり等高線が折れた→三日月の余白を80単位に広げ、モーフを0.4秒に詰め、等高線を円盤の距離へ寄せた。4周目：ロゴ直後の波紋がマーク内側でにじむ→外接円からの同心円に。13.0秒で字が1点から出て重なり、ライムの粘りが字の背景に広がった→夜明けの区間は粘りを切り、字を順序どおり蛇腹に開いた。5周目：直すことが言えない。許容した差：1.45秒前後の0.2秒、モーフ途中で三日月の先端がわずかに荒れる／13.05秒で最後の数文字が一瞬重なる。",
+    "condition": "logo"
   }
 ]
