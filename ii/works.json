@@ -876,5 +876,38 @@
       ]
     },
     "use": "FVの背景・セクションの区切り。光の走りのカットは、スクロールで色が移るヒーロー映像にそのまま使える"
+  },
+  {
+    "id": "027",
+    "slug": "porous",
+    "title": "POROUS",
+    "title_ja": "石の盆",
+    "date": "2026-11-09",
+    "track": "OBJECT",
+    "concept": "研ぎ出しのトラバーチンで起こした長円の溝のある盆と、枯れ穂を一本挿した円柱の花器。流れに沿って鎖状に並ぶ孔と、面全体のピンホール、ところどころの深い空洞が見どころ。",
+    "source": {
+      "url": "https://roheframes.com/cdn/shop/files/ROHE_HOME_510-60-108-5_1deba895-4c55-4b0f-bad9-6be982e84d7b.jpg?v=1702394650",
+      "took": "光：右上の大きく柔らかい1灯で円柱は右が起き左へ落ち、落ち影は左へ薄く / 素材：艶の無い研ぎ出しのトラバーチン、流れ方向の帯に孔が並び、孔の中は黄土に沈む / 構図：5:7 縦・やや見下ろし、石は下半分に幅8割、上は余白、細い黒い棒が1本だけ立つ / 色：地8割・クリームの石2割弱・黒は細い1本（地は点検のコントラスト下限のため明るい灰白→中間の灰に落とした）"
+    },
+    "look": {
+      "track": "OBJECT",
+      "palette_family": "travertine-cream-on-mid-grey",
+      "background": "mid-grey-seamless-sweep",
+      "lighting": "large-soft-right-high",
+      "lens": "normal",
+      "aspect": "5:7",
+      "material": "honed-travertine"
+    },
+    "review_rounds": 9,
+    "film": {
+      "sec": 12.0,
+      "shots": [
+        "押し込み",
+        "マクロ",
+        "光の走り",
+        "決め"
+      ]
+    },
+    "use": "化粧品・インテリア・スパの FV に。左上の大きな余白にコピーを置ける。盆の上に商品を載せ替えて使える"
   }
 ]
