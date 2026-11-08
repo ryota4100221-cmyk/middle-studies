@@ -1339,5 +1339,51 @@
     "review_rounds": 5,
     "review": "1周目：6〜10秒の字の列が止まって見える→潮の持ち上がりを130pxに、拍の波紋が通るたびに字が跳ねるように。満ちる区間が単調→引きを拍ごとの段に。等高線が細かく crf29 まで落ちた→間隔44px・減衰を速め crf26・6.9MB に。2周目：最後のロゴの字に波紋が沿ってシール状の縁取り→字まわりの波紋を弱め、13秒以降はマークだけから。3周目：1.5秒の三日月→月相モーフで距離場の外側が箱形近似になり等高線が折れた→三日月の余白を80単位に広げ、モーフを0.4秒に詰め、等高線を円盤の距離へ寄せた。4周目：ロゴ直後の波紋がマーク内側でにじむ→外接円からの同心円に。13.0秒で字が1点から出て重なり、ライムの粘りが字の背景に広がった→夜明けの区間は粘りを切り、字を順序どおり蛇腹に開いた。5周目：直すことが言えない。許容した差：1.45秒前後の0.2秒、モーフ途中で三日月の先端がわずかに荒れる／13.05秒で最後の数文字が一瞬重なる。",
     "condition": "logo"
+  },
+  {
+    "id": "036",
+    "slug": "register",
+    "title": "Register",
+    "date": "2026-11-08",
+    "concept": "架空の印刷会社「ホシノメ印刷」のFVに置く15秒を、確定値の9色・3書体だけで、刷る→折る→断つ→届けるという紙の仕事の順番そのものとして動かした。0秒目からローラーが水色・灰・藍の3版を順に刷り、ずれていた版が3.9秒にばねで見当が合う。見せ場は4.4〜7.4秒：16面付けの刷り本を実際の折り順で4回折り、紙の重なりを数えているので、折るたびに裏面の色と天地逆の字が正しく出る。最後の1面を3辺断裁すると中央の見当トンボがヘッダーのマークへ飛び、紙の束から字が1枚ずつ配られて『紙のことなら、ホシノメへ。』に組まれ、版ずれが字の上を波のように通る。ローラーが拭き取って白紙に戻り、0秒目につながる。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/036_register.mp4",
+    "techniques": [
+      "three-plate-roller-pass-clip-reveal",
+      "misregistration-spring-into-register",
+      "sixteen-up-imposition-head-to-head",
+      "fold-sequence-with-layer-stack-simulation",
+      "scale-through-zero-fold-with-backface-swap",
+      "per-fold-camera-refit",
+      "three-side-guillotine-trim-with-blade-flash",
+      "register-mark-handoff-to-header-logo",
+      "cards-dealt-from-paper-stack-bezier",
+      "plate-offset-ripple-on-headline",
+      "roller-wipe-seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#ffffff",
+        "#f2f2f2",
+        "#e6e6e6",
+        "#d4d4d4",
+        "#1c1e22",
+        "#5c6068",
+        "#8c9099",
+        "#1f3a6e",
+        "#9db0d6"
+      ],
+      "type": [
+        "Kaisei Tokumin",
+        "BIZ UDPGothic",
+        "Libre Franklin"
+      ],
+      "structure": "one press sheet through the whole job, no cuts / roller lays mizu, grey, ai plates misregistered, crop marks fly in (0–3 s) → plates spring into register (3.9 s) → 16-up sheet folds four times right/bottom/right/bottom with real stacking, camera refits each fold (hero 4.4–7.4 s) → last panel trimmed on three sides → its register mark flies up to become the header mark → letters dealt off the sheet stack into the FV headline, plate offset ripples through it → roller wipes back to blank sheet = frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：断裁区間（7.45〜8.35秒）が白い面と天地逆の P.21 だけで1秒近く何も起きていない／断裁の帯が背景と同化→最後の面に大きな見当トンボを置いて断裁中に回し、FVでヘッダーのマークへ飛ばしてつないだ。帯をグレーにして刃の線を見せた。2周目：つなぎ（刷→折→断→FV→拭き取り→0秒目）は連続、字は全部18px以上。0〜0.3秒が白紙のまま→1本目のローラーを0秒目から走らせた。3周目：ローラーの立ち上がりが遅く0.3秒でまだ刷れていない→1本目だけ ease-out にして0.3秒で水色版が面の大半に乗るようにした。許容した差：折った裏面の字と頁番号が天地逆に出る（面付けとしては正しいので残す）／14.3〜15秒は白紙が縮むだけで静か（0秒目へのつなぎ）。",
+    "condition": "case-values",
+    "slot": "2026-11-08",
+    "sameish": "029 と同じ case-values（確定値の9色・3書体・明るい地）なので平均色が近いのは条件どおり。動きは別物：029 は紙帯→めくり→色見本の扇→ナビ付きFVモック、036 は3版の見当合わせ→16面付けの4回折り（重なりを計算）→3辺断裁→トンボがヘッダーへ→紙束から字を配る。techniques の重なりは0。"
   }
 ]

@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>REEL 036 — Register</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Kaisei+Tokumin:wght@800&family=Libre+Franklin:wght@500;700&display=block" rel="stylesheet">
+<style>html,body{margin:0;background:#f2f2f2;overflow:hidden}canvas{display:block;width:100vw;height:100vh;object-fit:contain}</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// REEL — 036 "Register" / Claude
+// ホシノメ印刷 FV。刷る（3版の見当合わせ）→ 折る（16面付けを4回折る）→ 断つ → 届ける（字が1枚ずつ配られてコピーになる）。
+window.__duration = 15;
+window.__poster = 11.9;
+
+const W = 1920, H = 1080;
+const cv = document.getElementById('c'); cv.width = W; cv.height = H;
+const g = cv.getContext('2d');
+const C = { wh:'#ffffff', g1:'#f2f2f2', g2:'#e6e6e6', g3:'#d4d4d4', ink:'#1c1e22', s1:'#5c6068', s2:'#8c9099', ai:'#1f3a6e', mz:'#9db0d6' };
+const sh = a => `rgba(28,30,34,${Math.max(0, a).toFixed(3)})`;
+const FM = '"Kaisei Tokumin"', FG = '"BIZ UDPGothic"', FL = '"Libre Franklin"';
+const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, x) => a + (b - a) * x;
+const seg = (t, a, b) => cl((t - a) / (b - a));
+const eio = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const eo3 = x => 1 - Math.pow(1 - x, 3);
+const ei3 = x => x * x * x;
+const eo5 = x => 1 - Math.pow(1 - x, 5);
+
+const COPY = [...'紙のことなら、ホシノメへ。'];
+const SUB = '刷る、折る、断つ、届ける。紙の仕事を、ひと続きで。';
+const PW = 240, PH = 135;
+// 16面付け：数字＝コピーの字、T＝見当トンボ、B＝カラーバー、N＝社名
+const IMPO = [0, 9, 'T', 2,  5, 'B', 10, 1,  3, 11, 6, 'N',  12, 8, 7, 4];
+const ROT = p => (Math.floor(p / 4) % 2) === 1;   // 天地逆の段（面付けらしく）
+let S = 1, folioA = 1, spinA = 0;
+
+// ---------- 折りのシミュレーション（紙の重なりを数える） ----------
+function mkStages() {
+  let st = { cols: 4, rows: 4, cells: [] };
+  for (let r = 0; r < 4; r++) { st.cells[r] = []; for (let c = 0; c < 4; c++) st.cells[r][c] = [{ p: r * 4 + c, face: 'F', fx: 1, fy: 1 }]; }
+  const out = [st];
+  for (const f of ['R', 'B', 'R', 'B']) {
+    const n = { cols: st.cols, rows: st.rows, cells: [] };
+    const flip = L => ({ p: L.p, face: L.face === 'F' ? 'K' : 'F', fx: f === 'R' ? -L.fx : L.fx, fy: f === 'B' ? -L.fy : L.fy });
+    if (f === 'R') {
+      n.cols = st.cols / 2;
+      for (let r = 0; r < st.rows; r++) { n.cells[r] = []; for (let c = 0; c < n.cols; c++) n.cells[r][c] = st.cells[r][c].concat(st.cells[r][st.cols - 1 - c].slice().reverse().map(flip)); }
+    } else {
+      n.rows = st.rows / 2;
+      for (let r = 0; r < n.rows; r++) { n.cells[r] = []; for (let c = 0; c < st.cols; c++) n.cells[r][c] = st.cells[r][c].concat(st.cells[st.rows - 1 - r][c].slice().reverse().map(flip)); }
+    }
+    out.push(n); st = n;
+  }
+  return out;
+}
+const STG = mkStages();
+const TOPP = STG[4].cells[0][0][STG[4].cells[0][0].length - 1].p;
+const BACKC = [C.ai, C.mz, C.g2];
+function backOf(p) {
+  if (p === TOPP) return { bg: C.wh, fg: C.s2, ch: null };
+  const bg = BACKC[p % 3];
+  return { bg, fg: bg === C.ai ? C.wh : C.ai, ch: COPY[(p * 5 + 3) % 13] };
+}
+
+// ---------- 面の中身 ----------
+function target(x, y, r, col, lw) {
+  g.strokeStyle = col; g.lineWidth = lw;
+  g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2);
+  g.moveTo(x - r * 1.6, y); g.lineTo(x + r * 1.6, y); g.moveTo(x, y - r * 1.6); g.lineTo(x, y + r * 1.6); g.stroke();
+  g.beginPath(); g.arc(x, y, r * 0.45, 0, Math.PI * 2); g.stroke();
+}
+const PAT = [[C.ai, 2], [C.mz, 0], [C.ink, 2], [C.s1, 1], [C.s2, 1], [C.g3, 1], [C.g2, 1], [C.g1, 1], [C.wh, 1]];
+function patches(k) {
+  const w = 22, h = 44, x0 = -w * 4.5;
+  PAT.forEach(([c, pk], i) => {
+    if (pk !== k) return;
+    g.fillStyle = c; g.fillRect(x0 + i * w, -h / 2, w - 1, h);
+    if (k === 1) { g.strokeStyle = C.g3; g.lineWidth = 1; g.strokeRect(x0 + i * w + .5, -h / 2 + .5, w - 2, h - 1); }
+  });
+}
+function bigChar(ch, col) {
+  g.fillStyle = col; g.font = `800 92px ${FM}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(ch, 0, 4);
+}
+function frontPlate(p, k) {
+  const e = IMPO[p];
+  g.save(); if (ROT(p)) g.rotate(Math.PI);
+  if (k === 0) {
+    if (typeof e === 'number') bigChar(COPY[e], C.mz);
+    g.fillStyle = C.mz; g.fillRect(-PW / 2 + 14, PH / 2 - 17, 36, 5);
+    if (e === 'T') target(0, -4, 30, C.mz, 3);
+    if (e === 'B') patches(0);
+  } else if (k === 1) {
+    g.strokeStyle = C.g3; g.lineWidth = 1; g.setLineDash([4, 4]); g.strokeRect(-PW / 2 + 6, -PH / 2 + 6, PW - 12, PH - 12); g.setLineDash([]);
+    g.fillStyle = C.s2; g.font = `500 11px ${FL}`; g.textAlign = 'right'; g.textBaseline = 'alphabetic';
+    g.fillText('P.' + String(p + 1).padStart(2, '0'), PW / 2 - 14, PH / 2 - 12);
+    if (e === 'T') target(0, -4, 30, C.s2, 3);
+    if (e === 'B') patches(1);
+    if (e === 'N') { g.font = `500 11px ${FL}`; g.textAlign = 'center'; g.fillText('HOSHINOME PRINTING', 0, 32); }
+  } else {
+    if (typeof e === 'number') bigChar(COPY[e], C.ai);
+    if (e === 'T') target(0, -4, 30, C.ai, 3);
+    if (e === 'B') patches(2);
+    if (e === 'N') { g.fillStyle = C.ai; g.font = `700 30px ${FG}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('ホシノメ印刷', 0, -6); }
+  }
+  g.restore();
+}
+function drawBackC(p) {
+  const b = backOf(p);
+  g.fillStyle = b.bg; g.fillRect(-PW / 2 - .6, -PH / 2 - .6, PW + 1.2, PH + 1.2);
+  if (b.ch) bigChar(b.ch, b.fg);
+  if (!b.ch) { g.save(); g.rotate(spinA); target(0, 0, 22, C.ai, 2); g.restore(); return; }
+  g.save();
+  g.fillStyle = b.fg; g.font = `500 11px ${FL}`; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  g.fillText('P.' + String(p + 17).padStart(2, '0'), -PW / 2 + 14, PH / 2 - 12);
+  g.restore();
+}
+function drawLayer(L, x, y) {
+  g.save(); g.translate(x + PW / 2, y + PH / 2); g.scale(L.fx, L.fy);
+  if (L.face === 'F') { g.fillStyle = C.wh; g.fillRect(-PW / 2 - .6, -PH / 2 - .6, PW + 1.2, PH + 1.2); for (let k = 0; k < 3; k++) frontPlate(L.p, k); }
+  else { g.scale(-1, 1); drawBackC(L.p); }
+  g.restore();
+}
+function sheetShadow(x, y, w, h) {
+  g.save(); g.shadowColor = sh(0.16); g.shadowBlur = 34; g.shadowOffsetY = 12;
+  g.fillStyle = C.wh; g.fillRect(x, y, w, h); g.restore();
+}
+const topOf = cell => cell[cell.length - 1];
+
+// ---------- 01 刷る ----------
+const PS = [0.0, 1.1, 2.25], PD = 0.95, PCOL = [C.mz, C.s2, C.ai];
+const BASEOFF = [[11, -8], [-7, 6], [0, 0]];
+function rollerX(t, k) { const q = seg(t, PS[k], PS[k] + PD); return lerp(-40, 1000, k === 0 ? eo3(q) : eio(q)); }
+function regM(t) {
+  const m = t < 3.9 ? 1 : Math.exp(-5.5 * (t - 3.9)) * Math.cos(13 * (t - 3.9));
+  return m * (1 - seg(t, 4.1, 4.35));
+}
+function plateOff(t, k) { const m = regM(t); return [BASEOFF[k][0] * m, BASEOFF[k][1] * m]; }
+function drawPrint(t) {
+  sheetShadow(0, 0, 960, 540);
+  for (let k = 0; k < 3; k++) {
+    const rx = rollerX(t, k); if (rx <= 0) continue;
+    g.save(); g.beginPath(); g.rect(0, 0, Math.min(rx, 960), 540); g.clip();
+    const o = plateOff(t, k); g.translate(o[0], o[1]);
+    for (let p = 0; p < 16; p++) { g.save(); g.translate((p % 4) * PW + PW / 2, Math.floor(p / 4) * PH + PH / 2); frontPlate(p, k); g.restore(); }
+    g.restore();
+  }
+  for (let k = 0; k < 3; k++) {
+    const q = seg(t, PS[k], PS[k] + PD); if (q <= 0 || q >= 1) continue;
+    const rx = rollerX(t, k);
+    g.save();
+    g.fillStyle = sh(0.10); g.fillRect(rx + 16, -70, 22, 680);
+    g.fillStyle = C.g2; g.fillRect(rx - 16, -70, 32, 680);
+    g.fillStyle = C.g3; g.fillRect(rx + 6, -70, 10, 680);
+    g.fillStyle = PCOL[k]; g.fillRect(rx - 16, -70, 6, 680);
+    g.strokeStyle = C.s2; g.lineWidth = 1.4 / S; g.strokeRect(rx - 16, -70, 32, 680);
+    g.restore();
+  }
+}
+// トンボ
+function drawMarks(t) {
+  const out = ei3(seg(t, 4.15, 4.55)); if (out >= 1) return;
+  const lw = 2 / S;
+  const corners = [[0, 0, -1, -1], [960, 0, 1, -1], [0, 540, -1, 1], [960, 540, 1, 1]];
+  corners.forEach(([x0, y0, dx, dy], i) => {
+    const e = eo5(seg(t, 0.03 * i, 0.72 + 0.03 * i)), off = (1 - e) * 760 + out * 500;
+    g.save(); g.globalAlpha = 1 - out;
+    g.translate(x0 + dx * off, y0 + dy * off); g.rotate((1 - e) * 1.6 * dx * dy);
+    g.strokeStyle = C.ink; g.lineWidth = lw; g.beginPath();
+    for (const yy of [0, dy * 6]) { g.moveTo(dx * 12, yy); g.lineTo(dx * 42, yy); }
+    for (const xx of [0, dx * 6]) { g.moveTo(xx, dy * 12); g.lineTo(xx, dy * 40); }
+    g.stroke(); g.restore();
+  });
+  const tg = [[480, -26, 0, -1], [480, 566, 0, 1], [-34, 270, -1, 0], [994, 270, 1, 0]];
+  tg.forEach(([x0, y0, dx, dy], i) => {
+    const e = eo5(seg(t, 0.12 + 0.04 * i, 0.8 + 0.04 * i)), off = (1 - e) * 760 + out * 500;
+    g.save(); g.globalAlpha = 1 - out;
+    g.translate(x0 + dx * off, y0 + dy * off); g.rotate((1 - e) * 3.2);
+    target(0, 0, 8, C.ink, lw);
+    if (t < 4.6) for (let k = 0; k < 3; k++) {
+      if (rollerX(t, k) < x0) continue;
+      const o = plateOff(t, k); target(o[0] * 0.8, o[1] * 0.8, 8, PCOL[k], lw * 1.6);
+    }
+    g.restore();
+  });
+}
+
+// ---------- 02 折る ----------
+const F0 = 4.4, FD = 0.78, FDUR = 0.62;
+const RECT = [[960, 540], [480, 540], [480, 270], [240, 270], [240, 135]];
+const fit = ([w, h]) => ({ s: Math.min(1632 / w, 918 / h), cx: w / 2, cy: h / 2 });
+function camAt(t) {
+  let a = fit(RECT[0]);
+  for (let k = 0; k < 4; k++) {
+    const e = eio(seg(t, F0 + k * FD + 0.2, F0 + (k + 1) * FD));
+    if (e > 0) { const b = fit(RECT[k + 1]); a = { s: Math.exp(lerp(Math.log(a.s), Math.log(b.s), e)), cx: lerp(a.cx, b.cx, e), cy: lerp(a.cy, b.cy, e) }; }
+  }
+  const e = eio(seg(t, 7.55, 8.35));
+  if (e > 0) a = { s: Math.exp(lerp(Math.log(a.s), Math.log(8), e)), cx: lerp(a.cx, 120, e), cy: lerp(a.cy, 67.5, e) };
+  return a;
+}
+function drawFold(t) {
+  let k = -1, p = 0, stage = 0;
+  for (let i = 0; i < 4; i++) { const a = F0 + i * FD; if (t >= a + FDUR) stage = i + 1; else if (t >= a) { k = i; p = (t - a) / FDUR; } }
+  if (k < 0) {
+    const st = STG[stage];
+    sheetShadow(0, 0, st.cols * PW, st.rows * PH);
+    for (let r = 0; r < st.rows; r++) for (let c = 0; c < st.cols; c++) drawLayer(topOf(st.cells[r][c]), c * PW, r * PH);
+    return;
+  }
+  const st = STG[k], nx = STG[k + 1], isR = k % 2 === 0;
+  const th = Math.PI * eio(p), cs = Math.cos(th), sn = Math.sin(th);
+  const hc = isR ? st.cols / 2 : st.cols, hr = isR ? st.rows : st.rows / 2;
+  sheetShadow(0, 0, hc * PW, hr * PH);
+  for (let r = 0; r < hr; r++) for (let c = 0; c < hc; c++) drawLayer(topOf(st.cells[r][c]), c * PW, r * PH);
+  g.fillStyle = sh(0.12 * sn); g.fillRect(0, 0, hc * PW, hr * PH);
+  const L = isR ? hc * PW : hr * PH, a = Math.max(Math.abs(cs), 0.002);
+  g.save();
+  if (isR) { g.translate(L, 0); g.scale(a, 1); g.translate(-L, 0); } else { g.translate(0, L); g.scale(1, a); g.translate(0, -L); }
+  let rx, ry, rw, rh;
+  if (cs >= 0) {
+    if (isR) { for (let r = 0; r < st.rows; r++) for (let c = hc; c < st.cols; c++) drawLayer(topOf(st.cells[r][c]), c * PW, r * PH); [rx, ry, rw, rh] = [L, 0, L, hr * PH]; }
+    else { for (let r = hr; r < st.rows; r++) for (let c = 0; c < st.cols; c++) drawLayer(topOf(st.cells[r][c]), c * PW, r * PH); [rx, ry, rw, rh] = [0, L, hc * PW, L]; }
+  } else {
+    for (let r = 0; r < hr; r++) for (let c = 0; c < hc; c++) drawLayer(topOf(nx.cells[r][c]), c * PW, r * PH);
+    [rx, ry, rw, rh] = [0, 0, hc * PW, hr * PH];
+  }
+  g.fillStyle = sh(cs >= 0 ? 0.30 * sn : 0.16 * sn); g.fillRect(rx, ry, rw, rh);
+  g.restore();
+  // 折り目のハイライト
+  g.save(); g.strokeStyle = C.g3; g.lineWidth = 2 / S; g.globalAlpha = sn;
+  g.beginPath(); if (isR) { g.moveTo(L, 0); g.lineTo(L, hr * PH); } else { g.moveTo(0, L); g.lineTo(hc * PW, L); } g.stroke(); g.restore();
+}
+
+// ---------- 03 断つ ----------
+const STRIPS = [
+  { r: [0, -7, 240, 7], d: [0, -1], tb: 7.72, line: [[-400, 0], [640, 0]] },
+  { r: [240, -7, 7, 149], d: [1, 0], tb: 7.88, line: [[240, -300], [240, 440]] },
+  { r: [0, 135, 240, 7], d: [0, 1], tb: 8.04, line: [[-400, 135], [640, 135]] },
+];
+function drawTrim(t) {
+  const ap = seg(t, 7.3, 7.45);
+  for (const s of STRIPS) {
+    const q = seg(t, s.tb, s.tb + 0.4), off = eo3(q) * 26, al = ap * (1 - q);
+    if (al > 0) {
+      const [x, y, w, h] = s.r;
+      g.save(); g.globalAlpha = al; g.translate(s.d[0] * off, s.d[1] * off);
+      g.fillStyle = C.g2; g.fillRect(x, y, w, h);
+      g.strokeStyle = C.s2; g.lineWidth = 1.2 / S; g.beginPath();
+      for (let i = 1; i < 4; i++) {
+        if (w > h) { g.moveTo(x, y + h * i / 4); g.lineTo(x + w, y + h * i / 4); } else { g.moveTo(x + w * i / 4, y); g.lineTo(x + w * i / 4, y + h); }
+      }
+      g.stroke(); g.restore();
+    }
+    const f = seg(t, s.tb - 0.07, s.tb) * (1 - seg(t, s.tb, s.tb + 0.16));
+    if (f > 0) {
+      g.save(); g.globalAlpha = f; g.strokeStyle = C.ai; g.lineWidth = 4 / S;
+      const a = s.line[0], b = s.line[1], pr = eo3(seg(t, s.tb - 0.07, s.tb));
+      g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(lerp(a[0], b[0], pr), lerp(a[1], b[1], pr)); g.stroke(); g.restore();
+    }
+  }
+}
+
+// ---------- 04 届ける（FV） ----------
+const FV = { chars: [] };
+const SX = 1440, SW = 330, SBASE = 900;
+const nSheets = t => Math.max(0, t - 8.35) * 15;
+function layout() {
+  g.font = `800 150px ${FM}`;
+  let x = 164;
+  COPY.forEach((ch, i) => { if (i === 7) x = 164; const w = g.measureText(ch).width; FV.chars.push({ ch, x, y: i < 7 ? 470 : 660, w }); x += w; });
+}
+function drawStack(t) {
+  const a = seg(t, 8.35, 8.6); if (a <= 0) return;
+  const n = nSheets(t), full = Math.floor(n), fr = n - full;
+  g.save(); g.globalAlpha = a;
+  for (let i = 0; i < full; i++) { g.fillStyle = i % 2 ? C.g3 : C.g2; g.fillRect(SX, SBASE - i * 4 - 3, SW, 3); }
+  const xo = (1 - eo3(cl(fr * 1.6))) * -300;
+  g.fillStyle = C.s2; g.fillRect(SX + xo, SBASE - full * 4 - 3, SW, 3);
+  g.fillStyle = C.s2; g.fillRect(SX, SBASE + 4, SW, 2);
+  const top = SBASE - full * 4;
+  g.letterSpacing = '3px';
+  g.fillStyle = C.s2; g.font = `500 18px ${FL}`; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  g.fillText('SHEETS', SX, top - 96);
+  g.letterSpacing = '0px';
+  const v = Math.floor(n * 167).toString().padStart(6, '0').replace(/(\d{3})(\d{3})$/, '$1,$2');
+  g.fillStyle = C.ai; g.font = `500 56px ${FL}`; g.fillText(v, SX - 3, top - 30);
+  g.restore();
+}
+function drawCards(t) {
+  const env = seg(t, 11.3, 11.8) * (1 - seg(t, 13.0, 13.4));
+  FV.chars.forEach((c, i) => {
+    const t0 = 8.55 + i * 0.11, tl = t0 + 0.62; if (t < t0) return;
+    const p = seg(t, t0, tl), u = eo3(p);
+    const dx = c.x + c.w / 2, dy = c.y - 52;
+    const sx = SX + SW / 2, sy = SBASE - Math.floor(nSheets(t0)) * 4 - 40;
+    const mx = (sx + dx) / 2, my = Math.min(sy, dy) - 260;
+    const X = (1 - u) * (1 - u) * sx + 2 * (1 - u) * u * mx + u * u * dx;
+    const Y = (1 - u) * (1 - u) * sy + 2 * (1 - u) * u * my + u * u * dy;
+    const sgn = i % 2 ? 1 : -1, dt = t - tl;
+    const rot = p < 1 ? (1 - u) * 0.9 * sgn : 0.05 * Math.exp(-7 * dt) * Math.sin(18 * dt) * sgn;
+    const sc = p < 1 ? lerp(0.3, 1, u) : 1 + 0.05 * Math.exp(-8 * dt) * Math.sin(20 * dt);
+    const cardA = 1 - seg(t, tl + 0.05, tl + 0.45);
+    g.save(); g.translate(X, Y); g.rotate(rot); g.scale(sc, sc);
+    if (cardA > 0) {
+      g.save(); g.globalAlpha = cardA;
+      g.shadowColor = sh(0.22); g.shadowBlur = p < 1 ? 40 : 18; g.shadowOffsetY = p < 1 ? 22 : 8;
+      g.fillStyle = C.wh; g.fillRect(-c.w / 2, -83, c.w, 165);
+      g.shadowColor = 'transparent'; g.strokeStyle = C.g2; g.lineWidth = 1.5; g.strokeRect(-c.w / 2, -83, c.w, 165);
+      g.restore();
+    }
+    let o = p < 1 ? 14 : 14 * Math.exp(-5 * dt) * Math.cos(14 * dt);
+    o += 7 * Math.sin(Math.PI * 2 * (1.1 * t - i * 0.085)) * env;
+    g.font = `800 150px ${FM}`; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+    g.fillStyle = C.mz; g.fillText(c.ch, -c.w / 2 + o, 52 + o * 0.6);
+    g.fillStyle = C.ai; g.fillText(c.ch, -c.w / 2, 52);
+    g.restore();
+  });
+}
+function drawFV(t) {
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.fillStyle = C.wh; g.fillRect(0, 0, W, H);
+  drawStack(t);
+  // header
+  const mt = eio(seg(t, 8.4, 9.2));
+  g.save(); g.translate(lerp(960, 178, mt), lerp(540, 88, mt)); g.rotate(Math.PI / 2 + mt * Math.PI);
+  target(0, 0, lerp(176, 10, mt), C.ai, lerp(16, 2.5, mt)); g.restore();
+  const ha = eo3(seg(t, 9.05, 9.5));
+  if (ha > 0) {
+    g.save(); g.globalAlpha = ha; g.translate((1 - ha) * -24, 0);
+    g.fillStyle = C.ink; g.font = `700 28px ${FG}`; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText('ホシノメ印刷', 204, 89);
+    g.letterSpacing = '3px'; g.fillStyle = C.s2; g.font = `500 18px ${FL}`; g.textAlign = 'right';
+    g.fillText('HOSHINOME PRINTING CO., LTD.', 1760, 89); g.letterSpacing = '0px';
+    g.restore();
+  }
+  // rule + sub copy
+  const rl = eio(seg(t, 10.0, 10.6));
+  if (rl > 0) { g.fillStyle = C.g3; g.fillRect(164, 742, (1214 - 164) * rl, 2); }
+  const nch = Math.floor(seg(t, 10.2, 10.95) * SUB.length + 0.0001);
+  if (nch > 0) { g.fillStyle = C.s1; g.font = `400 30px ${FG}`; g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.fillText(SUB.slice(0, nch), 164, 806); }
+  const ea = seg(t, 10.8, 11.2);
+  if (ea > 0) { g.save(); g.globalAlpha = ea; g.letterSpacing = '4px'; g.fillStyle = C.s2; g.font = `500 18px ${FL}`; g.fillText('PRINT · FOLD · TRIM · DELIVER', 166, 850); g.letterSpacing = '0px'; g.restore(); }
+  drawCards(t);
+  // color bar
+  const cb = eio(seg(t, 9.0, 9.8));
+  if (cb > 0) {
+    g.save(); g.beginPath(); g.rect(0, 990, W * cb, 14); g.clip();
+    const pw = 26, cols = [C.ai, C.mz, C.ink, C.s1, C.s2, C.g3, C.g2, C.g1, C.wh];
+    const off = (t * 90) % (pw * cols.length);
+    for (let x = -off, i = 0; x < W; x += pw, i++) { g.fillStyle = cols[i % cols.length]; g.fillRect(x, 990, pw - 2, 14); }
+    g.restore();
+  }
+}
+
+// ---------- HUD ----------
+const STAGES = ['01 刷る — PRINT', '02 折る — FOLD', '03 断つ — TRIM', '04 届ける — DELIVER'];
+function hud(t) {
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  const si = t < 4.3 ? 0 : t < 7.55 ? 1 : t < 8.4 ? 2 : t < 14.3 ? 3 : 0;
+  g.fillStyle = C.s2; g.font = `400 18px ${FG}`; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  g.fillText(STAGES[si], 60, 1054);
+  for (let i = 0; i < 4; i++) { g.fillStyle = i === si ? C.ai : C.g3; g.fillRect(300 + i * 34, 1047, 28, 3); }
+  g.textAlign = 'right'; g.font = `500 18px ${FL}`; g.fillText('REEL — 036   Claude', 1860, 1054);
+}
+
+// ---------- seek ----------
+function seek(t) {
+  t = ((t % 15) + 15) % 15;
+  g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1;
+  g.fillStyle = C.g1; g.fillRect(0, 0, W, H);
+  folioA = 1 - seg(t, 7.9, 8.3);
+  spinA = eio(seg(t, 7.0, 8.35)) * Math.PI / 2;
+  if (t < 8.35) {
+    const cam = camAt(t); S = cam.s;
+    g.setTransform(S, 0, 0, S, W / 2 - cam.cx * S, H / 2 - cam.cy * S);
+    if (t < F0) drawPrint(t); else drawFold(t);
+    drawMarks(t);
+    if (t >= 7.36) drawTrim(t);
+  } else if (t < 13.4) {
+    drawFV(t);
+  } else if (t < 14.3) {
+    const rx = lerp(-60, 1990, eio(seg(t, 13.4, 14.3)));
+    g.fillStyle = C.wh; g.fillRect(0, 0, W, H);
+    g.save(); g.beginPath(); g.rect(rx, 0, W, H); g.clip(); drawFV(t); g.restore();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.fillStyle = sh(0.08); g.fillRect(rx + 22, 0, 30, H);
+    g.fillStyle = C.g2; g.fillRect(rx - 22, 0, 44, H);
+    g.fillStyle = C.g3; g.fillRect(rx + 8, 0, 14, H);
+    g.fillStyle = C.ai; g.fillRect(rx - 22, 0, 7, H);
+  } else {
+    const e = eio(seg(t, 14.3, 15));
+    const x = lerp(0, 144, e), y = lerp(0, 81, e), w = lerp(W, 1632, e), h = lerp(H, 918, e);
+    g.save(); g.shadowColor = sh(0.16 * e); g.shadowBlur = 34; g.shadowOffsetY = 12 * 1.7 / 1.7;
+    g.fillStyle = C.wh; g.fillRect(x, y, w, h); g.restore();
+  }
+  hud(t);
+}
+
+(async () => {
+  await Promise.all([
+    document.fonts.load(`800 92px ${FM}`, COPY.join('')),
+    document.fonts.load(`700 30px ${FG}`, 'ホシノメ印刷'),
+    document.fonts.load(`400 30px ${FG}`, SUB + STAGES.join('')),
+    document.fonts.load(`500 18px ${FL}`, 'HOSHINOME PRINTING CO., LTD. SHEETS REEL — 036 Claude P.0123456789 · FOLDTRIMDELIVER'),
+  ]);
+  layout();
+  window.__seek = t => { seek(t); };
+  seek(0);
+  if (!location.search.includes('render')) {
+    const st = performance.now();
+    const loop = () => { seek(((performance.now() - st) / 1000) % 15); requestAnimationFrame(loop); };
+    loop();
+  }
+})();
+</script>
+</body>
+</html>
