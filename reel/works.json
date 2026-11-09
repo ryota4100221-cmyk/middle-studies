@@ -1385,5 +1385,45 @@
     "condition": "case-values",
     "slot": "2026-11-08",
     "sameish": "029 と同じ case-values（確定値の9色・3書体・明るい地）なので平均色が近いのは条件どおり。動きは別物：029 は紙帯→めくり→色見本の扇→ナビ付きFVモック、036 は3版の見当合わせ→16面付けの4回折り（重なりを計算）→3辺断裁→トンボがヘッダーへ→紙束から字を配る。techniques の重なりは0。"
+  },
+  {
+    "id": "037",
+    "slug": "unmix",
+    "title": "Unmix",
+    "date": "2026-11-09",
+    "slot": "2026-11-09",
+    "concept": "墨流し（マーブリング）を、1枚の水面の上の正確な写像だけで15秒にした。インクの滴・櫛・波櫛・渦はどれも面積を保つ平面写像で、画素ごとに操作を逆にたどって『どのインクから来たか』を解いている。滴が拍ごとに落ちて輪を押し広げ、紙色の滴が中央に舞台を空けて MIX を置き、4本の櫛と波と渦で字は羽根模様に溶ける。写像はどれも逆が閉じた式で書けるので、7〜8.8秒に操作を逆順に巻き戻すと MIX が1画素も狂わず戻り、8.95秒に UN が押されて UNMIX になる（見せ場）。雨のような滴が字を膨らませ、中央から同心の滴が全部を押し出して、最後の紙色の滴が0秒目の白紙になる。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/037_unmix.mp4",
+    "techniques": [
+      "per-pixel-inverse-marbling-trace",
+      "ink-drop-area-preserving-map",
+      "tine-comb-displacement",
+      "wavy-comb-sinusoidal-shear",
+      "radial-decay-vortex",
+      "exact-rewind-of-invertible-ops",
+      "stamped-type-as-ink-layer",
+      "beat-timed-drop-rain",
+      "concentric-drop-wipe-seamless-loop",
+      "op-log-hud-on-paper-chips"
+    ],
+    "look": {
+      "palette": [
+        "#f1e7cf",
+        "#1b1f3b",
+        "#f4a20c",
+        "#ec5a8c",
+        "#0f8a63",
+        "#9cc8ff"
+      ],
+      "type": [
+        "Abril Fatface",
+        "IBM Plex Mono"
+      ],
+      "structure": "one flat bath, no cuts, no camera / drops land on the beat and push older ink into rings (0–2.3 s) → a paper drop clears a stage, MIX is stamped → four rake strokes, a wavy comb and a vortex feather the word into chevrons and a spiral → every stroke rewinds in reverse order, MIX re-forms exactly → UN stamped: UNMIX (hero 8.95 s) → drops rain on the letters and bulge them, two wavy combs ripple everything → concentric drops from the centre wipe it all, the last one is the paper = frame 0",
+      "renderer": "webgl"
+    },
+    "review_rounds": 3,
+    "review": "1周目：0秒目が円1つで掴みが弱い→最初の3滴を負の時刻から始め、0秒目に2色が着水中で3滴目が落ちる状態にした。HUD（差の合成）が色面の上で濁って読めない→紙色のチップに藍の字へ。字が藍の滴と同化して X が消える→ MIX の前に紙色の大きな滴を落として中央に舞台を空け、字を360pxにして収めた。2周目：つなぎ（2.55→2.8 のスタンプ、8.7 の巻き戻し完了→8.95 の UN、12.8 の同心ワイプ、14.85→0 のループ）を等倍で確認、巻き戻しで MIX が完全に戻ることを確認。3周目：最速区間（5.0 の櫛・6.5 の渦）を1:1で切り出し、crf29でも縞が崩れていないことを確認。直すことが言えなくなったので止めた。許容した差：渦の中の極細の糸が4サンプルの超標本化で点線状に切れる箇所がある／最後の約0.25秒は白紙（HUDだけ動く）で、0秒目の2滴の着水へ拍で切り替わる。",
+    "condition": "no-depth"
   }
 ]

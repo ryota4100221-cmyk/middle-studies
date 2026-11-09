@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 037 Unmix</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=IBM+Plex+Mono:wght@500;600&display=block" rel="stylesheet">
+<style>
+  html,body{margin:0;background:#f1e7cf;overflow:hidden}
+  #stage{position:relative;width:1920px;height:1080px}
+  canvas{position:absolute;left:0;top:0;width:1920px;height:1080px}
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="gl" width="1920" height="1080"></canvas><canvas id="hud" width="1920" height="1080"></canvas></div>
+<script>
+// REEL — 037 "Unmix". Paper marbling (suminagashi / ebru) solved exactly, on one flat sheet.
+// Every operation is an area-preserving map of the plane with a closed-form inverse
+// (ink drop, tine comb, wavy comb, vortex). Each pixel is traced backwards through the
+// operations to find which ink it came from. Because the maps are invertible, the
+// marbling can be un-marbled: the comb strokes rewind and the word re-forms exactly.
+// No depth, no camera, no layers in z: everything happens on the surface of the bath.
+window.__duration = 15;
+window.__poster = 8.98;
+const W = 1920, H = 1080, D = 15;
+
+// ---------- palette ----------
+const HEX = { P:'#f1e7cf', I:'#1b1f3b', M:'#f4a20c', R:'#ec5a8c', G:'#0f8a63', S:'#9cc8ff' };
+const RGB = k => { const h = HEX[k]; return [1,3,5].map(i => parseInt(h.slice(i,i+2),16)/255); };
+
+// ---------- easing ----------
+const clamp = (x,a=0,b=1) => Math.min(b, Math.max(a, x));
+const ramp = (t,a,b) => clamp((t-a)/(b-a));
+const outQuart = x => 1 - Math.pow(1-x, 4);
+const outQuad = x => 1 - (1-x)*(1-x);
+const inOut = x => x < .5 ? 4*x*x*x : 1 - Math.pow(-2*x+2, 3)/2;
+const outBack = x => { const c1 = 1.9, c3 = c1+1; return 1 + c3*Math.pow(x-1,3) + c1*Math.pow(x-1,2); };
+
+// ---------- the operations (in order of application) ----------
+// type: 0 drop, 1 comb, 2 wave, 3 vortex, 4 stamp
+const OPS = [];
+const drop = (t0, x, y, R, col, dur=0.55, ease=outQuart, tag) => OPS.push({ type:0, t0, t1:t0+dur, x, y, R, col, ease, tag });
+// forward progress 0→1 over [t0,t1]; optional rewind 1→0 over [r0,r1]
+const comb = (t0, t1, mx, my, sp, off, amp, lam, r0, r1) => OPS.push({ type:1, t0, t1, mx, my, sp, off, amp, lam, r0, r1 });
+const wave = (t0, t1, mx, my, wl, ph, amp, r0, r1) => OPS.push({ type:2, t0, t1, mx, my, wl, ph, amp, r0, r1 });
+const vortex = (t0, t1, x, y, rho, ang, r0, r1) => OPS.push({ type:3, t0, t1, x, y, rho, ang, r0, r1 });
+const stamp = (t0, dur, ch, cx, cy, s0, col) => OPS.push({ type:4, t0, t1:t0+dur, ch, cx, cy, s0, col });
+
+// act 1 — DROP: ink lands on the bath on the beat, each drop pushing the older ink into rings
+drop(-0.34,  700, 470, 430, 'I');
+drop(-0.10,  700, 470, 300, 'M');
+drop( 0.04, 1390, 600, 190, 'S', 0.4);
+drop( 0.36, 1390, 600, 390, 'R');
+drop( 0.62,  700, 470, 170, 'S');
+drop( 1.00, 1390, 600, 250, 'I');
+drop( 1.22,  280, 900, 330, 'G');
+drop( 1.42, 1660, 170, 300, 'M');
+drop( 1.62, 1390, 600, 120, 'P');
+drop( 1.82,  280, 900, 170, 'R');
+drop( 2.02,  990,1010, 250, 'S');
+drop( 2.22, 1080, 110, 210, 'G');
+// the paper clears a stage in the middle of the bath, pushing every ring outward
+drop( 2.30,  960, 560, 600, 'P', 0.5);
+// the word is laid on the ink
+let LAYOUT; // filled once the font is measured
+const STAMP_MIX = OPS.length; stamp(2.62, 0.24, 0, 0, 0, 1.38, 'I');
+// act 2 — COMB: rake strokes, then a wavy comb and a vortex
+comb(3.00, 3.72,  1, 0, 132,   0, 300, 26,  8.28, 8.74);
+comb(3.58, 4.30, -1, 0, 132,  66, 300, 26,  8.12, 8.60);
+comb(4.16, 4.90,  0, 1, 176,   0, 230, 32,  7.92, 8.44);
+comb(4.76, 5.46,  0,-1, 176,  88, 230, 32,  7.72, 8.24);
+wave(5.20, 6.30,  0, 1, 560, 0.6, 110,      7.42, 8.04);
+vortex(5.70, 7.00, 960, 540, 430, 2.7*Math.PI, 7.04, 7.76);
+// act 3 — UNDO (the rewinds above), then the prefix is stamped: MIX → UNMIX
+const STAMP_UN = OPS.length; stamp(8.80, 0.22, 1, 0, 0, 1.7, 'I');
+// act 4 — RAIN: drops fall on the word and bulge the letters, then two wavy combs
+const RAIN = [[ 560, 470, 92,'R'],[1180, 640, 120,'M'],[ 860, 640, 70,'S'],[1500, 470, 104,'G'],
+              [ 330, 640, 84,'M'],[1010, 430, 64,'R'],[1650, 700, 80,'S'],[ 720, 330, 58,'G']];
+RAIN.forEach((d,i) => drop(9.34 + i*0.25, d[0], d[1], d[2], d[3], 0.42));
+wave(10.95, 12.20, 1, 0, 300, 0.0, 74);
+wave(11.35, 12.45, 0, 1, 720, 1.3, 64);
+// act 5 — WIPE: concentric drops from the centre; the last one is the paper itself = frame 0
+drop(12.45, 960, 540, 470, 'M', 0.55);
+drop(12.90, 960, 540, 700, 'R', 0.6);
+drop(13.35, 960, 540, 900, 'I', 0.6);
+drop(13.85, 960, 540, 1165, 'P', 1.13, outQuad);
+
+const ACTS = [[0,'01','DROP'],[2.95,'02','COMB'],[7.0,'03','UNDO'],[9.3,'04','RAIN'],[12.4,'05','WIPE']];
+
+function progress(op, t) {
+  if (op.type === 0 || op.type === 4) return t < op.t0 ? 0 : clamp((t-op.t0)/(op.t1-op.t0));
+  let s = inOut(ramp(t, op.t0, op.t1));
+  if (op.r0 !== undefined && t > op.r0) s *= 1 - inOut(ramp(t, op.r0, op.r1));
+  return s;
+}
+
+// ---------- GL ----------
+const glc = document.getElementById('gl');
+const gl = glc.getContext('webgl2', { preserveDrawingBuffer: true, antialias: false });
+const MAXOPS = 40;
+const FS = `#version 300 es
+precision highp float;
+uniform vec4 uA[${MAXOPS}]; uniform vec4 uB[${MAXOPS}]; uniform vec4 uC[${MAXOPS}];
+uniform int uN; uniform sampler2D uTex; uniform vec3 uBase;
+out vec4 o;
+vec3 trace(vec2 p){
+  for (int k = uN - 1; k >= 0; k--) {
+    vec4 a = uA[k], b = uB[k];
+    if (a.x < 0.5) {                       // drop: inside → that ink; outside → pull back in
+      vec2 d = p - b.xy; float r2 = b.z*b.z; float l2 = dot(d,d);
+      if (l2 <= r2) return uC[k].rgb;
+      p = b.xy + d*sqrt(1.0 - r2/l2);
+    } else if (a.x < 1.5) {                // comb: parallel tines along m, spacing b.z
+      vec2 n = vec2(-b.y, b.x);
+      float q = dot(p,n) - b.w; float dd = abs(q - b.z*floor(q/b.z + 0.5));
+      p -= b.xy * (a.y * a.z/(dd + a.z));
+    } else if (a.x < 2.5) {                // wavy comb
+      vec2 n = vec2(-b.y, b.x);
+      p -= b.xy * a.y * sin(6.2831853*dot(p,n)/b.z + b.w);
+    } else if (a.x < 3.5) {                // vortex: rotation that decays with radius
+      vec2 d = p - b.xy; float th = -a.y*exp(-length(d)/b.z);
+      float c = cos(th), s = sin(th);
+      p = b.xy + vec2(c*d.x - s*d.y, s*d.x + c*d.y);
+    } else {                               // stamp: the word, scaled about its centre
+      vec2 q = (p - b.xy)/b.z + b.xy;
+      vec4 tx = textureLod(uTex, q/vec2(${W}.0, ${H}.0), 0.0);
+      float v = b.w < 0.5 ? tx.r : tx.g;
+      if (v > 0.5) return uC[k].rgb;
+    }
+  }
+  return uBase;
+}
+void main(){
+  vec2 f = vec2(gl_FragCoord.x, ${H}.0 - gl_FragCoord.y);
+  vec3 c = trace(f + vec2( 0.125, -0.375)) + trace(f + vec2(-0.375, -0.125))
+         + trace(f + vec2( 0.375,  0.125)) + trace(f + vec2(-0.125,  0.375));
+  o = vec4(c*0.25, 1.0);
+}`;
+const VS = `#version 300 es
+in vec2 p; void main(){ gl_Position = vec4(p,0.0,1.0); }`;
+function sh(type, src){ const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+gl.linkProgram(prog); if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+const U = n => gl.getUniformLocation(prog, n);
+const uA = U('uA'), uB = U('uB'), uC = U('uC'), uN = U('uN'), uBase = U('uBase'), uTex = U('uTex');
+gl.viewport(0, 0, W, H);
+
+// ---------- word texture (R = MIX, G = UN) ----------
+const FONT = '360px "Abril Fatface"';
+function buildWord() {
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d');
+  g.font = FONT; g.textBaseline = 'alphabetic';
+  const wUN = g.measureText('UN').width, wMIX = g.measureText('MIX').width;
+  const total = wUN + wMIX, x0 = (W - total)/2;
+  const m = g.measureText('UNMIX'); const asc = m.actualBoundingBoxAscent;
+  const base = Math.round(560 + asc/2), cy = base - asc/2;
+  LAYOUT = { x0, base, wUN, wMIX, cy, mixCx: x0 + wUN + wMIX/2, unCx: x0 + wUN/2 };
+  g.fillStyle = '#000'; g.fillRect(0,0,W,H);
+  g.globalCompositeOperation = 'lighter';
+  g.fillStyle = '#f00'; g.fillText('MIX', x0 + wUN, base);
+  g.fillStyle = '#0f0'; g.fillText('UN', x0, base);
+  const tex = gl.createTexture(); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cv);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.uniform1i(uTex, 0);
+  OPS[STAMP_MIX].cx = LAYOUT.mixCx; OPS[STAMP_MIX].cy = cy;
+  OPS[STAMP_UN].cx = LAYOUT.unCx; OPS[STAMP_UN].cy = cy;
+}
+
+// ---------- HUD ----------
+const hud = document.getElementById('hud').getContext('2d');
+const MONO = '"IBM Plex Mono"';
+function opLabel(op) {
+  const n = String(OPS.indexOf(op)+1).padStart(2,'0');
+  switch (op.type) {
+    case 0: return `${n} DROP    ${HEX[op.col]}  r ${op.R}`;
+    case 1: return `${n} COMB    ${op.mx>0?'→':op.mx<0?'←':op.my>0?'↓':'↑'} tines ${Math.round((op.my?W:H)/op.sp)}  α ${op.amp}`;
+    case 2: return `${n} WAVE    ${op.mx?'↔':'↕'} λ ${op.wl}  α ${op.amp}`;
+    case 3: return `${n} VORTEX  θ ${(op.ang/Math.PI).toFixed(1)}π  ρ ${op.rho}`;
+    case 4: return `${n} STAMP   "${op.ch ? 'UN' : 'MIX'}"`;
+  }
+}
+function chip(txt, x, y, align, size) {
+  const w = hud.measureText(txt).width, x0 = align === 'right' ? x - w : x;
+  const fs = hud.fillStyle; hud.fillStyle = HEX.P; hud.fillRect(x0 - 8, y - 4, w + 16, size + 9);
+  hud.fillStyle = fs; hud.fillText(txt, x, y);
+}
+function drawHud(t) {
+  hud.clearRect(0,0,W,H);
+  hud.fillStyle = HEX.I; hud.textBaseline = 'top';
+  hud.font = `600 20px ${MONO}`;
+  chip('MIDDLE STUDIES', 56, 48, 'left', 20);
+  hud.font = `500 20px ${MONO}`;
+  chip('REEL — 037  UNMIX', 56, 76, 'left', 20);
+  // act label
+  let act = ACTS[0]; for (const a of ACTS) if (t >= a[0]) act = a;
+  hud.textAlign = 'right';
+  hud.font = `600 20px ${MONO}`; chip(`${act[1]} / 05  ${act[2]}`, W-56, 48, 'right', 20);
+  hud.font = `500 20px ${MONO}`; chip(`t ${t.toFixed(2).padStart(5,'0')} s`, W-56, 76, 'right', 20);
+  // rewind / state readout
+  let rw = 0, act2 = 0;
+  for (const op of OPS) { if (op.r0 !== undefined && t > op.r0 && t < op.r1) rw++; }
+  const live = OPS.filter(op => progress(op, t) > 0).length;
+  chip(rw ? `◂◂ REWIND ×${rw}` : `ops ${String(live).padStart(2,'0')} · ∇·u = 0`, W-56, H-76, 'right', 20);
+  chip('Claude', W-56, H-48, 'right', 20);
+  // op log: the latest four operations that have started
+  hud.textAlign = 'left';
+  const started = OPS.filter(op => t >= op.t0).slice(-4);
+  hud.font = `500 18px ${MONO}`;
+  started.forEach((op, i) => {
+    const y = H - 48 - (started.length-1-i)*26 - 18;
+    let s = op.type === 0 || op.type === 4 ? progress(op,t) : progress(op,t);
+    const rewound = op.r0 !== undefined && t > op.r0;
+    hud.fillStyle = i === started.length-1 ? HEX.I : '#6d6a73';
+    chip(opLabel(op) + (rewound ? '  ◂ undo' : ''), 76, y, 'left', 18);
+    // progress tick
+    hud.fillRect(56, y + 4, 10*(rewound ? progress(op,t) : clamp(s)), 10);
+  });
+  hud.fillStyle = HEX.I;
+}
+
+// ---------- render ----------
+const A = new Float32Array(MAXOPS*4), B = new Float32Array(MAXOPS*4), C = new Float32Array(MAXOPS*4);
+function render(t) {
+  t = ((t % D) + D) % D;
+  let n = 0;
+  for (const op of OPS) {
+    const s = progress(op, t);
+    if (s <= 0) continue;
+    const i = n*4;
+    A.fill(0, i, i+4); B.fill(0, i, i+4); C.fill(0, i, i+4);
+    if (op.type === 0) {
+      A[i] = 0; B[i] = op.x; B[i+1] = op.y; B[i+2] = op.R * op.ease(s);
+      C.set(RGB(op.col), i);
+    } else if (op.type === 1) {
+      A[i] = 1; A[i+1] = op.amp * s; A[i+2] = op.lam; B[i] = op.mx; B[i+1] = op.my; B[i+2] = op.sp; B[i+3] = op.off;
+    } else if (op.type === 2) {
+      A[i] = 2; A[i+1] = op.amp * s; B[i] = op.mx; B[i+1] = op.my; B[i+2] = op.wl; B[i+3] = op.ph;
+    } else if (op.type === 3) {
+      A[i] = 3; A[i+1] = op.ang * s; B[i] = op.x; B[i+1] = op.y; B[i+2] = op.rho;
+    } else {
+      A[i] = 4; B[i] = op.cx; B[i+1] = op.cy; B[i+2] = 1 + (op.s0 - 1) * (1 - outBack(s)); B[i+3] = op.ch;
+      C.set(RGB(op.col), i);
+    }
+    n++;
+  }
+  gl.uniform4fv(uA, A); gl.uniform4fv(uB, B); gl.uniform4fv(uC, C);
+  gl.uniform1i(uN, n); gl.uniform3fv(uBase, RGB('P'));
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  drawHud(t);
+}
+
+Promise.all([document.fonts.load(FONT), document.fonts.load(`500 20px ${MONO}`), document.fonts.load(`600 20px ${MONO}`), document.fonts.ready]).then(() => {
+  buildWord();
+  window.__seek = t => { render(t); gl.finish(); };
+  if (!location.search.includes('render')) {
+    const start = performance.now();
+    const loop = now => { render(((now - start)/1000) % D); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  } else render(0);
+});
+</script>
+</body>
+</html>
