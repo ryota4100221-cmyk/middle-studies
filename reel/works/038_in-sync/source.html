@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 038 In Sync</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@800&family=Roboto+Mono:wght@500;700&display=block" rel="stylesheet">
+<style>
+  html,body{margin:0;background:#111;overflow:hidden}
+  canvas{display:block;width:100vw;height:100vh;object-fit:contain}
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+window.__format = 'vertical';
+window.__duration = 15;
+window.__poster = 3.0;
+
+const W = 1080, H = 1920, T = 15;
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+
+// ---------- palette ----------
+const VIOLET = '#4b1fff', ACID = '#dcff3a', PINK = '#ff3d7f', INK = '#0c0a1a', WHITE = '#ffffff';
+
+// ---------- the machine: 24 pendulums, row k swings (6+k) times in 15 s ----------
+const ROWS = 24, N0 = 6;
+const CX = 540, AMP = 400;
+const Y0 = 580, Y1 = 1500;
+const rowY = k => Y0 + (Y1 - Y0) * k / (ROWS - 1);
+const R = 15;
+const phase = (k, t) => 2 * Math.PI * (N0 + k) * t / T;
+const bobX = (k, t) => CX + AMP * Math.sin(phase(k, t));
+
+// partial syncs: t = 15 p/q, q ≤ 6
+const EVENTS = [];
+for (let q = 2; q <= 6; q++) for (let p = 1; p < q; p++) {
+  const g = (a, b) => b ? g(b, a % b) : a;
+  if (g(p, q) !== 1) continue;
+  const cols = [...new Set([...Array(q).keys()].map(r => Math.sin(2 * Math.PI * r * p / q).toFixed(3)))].map(Number).sort((a, b) => a - b);
+  EVENTS.push({ t: T * p / q, p, q, cols, w: { 2: 1, 3: .75, 4: .6, 5: .5, 6: .4 }[q] });
+}
+EVENTS.sort((a, b) => a.t - b.t);
+
+// smooth bumps; distances wrap so the loop seam is seamless
+const wrapD = (t, a) => { let d = t - a; d -= T * Math.round(d / T); return d; };
+const gauss = (d, s) => Math.exp(-(d / s) * (d / s));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const ease = x => x < 0 ? 0 : x > 1 ? 1 : x * x * (3 - 2 * x);
+
+function eventEnv(t) {           // strongest current event + envelope
+  let best = null, bv = 0;
+  for (const e of EVENTS) { const v = gauss(t - e.t, 0.3); if (v > bv) { bv = v; best = e; } }
+  return { e: best, v: bv };
+}
+function zoom(t) {
+  let z = 1;
+  for (const e of EVENTS) { const d = t - e.t; if (d > -0.05) z += 0.045 * e.w * Math.exp(-Math.max(0, d) / 0.18) * (d < 0 ? (1 + d / 0.05) : 1); }
+  const d0 = Math.min(t, T - t); // full sync at the seam
+  z += 0.06 * Math.exp(-t / 0.22);
+  return z;
+}
+// camera: [t, zoom, focusX, focusY, rot]  (focus is placed at screen 540,1040)
+const KEYS = [[0,1,540,1040,0],[3.6,1,540,1040,0],[5.0,2.0,700,760,0],[7.1,2.0,700,1330,0],[7.5,1,540,1040,0],
+              [8.6,1,540,1040,0],[9.6,1.16,540,1040,-0.22],[11.0,1.16,540,1040,-0.22],[12.0,1,540,1040,0],[15,1,540,1040,0]];
+function camAt(t) {
+  let i = 0; while (i < KEYS.length - 2 && t >= KEYS[i + 1][0]) i++;
+  const a = KEYS[i], b = KEYS[i + 1];
+  let u = clamp((t - a[0]) / (b[0] - a[0]), 0, 1);
+  u = (a[0] === 7.1) ? 1 - Math.pow(1 - u, 3) : u * u * (3 - 2 * u);
+  const L = j => a[j] + (b[j] - a[j]) * u;
+  return { z: L(1) * zoom(t), fx: L(2), fy: L(3), rot: L(4) };
+}
+function applyCam(c) { ctx.translate(540, 1040); ctx.rotate(c.rot); ctx.scale(c.z, c.z); ctx.translate(-c.fx, -c.fy); }
+// field colours swap at the half sync (7.5 s), swap back at the full sync (15 = 0)
+const swapped = t => t >= 7.5;
+
+// ---------- curve through the bobs ----------
+function curvePts(t) {
+  const P = [];
+  for (let k = 0; k < ROWS; k++) P.push([bobX(k, t), rowY(k)]);
+  return P;
+}
+function traceCurve(path, P) {    // Catmull-Rom → Bézier, from top edge to bottom edge
+  const ext = [[P[0][0], -400], ...P, [P[P.length - 1][0], H + 400]];
+  path.lineTo(ext[0][0], ext[0][1]);
+  path.lineTo(P[0][0], P[0][1] - 40);
+  const pts = [[P[0][0], P[0][1] - 40], ...P, [P[P.length - 1][0], P[P.length - 1][1] + 40]];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+    const s = 0.5 / 3 * 2;
+    path.bezierCurveTo(p1[0] + (p2[0] - p0[0]) * s / 2, p1[1] + (p2[1] - p0[1]) * s / 2,
+                       p2[0] - (p3[0] - p1[0]) * s / 2, p2[1] - (p3[1] - p1[1]) * s / 2, p2[0], p2[1]);
+  }
+  path.lineTo(ext[ext.length - 1][0], ext[ext.length - 1][1]);
+}
+function rightRegion(P) {
+  const p = new Path2D();
+  p.moveTo(W + 600, -400);
+  traceCurve(p, P);
+  p.lineTo(W + 600, H + 400);
+  p.closePath();
+  return p;
+}
+
+// ---------- type helpers ----------
+const DISP = '"Funnel Display", "Helvetica Neue", sans-serif';
+const MONO = '"Roboto Mono", Menlo, monospace';
+function monoDigits(str, x, y, size, adv) {   // tabular figures by hand
+  ctx.font = `800 ${size}px ${DISP}`;
+  ctx.textAlign = 'center';
+  let cx = x;
+  for (const ch of str) {
+    const a = ch === '.' ? adv * 0.42 : adv;
+    ctx.fillText(ch, cx + a / 2, y);
+    cx += a;
+  }
+  ctx.textAlign = 'left';
+  return cx - x;
+}
+
+// ---------- one ink pass (drawn twice, once per colour field) ----------
+function inkPass(t, ink, bg, cam) {
+  const z = cam.z;
+  // camera layer
+  ctx.save();
+  applyCam(cam);
+
+  // rails + amplitude ticks
+  ctx.strokeStyle = ink; ctx.fillStyle = ink;
+  ctx.globalAlpha = 0.28; ctx.lineWidth = 1.5;
+  for (let k = 0; k < ROWS; k++) {
+    const y = rowY(k);
+    ctx.beginPath(); ctx.moveTo(CX - AMP, y); ctx.lineTo(CX + AMP, y); ctx.stroke();
+  }
+  ctx.globalAlpha = 0.55; ctx.lineWidth = 2;
+  for (const f of [-1, -0.5, 0, 0.5, 1]) {
+    const x = CX + AMP * f;
+    ctx.beginPath(); ctx.moveTo(x, Y0 - 50); ctx.lineTo(x, Y0 - (f === 0 ? 90 : 70)); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, Y1 + 50); ctx.lineTo(x, Y1 + (f === 0 ? 90 : 70)); ctx.stroke();
+  }
+  ctx.font = `500 22px ${MONO}`; ctx.textAlign = 'center';
+  ctx.fillText('−A', CX - AMP, Y1 + 122); ctx.fillText('0', CX, Y1 + 122); ctx.fillText('+A', CX + AMP, Y1 + 122);
+  ctx.textAlign = 'left';
+  // row frequency labels
+  ctx.globalAlpha = 0.7; ctx.font = `500 20px ${MONO}`;
+  for (let k = 0; k < ROWS; k += 1) {
+    if (k % 2) continue;
+    ctx.fillText(String(N0 + k).padStart(2, '0') + '×', 40, rowY(k) + 7);
+  }
+  ctx.globalAlpha = 1;
+
+  // motion smears + bobs
+  for (let k = 0; k < ROWS; k++) {
+    const y = rowY(k);
+    for (let j = 6; j >= 1; j--) {           // stroboscopic comet: where the bob was 1..6 ticks ago
+      const r = R * (1 - j / 7.5);
+      ctx.beginPath(); ctx.arc(bobX(k, t - j * 0.011), y, r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(bobX(k, t), y, R, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+
+  // ---------- HUD (not zoomed) ----------
+  ctx.fillStyle = ink; ctx.strokeStyle = ink;
+  ctx.font = `700 24px ${MONO}`;
+  ctx.fillText('MIDDLE STUDIES', 40, 76);
+  ctx.font = `500 24px ${MONO}`;
+  ctx.fillText('REEL — 038  IN SYNC', 40, 108);
+  ctx.textAlign = 'right';
+  ctx.fillText('24 PENDULUMS', W - 40, 76);
+  ctx.fillText('t ' + t.toFixed(2).padStart(5, '0') + ' / 15.00 s', W - 40, 108);
+  ctx.textAlign = 'left';
+
+  // big countdown
+  const big = 1 + 0.42 * (Math.exp(-t / 0.55) + Math.exp(-(T - t) / 0.7));
+  const remain = t < 1e-9 ? 0 : T - t;
+  const label = (t < 0.75 || t > T - 0.05) ? 'ALL 24 IN SYNC' : 'NEXT FULL SYNC IN';
+  ctx.font = `700 26px ${MONO}`;
+  ctx.fillText(label, 40, 196);
+  const size = 210 * big;
+  monoDigits(remain.toFixed(2).padStart(5, '0'), 28, 196 + size * 0.86, size, size * 0.6);
+
+  // phase wheel (top right): dot k at angle φk; its horizontal coordinate IS the bob's x
+  const wa = clamp(1 - (big - 1) / 0.3, 0, 1);
+  if (wa > 0.01) {
+    const wx = 880, wy = 330, wr = 112;
+    ctx.globalAlpha = wa;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(wx, wy, wr, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = wa * 0.4;
+    ctx.beginPath(); ctx.moveTo(wx, wy - wr - 14); ctx.lineTo(wx, wy + wr + 14); ctx.stroke();
+    ctx.globalAlpha = wa;
+    for (let k = 0; k < ROWS; k++) {
+      const a = phase(k, t);
+      ctx.beginPath(); ctx.arc(wx + wr * Math.sin(a), wy - wr * Math.cos(a), 6.5, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.font = `500 22px ${MONO}`; ctx.textAlign = 'center';
+    ctx.fillText('PHASE', wx, wy + wr + 44);
+    ctx.textAlign = 'left';
+    ctx.globalAlpha = 1;
+  }
+
+  // caption (kept above the Reels UI band)
+  ctx.font = `500 26px ${MONO}`;
+  ctx.fillText('row k swings 6+k times in 15 s.', 40, 1690);
+  ctx.fillText('they only all agree once.', 40, 1728);
+  ctx.textAlign = 'right';
+  ctx.fillText('Claude', W - 40, 1848);
+  ctx.textAlign = 'left';
+}
+
+// ---------- frame ----------
+function draw(t) {
+  t = ((t % T) + T) % T;
+  const z = zoom(t);
+  const cam = camAt(t);
+  const P = curvePts(t);
+  const sw = swapped(t);
+  const [bgL, inkL, bgR, inkR] = sw ? [ACID, VIOLET, VIOLET, ACID] : [VIOLET, ACID, ACID, VIOLET];
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = bgL; ctx.fillRect(0, 0, W, H);
+  inkPass(t, inkL, bgL, cam);
+
+  ctx.save();
+  const rr = rightRegion(P);
+  applyCam(cam);
+  ctx.clip(rr);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = bgR; ctx.fillRect(0, 0, W, H);
+  inkPass(t, inkR, bgR, cam);
+  ctx.restore();
+
+  // ---------- accent layer (pink, on top of both fields) ----------
+  const { e, v } = eventEnv(t);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, 470, W, 1190); ctx.clip();   // guides stay out of the counter and caption
+  applyCam(cam);
+  if (e && v > 0.02) {
+    ctx.globalAlpha = v;
+    ctx.strokeStyle = PINK; ctx.fillStyle = PINK;
+    ctx.lineWidth = 5;
+    for (const c of e.cols) {
+      const x = CX + AMP * c;
+      const grow = ease((t - e.t + 0.45) / 0.3);
+      ctx.beginPath(); ctx.moveTo(x, Y0 - 34); ctx.lineTo(x, Y0 - 34 + (Y1 - Y0 + 68) * grow); ctx.stroke();
+    }
+    // ring every bob at the event
+    ctx.lineWidth = 4;
+    for (let k = 0; k < ROWS; k++) {
+      ctx.beginPath(); ctx.arc(bobX(k, t), rowY(k), R + 7, 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  applyCam(cam);
+  // full / half sync shock: two bands run out from the centre line
+  for (const ts of [0, 7.5]) {
+    const d = t - ts < -1 ? t - ts + T : t - ts;
+    if (d >= 0 && d < 0.7) {
+      const a = 1 - d / 0.7;
+      ctx.globalAlpha = a * a;
+      ctx.fillStyle = PINK;
+      const off = 34 + 880 * (1 - Math.pow(1 - d / 0.7, 3));
+      const wdt = 26 * a + 2;
+      ctx.fillRect(CX - off - wdt / 2, -200, wdt, H + 400);
+      ctx.fillRect(CX + off - wdt / 2, -200, wdt, H + 400);
+    }
+  }
+  ctx.restore();
+
+  // event badge (fraction) under the wheel
+  if (e && v > 0.02) {
+    ctx.save();
+    ctx.globalAlpha = v;
+    const s = 0.85 + 0.15 * v;
+    ctx.translate(880, 540); ctx.scale(s, s);
+    ctx.fillStyle = PINK;
+    ctx.beginPath(); ctx.roundRect(-150, -52, 300, 76, 38); ctx.fill();
+    ctx.fillStyle = WHITE;
+    ctx.font = `800 52px ${DISP}`; ctx.textAlign = 'center';
+    ctx.fillText(`${e.p}/${e.q}`, -66, 6 + 4);
+    ctx.font = `700 22px ${MONO}`;
+    ctx.fillText(`${e.cols.length} ${e.cols.length === 1 ? 'LINE' : 'LINES'}`, 70, 2);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ---------- boot ----------
+(async () => {
+  try {
+    await Promise.all([
+      document.fonts.load(`800 200px "Funnel Display"`, '0123456789./'),
+      document.fonts.load(`500 24px "Roboto Mono"`, 'AZ09'),
+      document.fonts.load(`700 24px "Roboto Mono"`, 'AZ09'),
+    ]);
+  } catch (e) {}
+  await document.fonts.ready;
+  window.__seek = t => { draw(t); };
+  if (!location.search.includes('render')) {
+    const t0 = performance.now();
+    const loop = () => { draw(((performance.now() - t0) / 1000) % T); requestAnimationFrame(loop); };
+    loop();
+  } else draw(0);
+})();
+</script>
+</body>
+</html>

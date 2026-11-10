@@ -1425,5 +1425,44 @@
     "review_rounds": 3,
     "review": "1周目：0秒目が円1つで掴みが弱い→最初の3滴を負の時刻から始め、0秒目に2色が着水中で3滴目が落ちる状態にした。HUD（差の合成）が色面の上で濁って読めない→紙色のチップに藍の字へ。字が藍の滴と同化して X が消える→ MIX の前に紙色の大きな滴を落として中央に舞台を空け、字を360pxにして収めた。2周目：つなぎ（2.55→2.8 のスタンプ、8.7 の巻き戻し完了→8.95 の UN、12.8 の同心ワイプ、14.85→0 のループ）を等倍で確認、巻き戻しで MIX が完全に戻ることを確認。3周目：最速区間（5.0 の櫛・6.5 の渦）を1:1で切り出し、crf29でも縞が崩れていないことを確認。直すことが言えなくなったので止めた。許容した差：渦の中の極細の糸が4サンプルの超標本化で点線状に切れる箇所がある／最後の約0.25秒は白紙（HUDだけ動く）で、0秒目の2滴の着水へ拍で切り替わる。",
     "condition": "no-depth"
+  },
+  {
+    "id": "038",
+    "slug": "in-sync",
+    "title": "In Sync",
+    "date": "2026-11-10",
+    "concept": "縦9:16で、24本の振り子ウェーブだけで15秒をつないだ。行kの振り子は15秒でちょうど6+k回振れるので、全部が揃うのは0秒目＝15秒目の一度だけで、ループの戻りそのものが物理になっている。0秒目は巨大な『00.00 / ALL 24 IN SYNC』と1本の縦線で、0.5秒で線が鞭のようにしなって蛇になり、『NEXT FULL SYNC IN』のカウントダウンが流し見の親指に『揃うまで見て』と言う。振り子を通る曲線が紫と酸性黄の2つの面の境界で、字も玉も境界をまたぐと色が反転する。1/6・1/5・1/4・1/3で振り子は3列や5列に集まり、ピンクの柱と位相の輪が多角形になって知らせる。見せ場は7.5秒：寄っていたカメラが引き戻され、24個が1本の線に揃って互い違いにすれ違い、面の色が入れ替わる。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/038_in-sync.mp4",
+    "techniques": [
+      "pendulum-wave-24-commensurate-frequencies",
+      "analytic-loop-by-integer-cycles",
+      "wave-curve-as-two-colour-field-boundary",
+      "catmull-rom-curve-through-oscillators",
+      "stroboscopic-comet-trails",
+      "phase-wheel-projection-diagram",
+      "rational-time-partial-sync-events",
+      "countdown-hook-for-vertical-feed",
+      "event-guides-and-zoom-kicks",
+      "keyframed-2d-camera-push-pan-tilt"
+    ],
+    "look": {
+      "palette": [
+        "#4b1fff",
+        "#dcff3a",
+        "#ff3d7f",
+        "#ffffff"
+      ],
+      "type": [
+        "Funnel Display 800",
+        "Roboto Mono"
+      ],
+      "structure": "vertical, one pendulum wave, no cuts / 00.00 ALL 24 IN SYNC, a single line whips into a snake (0–1 s) → winding snake with countdown to the next full sync → partial syncs 1/6, 1/5, 1/4, 1/3 gather into 3 or 5 columns with pink guides → camera pushes in 2x and pans down the rows → snaps out for the half sync: all 24 on one line, field colours swap (hero 7.5 s) → tilted camera through 3/5, 2/3, 3/4 → unwinds back to one line = frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：4〜11秒が細いジグザグの同じ構図に見えて単調→2倍への寄り・行に沿ったパン・7.5秒での引き戻し・−12°の傾きをカメラに足した。2周目：寄っている間にピンクのガイドがカウントダウンの数字を横切る→ガイドと輪を画面のy470〜1660に切り抜いた。3周目（0.5/1.5/3秒を等倍で確認）：7.5秒の衝撃帯が揃った1本の線に重なって隠す→帯を±34pxから出して線を挟む形にし、『ALL 24 IN SYNC』の出が14.88秒と早すぎたので14.95秒にした。許容した差：0秒目のピンクの帯が00.00の一部に掛かる（同期の閃光として残す）。寄っている間は玉が見出しに重なる。",
+    "condition": "vertical",
+    "format": "vertical",
+    "slot": "2026-11-10"
   }
 ]
