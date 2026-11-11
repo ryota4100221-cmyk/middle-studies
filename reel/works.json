@@ -1464,5 +1464,45 @@
     "condition": "vertical",
     "format": "vertical",
     "slot": "2026-11-10"
+  },
+  {
+    "id": "039",
+    "slug": "rolling-shutter",
+    "title": "Rolling Shutter",
+    "date": "2026-11-11",
+    "concept": "monaka design. のロゴの実パスだけを、ローリングシャッター（画面の行ごとに少しずつ違う時刻を撮る）で15秒にした。0.3秒目に白地のロックアップを刃が横に断ち、裂け目から速度に比例して剪断されたロゴのテープが流れ出す。帯がひとつに戻ると三日月の2本が拍ごとに半回転し、走査の遅れでしなる。見せ場の7〜8.5秒ではロックアップ全体を毎秒4回転近くまで回し、200msの読み出しで字の列がプロペラのように曲がって背景の反転も行ごとに転がり落ち、9.0秒に正立して止まる。最後は9行の時間差エコーを閉じ、ライムの走査線が白地へ塗り替えて、0秒目のロゴに戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/039_rolling-shutter.mp4",
+    "techniques": [
+      "per-scanline-time-offset-rolling-shutter",
+      "propeller-warp-of-spinning-lockup",
+      "rolling-flash-banding-on-background-flip",
+      "velocity-proportional-shear-marquee",
+      "beat-kicked-tape-bands",
+      "blade-tear-open-reveal",
+      "crescent-counter-rotation-half-turn-snaps",
+      "text-on-circle-glyph-flight",
+      "time-lag-echo-rows",
+      "scanline-wipe-seamless-loop"
+    ],
+    "look": {
+      "palette": [
+        "#ffffff",
+        "#0a0a0a",
+        "#a5e02e",
+        "#303030",
+        "#888888",
+        "#999999"
+      ],
+      "type": [
+        "monaka design. logo (outlined paths)",
+        "JetBrains Mono"
+      ],
+      "structure": "white lockup, lime scanline drifting → blade cuts it at 0.3 s, the halves tear apart and a black band of sheared logo tape pours out → 7 tape bands re-split on the beat → bands collapse into one huge copy centred on the mark → mark crescents half-turn on alternating beats (rolling-shutter bend) while letters fly into a circle → everything reassembles into the lockup → lockup spins up to ~4 rev/s under a 200 ms readout, propeller warp, background flip rolls down the frame (hero 7–8.5 s) → stops upright at 9.0 → 9 time-lagged echo rows hop / spin / pulse in cascade → rows close, lime scanline wipes black to white → final lockup with the slow scanline = frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：構成はつながったが、帯が縮むときに5px前後の帯に極小ロゴが詰まって雑音になる→14px未満の帯は地色だけにした。リングの円周上の字が白い三日月の内縁に重なって白×白で溶ける→半径215→188、字の倍率1.3→1.18。2周目：両方解消を確認。見せ場7.8秒を等倍で切ると、4pxの走査帯が字の縁に階段として出ていた→回転区間は2px、リング区間は3pxの帯に細かくした。3周目：等倍で段差が消えたのを確認、0秒目と15秒目の走査線の位置が連続していることも確認。許容した差：帯の場面の下端でHUDの黒い札がロゴの列に少しかかる（帯の上で読めることを優先）。",
+    "condition": "logo",
+    "slot": "2026-11-11"
   }
 ]
