@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>REEL — 040 No Gaps</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Red+Hat+Mono:wght@500;700&display=block" rel="stylesheet">
+<style>html,body{margin:0;background:#15130f;overflow:hidden}canvas{display:block}</style>
+</head><body><canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// MIDDLE STUDIES REEL — 040 "No Gaps" — Claude
+// One flat plane, tiled. Every edge is computed once and shared by the two tiles on either side,
+// so however the edges bend, warp, shear or turn, the tiles never leave a gap and never overlap.
+const W = 1920, H = 1080, CX = W / 2, CY = H / 2;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+window.__duration = 15;
+window.__poster = 7.0;
+
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const sm = x => { x = clamp(x); return x * x * (3 - 2 * x); };
+const eo = x => { x = clamp(x); return 1 - Math.pow(1 - x, 3); };
+const eio = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const eob = x => { x = clamp(x); const c1 = 2.2, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+function hash(i, j) { let h = (i * 374761393 + j * 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+// ---------- edge shapes: N points (u along the chord, v across it), resampled by arc length ----------
+const N = 40;
+function resample(pts) {
+  const acc = [0];
+  for (let i = 1; i < pts.length; i++) acc.push(acc[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  const tot = acc[acc.length - 1], out = new Float32Array(N * 2);
+  let s = 0;
+  for (let k = 0; k < N; k++) {
+    const target = tot * k / (N - 1);
+    while (s < pts.length - 2 && acc[s + 1] < target) s++;
+    const seg = acc[s + 1] - acc[s] || 1, f = clamp((target - acc[s]) / seg);
+    out[k * 2] = pts[s][0] + (pts[s + 1][0] - pts[s][0]) * f;
+    out[k * 2 + 1] = pts[s][1] + (pts[s + 1][1] - pts[s][1]) * f;
+  }
+  return out;
+}
+const fnPts = (f, n = 96) => Array.from({ length: n + 1 }, (_, i) => [i / n, f(i / n)]);
+function jigsawPts() {
+  const p = [[0, 0], [0.37, 0], [0.435, 0.07]];
+  const cx = 0.5, cy = 0.2, r = 0.125;
+  for (let k = 0; k <= 40; k++) { const a = (225 - 270 * k / 40) * Math.PI / 180; p.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); }
+  p.push([0.565, 0.07], [0.63, 0], [1, 0]);
+  return p;
+}
+const SHAPES = [
+  { name: 'SQUARE', pts: resample([[0, 0], [1, 0]]) },
+  { name: 'SCALE', pts: resample(fnPts(s => 0.27 * Math.sin(Math.PI * s))) },
+  { name: 'WAVE', pts: resample(fnPts(s => 0.16 * Math.sin(2 * Math.PI * s))) },
+  { name: 'JIGSAW', pts: resample(jigsawPts()), signed: true },
+  { name: 'ZIGZAG', pts: resample([[0, 0], [0.125, 0.15], [0.375, -0.15], [0.625, 0.15], [0.875, -0.15], [1, 0]]) },
+  { name: 'MEANDER', pts: resample([[0, 0], [0.2, 0], [0.2, 0.19], [0.4, 0.19], [0.4, -0.19], [0.6, -0.19], [0.6, 0.19], [0.8, 0.19], [0.8, 0], [1, 0]]) },
+];
+
+// ---------- the score ----------
+// lattice levels; each new level is revealed over the previous one (a burst, a sweep, or a collapse)
+const LEVELS = [
+  { t: 0, L: 1080 },
+  { t: 0.10, L: 540, rev: 'burst', d: 0.15 },
+  { t: 0.26, L: 270, rev: 'burst', d: 0.15 },
+  { t: 0.42, L: 135, rev: 'burst', d: 0.14 },
+  { t: 0.57, L: 90, rev: 'burst', d: 0.14 },
+  { t: 0.72, L: 40, rev: 'burst', d: 0.17 },
+  { t: 6.20, L: 120, rev: 'sweep', d: 0.32 },
+  { t: 7.60, L: 40, rev: 'burst', d: 0.26 },
+  { t: 13.50, L: 90, rev: 'collapse', d: 0.26 },
+  { t: 13.78, L: 135, rev: 'collapse', d: 0.26 },
+  { t: 14.06, L: 270, rev: 'collapse', d: 0.26 },
+  { t: 14.34, L: 540, rev: 'collapse', d: 0.26 },
+  { t: 14.62, L: 1080, rev: 'collapse', d: 0.26 },
+];
+const MAIN = 40;
+const INK = '#15130f', PAPER = '#f0e9da', VERM = '#ff4a1f', BUTTER = '#ffd23a', COBALT = '#2b3cff', TEAL = '#0d5c4f';
+const SECTIONS = [
+  { T: 0, bg: [INK, PAPER], o: [CX, CY], v: 1e9 },
+  { T: 0.92, bg: [TEAL, '#0b5045'], fg: [BUTTER, '#ffc414'], flash: '#fff7dc', rim: BUTTER, word: 'NO\nGAPS', o: [CX, CY], v: 2600, line: '#083a32' },
+  { T: 3.55, bg: [PAPER, '#e5dbc5'], fg: [VERM, '#f13c12'], flash: INK, rim: INK, word: 'NO\nOVERLAP', o: [0, H], v: 2700, line: INK },
+  { T: 6.20, tri: [COBALT, VERM, BUTTER], o: [0, CY], v: 1e9, line: INK },
+  { T: 7.60, bg: [INK, '#201d18'], fg: [PAPER, '#e3d9c6'], flash: BUTTER, word: 'ONE\nSHAPE', o: [CX, CY], v: 1e9, line: COBALT, one: true },
+  { T: 9.40, bg: [VERM, '#ef3e13'], fg: [INK, '#28221c'], flash: PAPER, rim: INK, word: 'ALL\nFLAT', o: [W, CY], v: 2600, line: '#c4300b' },
+  { T: 12.55, bg: [INK, PAPER], rim: VERM, o: [CX, CY], v: 2300 },
+];
+// in-plane ripples (compression waves through the vertices)
+const PULSES = [];
+{
+  const rnd = mulberry32(40);
+  for (const t0 of [1.45, 1.95, 2.45, 2.95]) PULSES.push({ t0, x: CX + (rnd() - .5) * 700, y: CY + (rnd() - .5) * 300, a: 1 });
+  [[0, H], [W, 0], [W, H], [0, 0]].forEach((p, k) => PULSES.push({ t0: 4.1 + k * 0.5, x: p[0], y: p[1], a: 1.15 }));
+  for (const t0 of [9.9, 10.4, 10.9, 11.4, 11.9]) PULSES.push({ t0, x: 200 + rnd() * 1520, y: 150 + rnd() * 780, a: 1 });
+  PULSES.push({ t0: 12.55, x: CX, y: CY, a: 1.3 });
+}
+const BEATS4 = [7.85, 8.25, 8.65, 9.05];
+
+function shapeP(t, x, y) {
+  if (t < 1.0) return 0;
+  if (t < 3.55) return sm((t - 1.0 - x / W * 0.7) / 0.45) + sm((t - 2.45 - (H - y) / H * 0.5) / 0.4);
+  if (t < 6.2) return 2 + sm((t - 3.65 - Math.hypot(x, H - y) / 2203 * 0.8) / 0.45);
+  if (t < 7.6) return 5 * clamp((x - 160) / 1600);
+  if (t < 9.4) { let p = 0; BEATS4.forEach(b => p += eob((t - b) / 0.24)); return clamp(p, 0, 5); }
+  if (t < 12.55) {
+    let p = 4 + sm((t - 9.45 - (W - x) / W * 0.6) / 0.4);
+    p -= sm((t - 11.0 - x / W * 0.6) / 0.4);
+    return p;
+  }
+  return 4 * (1 - sm((t - 12.55 - Math.hypot(x - CX, y - CY) / 1100 * 0.6) / 0.35));
+}
+function shear(t) {
+  const tg = [0, 0.3, -0.3, 0.42, 0];
+  let s = 0;
+  for (let k = 0; k < BEATS4.length; k++) s += (tg[k + 1] - tg[k]) * eob((t - BEATS4[k]) / 0.3);
+  return s * (1 - eio((t - 9.25) / 0.4));
+}
+function rotation(t) {
+  return -0.14 * eio((t - 9.4) / 0.8) + 0.24 * eio((t - 10.9) / 0.8) - 0.10 * eio((t - 11.9) / 0.6);
+}
+function scroll(t) {
+  if (t >= 3.55 && t < 6.2) return [0, -40 * (t - 3.55)];
+  if (t >= 6.2 && t < 7.6) return [380 * (t - 6.2), 0];
+  return [0, 0];
+}
+
+// ---------- words: a 5×7 bitmap where one pixel is one tile (the word lives in the lattice) ----------
+const GLYPH = {
+  N: ['X...X','X...X','XX..X','X.X.X','X..XX','X...X','X...X'],
+  O: ['.XXX.','X...X','X...X','X...X','X...X','X...X','.XXX.'],
+  G: ['.XXX.','X...X','X....','X.XXX','X...X','X...X','.XXXX'],
+  A: ['.XXX.','X...X','X...X','XXXXX','X...X','X...X','X...X'],
+  P: ['XXXX.','X...X','X...X','XXXX.','X....','X....','X....'],
+  S: ['.XXXX','X....','X....','.XXX.','....X','....X','XXXX.'],
+  V: ['X...X','X...X','X...X','X...X','X...X','.X.X.','..X..'],
+  E: ['XXXXX','X....','X....','XXXX.','X....','X....','XXXXX'],
+  R: ['XXXX.','X...X','X...X','XXXX.','X.X..','X..X.','X...X'],
+  L: ['X....','X....','X....','X....','X....','X....','XXXXX'],
+  H: ['X...X','X...X','X...X','XXXXX','X...X','X...X','X...X'],
+  F: ['XXXXX','X....','X....','XXXX.','X....','X....','X....'],
+  T: ['XXXXX','..X..','..X..','..X..','..X..','..X..','..X..'],
+};
+const WORDS = {};
+const key = (i, j) => (i + 4000) * 8000 + (j + 4000);
+function buildWord(word) {
+  const lines = word.split('\n'), set = new Set();
+  const rows = lines.length * 7 + (lines.length - 1) * 2;
+  let j0 = -Math.floor(rows / 2);
+  for (const l of lines) {
+    const w = l.length * 6 - 1, i0 = -Math.floor(w / 2);
+    [...l].forEach((ch, c) => GLYPH[ch].forEach((row, r) => [...row].forEach((x, q) => { if (x === 'X') set.add(key(i0 + c * 6 + q, j0 + r)); })));
+    j0 += 9;
+  }
+  return set;
+}
+
+// ---------- one state of the plane ----------
+function sectionAt(t, x, y) {
+  for (let k = SECTIONS.length - 1; k >= 0; k--) {
+    const s = SECTIONS[k];
+    const delay = s.v >= 1e8 ? 0 : Math.hypot(x - s.o[0], y - s.o[1]) / s.v;
+    if (t >= s.T + delay) return [s, t - s.T - delay];
+  }
+  return [SECTIONS[0], t];
+}
+function warp(t, L, x, y, out) {
+  let dx = 0, dy = 0;
+  const amp = Math.min(26, L * 0.42);
+  for (const p of PULSES) {
+    const dt = t - p.t0;
+    if (dt <= 0 || dt > 1.8) continue;
+    const rx = x - p.x, ry = y - p.y, r = Math.hypot(rx, ry) + 1e-6;
+    const z = (r - dt * 1500) / 120;
+    if (z < -3 || z > 3) continue;
+    const g = -z * Math.exp(-z * z) * 1.65 * amp * p.a * Math.exp(-dt * 1.3);
+    dx += rx / r * g; dy += ry / r * g;
+  }
+  out[0] = x + dx; out[1] = y + dy;
+}
+
+let VX = new Float32Array(0), VY = new Float32Array(0), EH = new Float32Array(0), EV = new Float32Array(0);
+const tmp = [0, 0];
+let lastInfo = { L: 40, tiles: 0 };
+
+function drawState(t, L, clip) {
+  const th = rotation(t), sh = shear(t), sc = scroll(t);
+  const c = Math.cos(th), s = Math.sin(th);
+  const ax = L * c, ay = L * s;
+  const bx = sh * L * c - L * s, by = sh * L * s + L * c;
+  const ox = CX + sc[0] - (L === MAIN ? L / 2 : 0), oy = CY + sc[1];
+  const det = ax * by - ay * bx;
+  // lattice range covering the screen (+margin for ripples / bent edges)
+  let imin = 1e9, imax = -1e9, jmin = 1e9, jmax = -1e9;
+  for (const [px, py] of [[-80, -80], [W + 80, -80], [-80, H + 80], [W + 80, H + 80]]) {
+    const qx = px - ox, qy = py - oy;
+    const i = (qx * by - qy * bx) / det, j = (ax * qy - ay * qx) / det;
+    imin = Math.min(imin, i); imax = Math.max(imax, i); jmin = Math.min(jmin, j); jmax = Math.max(jmax, j);
+  }
+  imin = Math.floor(imin) - 1; jmin = Math.floor(jmin) - 1; imax = Math.ceil(imax) + 1; jmax = Math.ceil(jmax) + 1;
+  const ni = imax - imin + 1, nj = jmax - jmin + 1;
+  if (VX.length < ni * nj) { VX = new Float32Array(ni * nj * 2); VY = new Float32Array(ni * nj * 2); EH = new Float32Array(ni * nj * 2 * N * 2); EV = new Float32Array(ni * nj * 2 * N * 2); }
+  for (let jj = 0; jj < nj; jj++) for (let ii = 0; ii < ni; ii++) {
+    const i = imin + ii, j = jmin + jj;
+    warp(t, L, ox + i * ax + j * bx, oy + i * ay + j * by, tmp);
+    VX[jj * ni + ii] = tmp[0]; VY[jj * ni + ii] = tmp[1];
+  }
+  const lineGroups = new Map();
+  const edge = (arr, base, x0, y0, x1, y1, i, j, salt) => {
+    const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+    let p = clamp(shapeP(t, mx, my), 0, 5);
+    const k0 = Math.min(4, Math.floor(p)), f = p - k0;
+    const A = SHAPES[k0], B = SHAPES[k0 + 1];
+    const sg = hash(i * 2 + salt, j) < 0.5 ? -1 : 1;
+    const sa = A.signed ? sg : 1, sb = B.signed ? sg : 1;
+    const dx = x1 - x0, dy = y1 - y0;
+    for (let k = 0; k < N; k++) {
+      const u = A.pts[k * 2] * (1 - f) + B.pts[k * 2] * f;
+      const v = A.pts[k * 2 + 1] * sa * (1 - f) + B.pts[k * 2 + 1] * sb * f;
+      arr[base + k * 2] = x0 + u * dx - v * dy;
+      arr[base + k * 2 + 1] = y0 + u * dy + v * dx;
+    }
+    const [sec] = sectionAt(t, mx, my);
+    if (sec.line && mx > -L && mx < W + L && my > -L && my < H + L) {
+      if (!lineGroups.has(sec.line)) lineGroups.set(sec.line, []);
+      lineGroups.get(sec.line).push(arr, base);
+    }
+  };
+  const VI = (ii, jj) => jj * ni + ii;
+  // horizontal edges: (ii,jj) -> (ii+1,jj); vertical edges: (ii,jj) -> (ii,jj+1)
+  for (let jj = 0; jj < nj; jj++) for (let ii = 0; ii < ni - 1; ii++) {
+    const a = VI(ii, jj), b = VI(ii + 1, jj);
+    edge(EH, (jj * ni + ii) * N * 2, VX[a], VY[a], VX[b], VY[b], imin + ii, jmin + jj, 0);
+  }
+  for (let jj = 0; jj < nj - 1; jj++) for (let ii = 0; ii < ni; ii++) {
+    const a = VI(ii, jj), b = VI(ii, jj + 1);
+    edge(EV, (jj * ni + ii) * N * 2, VX[a], VY[a], VX[b], VY[b], imin + ii, jmin + jj, 1);
+  }
+  // the single tile under the centre (ONE SHAPE)
+  const qx = CX - ox, qy = CY - oy;
+  const ci = Math.floor((qx * by - qy * bx) / det), cj = Math.floor((ax * qy - ay * qx) / det);
+  // tiles grouped by colour
+  const groups = new Map();
+  let count = 0;
+  for (let jj = 0; jj < nj - 1; jj++) for (let ii = 0; ii < ni - 1; ii++) {
+    const v0 = VI(ii, jj), v1 = VI(ii + 1, jj), v2 = VI(ii + 1, jj + 1), v3 = VI(ii, jj + 1);
+    const cx = (VX[v0] + VX[v1] + VX[v2] + VX[v3]) / 4, cy = (VY[v0] + VY[v1] + VY[v2] + VY[v3]) / 4;
+    if (cx < -L * 1.6 || cx > W + L * 1.6 || cy < -L * 1.6 || cy > H + L * 1.6) continue;
+    if (cx >= 0 && cx < W && cy >= 0 && cy < H) count++;
+    const i = imin + ii, j = jmin + jj, par = (i + j) & 1;
+    const [sec, age] = sectionAt(t, cx, cy);
+    let col;
+    if (sec.tri) col = sec.tri[(((i - j) % 3) + 3) % 3];
+    else if (sec.word && L === MAIN && WORDS[sec.word].has(key(i, j))) col = age < 0.2 ? sec.flash : sec.fg[par];
+    else if (sec.rim && age < 0.028) col = sec.rim;
+    else col = sec.bg[par];
+    if (!groups.has(col)) groups.set(col, []);
+    groups.get(col).push(ii, jj);
+  }
+  lastInfo = { L, tiles: count };
+  ctx.save();
+  if (clip) clip();
+  for (const [col, list] of groups) {
+    ctx.beginPath();
+    for (let q = 0; q < list.length; q += 2) {
+      const ii = list[q], jj = list[q + 1];
+      let b = (jj * ni + ii) * N * 2;                        // top, forward
+      ctx.moveTo(EH[b], EH[b + 1]);
+      for (let k = 1; k < N; k++) ctx.lineTo(EH[b + k * 2], EH[b + k * 2 + 1]);
+      b = (jj * ni + ii + 1) * N * 2;                        // right, forward
+      for (let k = 1; k < N; k++) ctx.lineTo(EV[b + k * 2], EV[b + k * 2 + 1]);
+      b = ((jj + 1) * ni + ii) * N * 2;                      // bottom, reversed
+      for (let k = N - 2; k >= 0; k--) ctx.lineTo(EH[b + k * 2], EH[b + k * 2 + 1]);
+      b = (jj * ni + ii) * N * 2;                            // left, reversed
+      for (let k = N - 2; k > 0; k--) ctx.lineTo(EV[b + k * 2], EV[b + k * 2 + 1]);
+      ctx.closePath();
+    }
+    ctx.fillStyle = col; ctx.fill();
+  }
+  const lw = clamp(L * 0.045, 1.6, 3.6);
+  ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  for (const [col, list] of lineGroups) {
+    ctx.beginPath();
+    for (let q = 0; q < list.length; q += 2) {
+      const arr = list[q], b = list[q + 1];
+      ctx.moveTo(arr[b], arr[b + 1]);
+      for (let k = 1; k < N; k++) ctx.lineTo(arr[b + k * 2], arr[b + k * 2 + 1]);
+    }
+    ctx.strokeStyle = col; ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// ---------- HUD ----------
+function plate(x, y, lines, align) {
+  ctx.font = '500 20px "Red Hat Mono"';
+  const w = Math.max(...lines.map(l => ctx.measureText(l).width)) + 28, h = lines.length * 28 + 14;
+  const px = align === 'r' ? x - w : x, py = y;
+  ctx.fillStyle = 'rgba(21,19,15,0.92)'; ctx.fillRect(px, py, w, h);
+  ctx.fillStyle = PAPER; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
+  lines.forEach((l, k) => ctx.fillText(l, px + 14, py + 10 + k * 28));
+}
+function hud(t) {
+  const p = clamp(shapeP(t, CX, CY), 0, 5);
+  const name = SHAPES[Math.round(p)].name;
+  plate(36, 32, ['MIDDLE STUDIES  REEL — 040', 'NO GAPS  /  a tiling study'], 'l');
+  plate(W - 36, 32, ['EDGE   ' + name.padEnd(7, ' '), 'CELL ' + String(Math.round(lastInfo.L)).padStart(4, ' ') + ' PX  TILES ' + String(lastInfo.tiles).padStart(4, ' ')], 'r');
+  plate(36, H - 32 - 42, ['GAPS 0   OVERLAPS 0   AREA 100.000 %'], 'l');
+  plate(W - 36, H - 32 - 42, ['t ' + t.toFixed(2).padStart(5, '0') + ' / 15.00   Claude'], 'r');
+}
+
+// ---------- seek ----------
+function seek(t) {
+  t = clamp(t, 0, 15);
+  let li = 0;
+  for (let k = 0; k < LEVELS.length; k++) if (t >= LEVELS[k].t) li = k;
+  const lv = LEVELS[li];
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = INK; ctx.fillRect(0, 0, W, H);
+  const p = lv.rev ? (t - lv.t) / lv.d : 1;
+  if (p >= 1) {
+    drawState(t, lv.L, null);
+  } else {
+    const prev = LEVELS[li - 1];
+    drawState(Math.max(0, lv.t - 1e-3), prev.L, null);       // the old plane, held
+    let ring = null;
+    if (lv.rev === 'burst') {
+      const r = eo(p) * 1160;
+      drawState(t, lv.L, () => { ctx.beginPath(); ctx.arc(CX, CY, r, 0, Math.PI * 2); ctx.clip(); });
+      ring = () => { ctx.beginPath(); ctx.arc(CX, CY, r, 0, Math.PI * 2); };
+    } else if (lv.rev === 'sweep') {
+      const x = eio(p) * (W + 40);
+      drawState(t, lv.L, () => { ctx.beginPath(); ctx.rect(0, 0, x, H); ctx.clip(); });
+      ring = () => { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); };
+    } else {
+      const r = (1 - eio(p)) * 1160;
+      drawState(t, lv.L, () => { ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.arc(CX, CY, r, 0, Math.PI * 2, true); ctx.clip('evenodd'); });
+      ring = () => { ctx.beginPath(); ctx.arc(CX, CY, Math.max(0, r), 0, Math.PI * 2); };
+    }
+    ring(); ctx.strokeStyle = VERM; ctx.lineWidth = 8; ctx.stroke();
+  }
+  hud(t);
+}
+
+(async () => {
+  await document.fonts.load('500 20px "Red Hat Mono"');
+  for (const s of SECTIONS) if (s.word && !WORDS[s.word]) WORDS[s.word] = buildWord(s.word);
+  window.__seek = seek;
+  seek(0);
+  if (!location.search.includes('render')) {
+    const t0 = performance.now();
+    const loop = () => { seek(((performance.now() - t0) / 1000) % 15); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  }
+})();
+</script>
+</body></html>
