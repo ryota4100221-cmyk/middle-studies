@@ -1545,5 +1545,46 @@
     "review": "1周目：Anton をタイルで量子化した文字が48pxの格子では細すぎて GAPS が読めず、線を太らせると字の内側が潰れた → 1タイル=1画素の5×7ビットマップ字を自作して格子番号に結びつけ、格子を40pxに（文字が剪断・回転・波紋と一緒に動くようになった）。2周目：ONE SHAPE の中央を示す黄色い1枚が A の頂点に刺さってゴミに見えた → 外した。塗り替えが境界だけで出来事として弱い → 波頭に縁色を足し、ポスターを7.0秒のメタモルフォーシスに。3周目：縁が0.09秒ぶん＝約6タイルと太く、1.1秒で黄色い円盤に見えた → 0.028秒（約1.5タイル）に絞って細い波頭にした。許容した差：12.75秒の中央からの波紋で、塗り替えの境に1〜2枚だけ先走るタイルが一瞬出る。2パスの4Mbps書き出しで、ジグソーの細線にわずかなにじみ。",
     "condition": "no-depth",
     "slot": "2026-11-13"
+  },
+  {
+    "id": "041",
+    "slug": "look-up",
+    "title": "Look Up",
+    "date": "2026-11-14",
+    "concept": "縦9:16で、黄色いボール1個のスクワッシュ＆ストレッチだけで15秒をつないだ。0秒目は朱の STOP の上で潰れたボールで、0.5秒で STOP / LOOK / UP が一文として読め、ボールが白抜きの言葉を1段ずつ踏むたびに着地点から字が塗られていく。JUMP で溜めて跳ぶと、5.5秒でカメラが塔全体まで引き、言葉の段が STOP から TOP まで一列に並んで見える（見せ場）。頂上でドリブルして崖の端から宙へ歩き出し、『…OH.』と止まってから、親指のスクロールと同じ向きに真っ逆さまに落ち、言葉を割って0秒目の着地に戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/041_look-up.mp4",
+    "techniques": [
+      "squash-and-stretch-along-velocity",
+      "piecewise-ballistic-arcs-solved-from-ledges",
+      "springboard-anticipation-word-bend",
+      "bullet-time-remap-of-one-flight",
+      "zoom-out-reveal-of-the-whole-tower",
+      "letter-wave-from-impact-point",
+      "radial-fill-wipe-on-landing",
+      "letters-part-around-falling-ball",
+      "cartoon-walk-off-hang-then-drop",
+      "critically-damped-camera-precomputed-periodic"
+    ],
+    "look": {
+      "palette": [
+        "#ff4d2e",
+        "#c41f6b",
+        "#2b0f3a",
+        "#0b0820",
+        "#fff3e3",
+        "#ffe14a"
+      ],
+      "type": [
+        "Bricolage Grotesque 800",
+        "Space Mono 700"
+      ],
+      "structure": "vertical, one ball, one climb, no cuts / squashed on STOP (0 s), STOP LOOK UP readable by 0.5 s → hops up outlined words, each lights from the impact point (0–4 s) → JUMP bends like a springboard, big launch, bullet time while the camera pulls out to the whole tower STOP→TOP (hero 5.5 s) → lands on HIGHER, AND HIGHER, TOP turns yellow → dribble, roll to the edge, walk off into thin air, …OH. (12 s) → falls the full height, words part and go dark → lands on STOP = frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 5,
+    "review": "1周目：0秒目にカメラが落下の遅れを引きずってSTOPが下で切れていた→落下の終わりと始まりはカメラを目標に直接寄せた。大ジャンプの頂点がANDの字に刺さっていた→段の間を広げ頂点を下げた。登る途中で字がよけすぎてKEE Pと割れて読めない→登りの間はよけを半分に。2周目：白抜きにBricolageの重なった輪郭線が出ていた→太い線を描いて中を抜く別レイヤーにした。6.5秒、引きから寄りに戻る間にボールが画面外へ出ていた→大ジャンプの間はばねを使わず目標に合わせた。落下の字幕が字と重なる→黄色の座布団に載せた。3周目：上端のHUDに通過する字がかぶる→上端に薄い影。0.5・1.5・3秒と14.98→0秒のつなぎを等倍で確認。4周目：ポスターの引きでAPEXの札がANDに重なる→左側へ、縮小時の白抜きの線が太すぎる→ズームに比例。5周目：『…OH.』でボールがTOPのOの上にいて宙に出ていなかった→TOPを小さくし、端の外まで歩かせてから止めた。許容した差：登りの途中、ボールが次の段の下をくぐる瞬間に字が半分だけよけて一瞬割れて見える（よける動きとして残した）。",
+    "condition": "vertical",
+    "format": "vertical",
+    "slot": "2026-11-14"
   }
 ]

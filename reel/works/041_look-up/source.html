@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 041 Look Up</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@800&family=Space+Mono:wght@700&display=block" rel="stylesheet">
+<style>
+  html,body{margin:0;background:#0b0820;overflow:hidden}
+  canvas{display:block;width:100vw;height:100vh;object-fit:contain}
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+window.__format = 'vertical';
+window.__duration = 15;
+window.__poster = 5.55;
+
+const W = 1080, H = 1920, D = 15;
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const OLC = document.createElement('canvas'); OLC.width = 1080; OLC.height = 1920;
+const OL = OLC.getContext('2d');
+const DISPLAY = '"Bricolage Grotesque"', MONO = '"Space Mono"';
+
+// ---------- palette ----------
+const C = {
+  coral: '#ff4d2e', plum: '#2b0f3a', night: '#0b0820', cream: '#fff3e3',
+  yellow: '#ffe14a', magenta: '#c41f6b', violet: '#4a1460',
+};
+
+// ---------- helpers ----------
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,u)=>a+(b-a)*u;
+const sstep=(a,b,x)=>{const u=clamp((x-a)/(b-a),0,1);return u*u*(3-2*u)};
+const ease=u=>{u=clamp(u,0,1);return u*u*u*(u*(u*6-15)+10)};
+const easeOut=u=>1-Math.pow(1-clamp(u,0,1),3);
+function hex(h){return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]}
+function mixHex(a,b,u){const A=hex(a),B=hex(b);return `rgb(${A.map((v,i)=>Math.round(v+(B[i]-v)*u)).join(',')})`}
+
+const G = 5200;          // gravity, world px / s^2
+const R = 50;            // ball radius
+
+// ---------- ledges (word, letter to land on, x of that letter's centre, cap-top y, size) ----------
+const LEDGES = [
+  {w:'STOP',   li:2, x:560, y:0,    size:330},
+  {w:'LOOK',   li:1, x:330, y:430,  size:300},
+  {w:'UP',     li:0, x:700, y:860,  size:380},
+  {w:'KEEP',   li:1, x:360, y:1290, size:300},
+  {w:'GOING',  li:3, x:700, y:1720, size:300},
+  {w:'JUMP',   li:1, x:500, y:2150, size:330},
+  {w:'HIGHER', li:2, x:470, y:5400, size:300},
+  {w:'AND',    li:1, x:700, y:5990, size:300},
+  {w:'HIGHER', li:3, x:430, y:6440, size:300},
+  {w:'TOP',    li:0, x:230, y:6900, size:310},
+];
+const YTOP = LEDGES[LEDGES.length-1].y;
+
+function layout(){
+  for (const L of LEDGES){
+    ctx.font = `800 ${L.size}px ${DISPLAY}`;
+    let total = ctx.measureText(L.w).width;
+    if (total > 900){ L.size = Math.floor(L.size*900/total); ctx.font = `800 ${L.size}px ${DISPLAY}`; total = ctx.measureText(L.w).width; }
+    L.cap = ctx.measureText('H').actualBoundingBoxAscent;
+    L.letters = [];
+    for (let j=0;j<L.w.length;j++){
+      const x0 = ctx.measureText(L.w.slice(0,j)).width;
+      const wj = ctx.measureText(L.w[j]).width;
+      L.letters.push({ch:L.w[j], x0, w:wj});
+    }
+    L.width = total;
+    const lc = L.letters[L.li];
+    let left = L.x - (lc.x0 + lc.w/2);
+    left = clamp(left, 90, 1040 - total);
+    L.left = left;
+    L.x = left + lc.x0 + lc.w/2;           // snapped landing x
+    L.base = L.y - L.cap;                  // baseline (y up)
+  }
+}
+
+// ---------- the ball's timeline (foot = bottom point of the ball, y up) ----------
+let SEGS = [], LANDINGS = [], FALL = null;
+function flightParams(x0,y0,x1,y1,o){
+  const apex = Math.max(y0,y1)+o;
+  const vy0 = Math.sqrt(2*G*(apex-y0));
+  const T = vy0/G + Math.sqrt(2*(apex-y1)/G);
+  return {vx:(x1-x0)/T, vy0, T};
+}
+function build(){
+  SEGS = []; LANDINGS = [];
+  let t = -0.045;
+  let x = LEDGES[0].x, y = LEDGES[0].y;
+  const contact = (li, dur, amp, kind) => {
+    SEGS.push({k:'c', t0:t, t1:t+dur, x, y, amp, li, kind:kind||'tap'});
+    LANDINGS.push({t, x, y, amp, li, heavy: kind==='heavy'});
+    t += dur;
+  };
+  const flight = (x1,y1,o,real) => {
+    const p = flightParams(x,y,x1,y1,o);
+    const dur = real || p.T;
+    SEGS.push({k:'f', t0:t, t1:t+dur, x0:x, y0:y, x1, y1, vx:p.vx, vy0:p.vy0, T:p.T, remap: !!real});
+    t += dur; x = x1; y = y1;
+  };
+  contact(0, 0.09, 0.42, 'heavy');
+  for (let i=1;i<=4;i++){ flight(LEDGES[i].x, LEDGES[i].y, 150); contact(i, 0.09, 0.38); }
+  flight(LEDGES[5].x, LEDGES[5].y, 150); contact(5, 0.46, 0.6, 'spring');
+  flight(LEDGES[6].x, LEDGES[6].y, 180, 2.35); contact(6, 0.11, 0.5, 'heavy');
+  flight(LEDGES[7].x, LEDGES[7].y, 150); contact(7, 0.09, 0.38);
+  flight(LEDGES[8].x, LEDGES[8].y, 150); contact(8, 0.09, 0.38);
+  flight(LEDGES[9].x, LEDGES[9].y, 190); contact(9, 0.1, 0.45, 'heavy');
+  // dribble on TOP, drifting right
+  const top = LEDGES[9];
+  const hops = [[200,0.3],[95,0.2],[40,0.12]];
+  const hopDx = Math.min(52, (top.left + top.width - R - x)/4);
+  for (const [o,a] of hops){ flight(x+hopDx, y, o); contact(9, 0.07, a); }
+  // roll to the edge of P
+  const edge = top.left + top.width - R*0.55;
+  SEGS.push({k:'roll', t0:t, t1:t+0.55, x0:x, x1:edge, y}); t += 0.55; x = edge;
+  // teeter
+  SEGS.push({k:'teeter', t0:t, t1:t+0.36, x, y}); t += 0.36;
+  // walk off onto thin air (cartoon)
+  const xh = edge + R*1.5;
+  SEGS.push({k:'walk', t0:t, t1:t+0.32, x0:x, x1:xh, y}); t += 0.32; x = xh;
+  // hang until the fall
+  const fallDur = 2.75, fallStart = 14.955 - fallDur;
+  SEGS.push({k:'hang', t0:t, t1:fallStart, x, y});
+  FALL = {k:'fall', t0:fallStart, t1:14.955, x0:xh, y0:y, p:2.4};
+  SEGS.push(FALL);
+  LANDINGS.push({t:14.955, x:LEDGES[0].x, y:0, amp:0.42, li:0, heavy:true});
+  // the fall goes from x=540 to STOP's landing x (STOP's O); keep consistent
+  FALL.x1 = LEDGES[0].x;
+  // when the falling ball passes each ledge (for un-lighting)
+  for (const L of LEDGES){
+    if (L === LEDGES[0]) { L.passT = Infinity; continue; }
+    const u = 1 - (L.y + 120)/FALL.y0;          // y0*(1-s^p) = L.y+120
+    const s = Math.pow(clamp(u,0,1), 1/FALL.p);
+    L.passT = FALL.t0 + s*(FALL.t1-FALL.t0);
+  }
+  for (let i=0;i<LEDGES.length;i++){
+    const ls = LANDINGS.filter(l=>l.li===i && l.t>=0);
+    LEDGES[i].litT = ls.length ? ls[0].t : -1;
+  }
+  window.__hangStart = SEGS.find(s=>s.k==='hang').t0;
+}
+
+// state of the ball at time t: foot pos, physical velocity, squash
+function ball(t){
+  let tt = t >= 14.955 ? t - 15 : t;
+  let s = SEGS[0];
+  for (const g of SEGS){ if (tt >= g.t0 && tt < g.t1){ s = g; break; } if (tt >= g.t1) s = g; }
+  const out = {x:0,y:0,vx:0,vy:0,squash:0,stretchUp:0,shiver:0,seg:s};
+  if (s.k==='c'){
+    const u = clamp((tt-s.t0)/(s.t1-s.t0),0,1);
+    let env;
+    if (s.kind==='spring') env = u<0.88 ? ease(u/0.88) : 1-(u-0.88)/0.12;
+    else env = Math.sin(Math.PI*u);
+    out.x = s.x; out.y = s.y - ledgeDip(s.li, s.x, t); out.squash = s.amp*env;
+  } else if (s.k==='f'){
+    let tau, rate=1;
+    if (s.remap){
+      const real = s.t1-s.t0, v = clamp((tt-s.t0)/real,0,1), A = 0.78;
+      tau = s.T*(v + A*Math.sin(2*Math.PI*v)/(2*Math.PI));
+      rate = (s.T/real)*(1 + A*Math.cos(2*Math.PI*v));
+    } else tau = clamp(tt-s.t0,0,s.T);
+    out.x = s.x0 + s.vx*tau; out.y = s.y0 + s.vy0*tau - 0.5*G*tau*tau;
+    out.vx = s.vx; out.vy = s.vy0 - G*tau; out.rate = rate;
+  } else if (s.k==='roll'){
+    const u = ease((tt-s.t0)/(s.t1-s.t0));
+    out.x = lerp(s.x0,s.x1,u); out.y = s.y;
+  } else if (s.k==='teeter'){
+    const u = (tt-s.t0)/(s.t1-s.t0);
+    out.x = s.x + 10*Math.sin(u*Math.PI*3)*(1-u); out.y = s.y; out.squash = 0.06*Math.sin(u*Math.PI*3);
+  } else if (s.k==='walk'){
+    const u = ease((tt-s.t0)/(s.t1-s.t0));
+    out.x = lerp(s.x0,s.x1,u); out.y = s.y;
+  } else if (s.k==='hang'){
+    const u = (tt-s.t0)/Math.max(1e-6,s.t1-s.t0);
+    out.x = s.x + 3*Math.sin(tt*120)*sstep(0.3,0.6,u); out.y = s.y + 14*sstep(0,0.5,u) - 14*sstep(0.75,1,u);
+    out.stretchUp = 0.1*sstep(0.0,0.5,u)*(1-sstep(0.8,1,u)); out.squash = -0.0;
+  } else if (s.k==='fall'){
+    const T = s.t1-s.t0, u = clamp((tt-s.t0)/T,0,1);
+    out.x = lerp(s.x0, s.x1, ease(u)); out.y = s.y0*(1-Math.pow(u,s.p));
+    out.vx = 0; out.vy = -s.y0*s.p*Math.pow(u,s.p-1)/T;
+  }
+  return out;
+}
+
+// how far a ledge's letter at xq is pushed down at time t by landings on that ledge
+function ledgeDip(li, xq, t){
+  let d = 0;
+  for (const L of LANDINGS){
+    if (L.li !== li) continue;
+    const seg = SEGS.find(s=>s.k==='c' && Math.abs(s.t0-L.t)<1e-9) || null;
+    const tau = t - L.t;
+    if (tau < 0 || tau > 1.6) continue;
+    const dist = Math.abs(xq - L.x);
+    if (seg && seg.kind==='spring'){
+      const dur = seg.t1-seg.t0;
+      const prof = Math.exp(-Math.pow(dist/380,2));
+      if (tau < dur) d += 95*prof*ease(tau/dur*1.1);
+      else { const k = tau-dur; d += 95*prof*Math.exp(-5*k)*Math.cos(19*k); }
+    } else {
+      const tj = tau - dist/2400;
+      if (tj > 0) d += 46*L.amp/0.4*Math.exp(-5.5*tj)*Math.sin(17*tj)*(L.heavy?1.25:1);
+    }
+  }
+  return d;
+}
+
+// ---------- camera (critically damped follow, precomputed periodically) ----------
+const ZK = [[0,1],[3.85,1],[4.3,1.13],[4.6,1.0],[5.3,0.255],[6.05,0.255],[6.8,1.0],[9.2,1.0],[9.55,1.2],[10.9,1.2],[11.6,1.42],[12.25,1.42],[12.75,0.92],[14.7,0.98],[15,1]];
+function zoomAt(t){
+  for (let i=0;i<ZK.length-1;i++){ const a=ZK[i], b=ZK[i+1]; if (t>=a[0] && t<=b[0]) return lerp(a[1],b[1],ease((t-a[0])/(b[0]-a[0]))); }
+  return 1;
+}
+function offAt(t){
+  if (t < 9.2) return 300;
+  if (t < 11.9) return lerp(300, 120, sstep(9.2,9.8,t));
+  if (t < 14.955) return lerp(120, -260, sstep(12.2,12.8,t)) + lerp(0, 560, sstep(14.35,14.955,t));
+  return 300;
+}
+const CAM_HZ = 240; let CAM = null, CAMV = null;
+function camTarget(t){
+  const b = ball(t), z = zoomAt(t);
+  let y = b.y + offAt(t) / z * (z<1?1:1);
+  if (b.seg.k==='fall') y += b.vy*0.2*(1 - sstep(14.5,14.955, t));
+  const m = clamp((1-z)/(1-0.255),0,1);
+  return lerp(y, 3420, ease(m));
+}
+function precomputeCamera(){
+  const n = D*CAM_HZ; CAM = new Float32Array(n+1); CAMV = new Float32Array(n+1);
+  const dt = 1/CAM_HZ, w = 11;
+  let p = camTarget(0), v = 0;
+  for (let loop=0; loop<3; loop++){
+    for (let i=0;i<=n;i++){
+      const t = (i%n)/CAM_HZ;
+      const tgt = camTarget(t);
+      // critically damped spring
+      const a = w*w*(tgt-p) - 2*w*v;
+      v += a*dt; p += v*dt;
+      if (loop===2){ CAM[i]=p; CAMV[i]=v; }
+    }
+  }
+}
+function camAt(t){ const f=t*CAM_HZ, i=Math.floor(f), u=f-i; const sp = lerp(CAM[i],CAM[Math.min(i+1,CAM.length-1)],u);
+  const w = Math.max(sstep(14.25,14.955,t), 1 - sstep(0.0,0.55,t), sstep(4.25,4.6,t)*(1-sstep(6.95,7.4,t)));
+  return lerp(sp, camTarget(t), w); }
+function camVAt(t){ const i=Math.round(t*CAM_HZ); return CAMV[Math.min(i,CAMV.length-1)]; }
+
+// ---------- scenery ----------
+const SKY = [[-600,'#ff5a2e'],[600,'#ff3d4f'],[1800,'#e0285f'],[3000,'#a01c6a'],[4300,'#5a1566'],[5600,'#2b0f4a'],[7000,'#140a30'],[9000,'#0b0820']];
+function skyAt(y){
+  if (y<=SKY[0][0]) return SKY[0][1];
+  for (let i=0;i<SKY.length-1;i++){ if (y<=SKY[i+1][0]) return mixHex(SKY[i][1],SKY[i+1][1],(y-SKY[i][0])/(SKY[i+1][0]-SKY[i][0])); }
+  return SKY[SKY.length-1][1];
+}
+let STARS=[], CLOUDS=[], STREAKS=[];
+function scenery(){
+  const r = mulberry32(41);
+  for (let i=0;i<260;i++) STARS.push({x:r()*1080, y:3200+r()*6000, s:1.5+r()*3.5, tw:r()*6.28});
+  const r2 = mulberry32(7);
+  for (let i=0;i<14;i++) CLOUDS.push({x:-200+r2()*1400, y:2500+i*230+r2()*120, w:260+r2()*420, h:46+r2()*40, a:0.08+r2()*0.1});
+  const r3 = mulberry32(99);
+  for (let i=0;i<120;i++) STREAKS.push({x:20+r3()*1040, y:-200+r3()*7200, w:2+r3()*3});
+}
+
+// ---------- drawing ----------
+let cam = {x:540,y:0,z:1};
+const SX = x => (x - cam.x)*cam.z + W/2;
+const SY = y => H/2 - (y - cam.y)*cam.z;
+
+function drawSky(){
+  const yTop = cam.y + (H/2)/cam.z, yBot = cam.y - (H/2)/cam.z;
+  const g = ctx.createLinearGradient(0,0,0,H);
+  for (let i=0;i<=8;i++){ const u=i/8; g.addColorStop(u, skyAt(lerp(yTop,yBot,u))); }
+  ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+}
+function drawStars(t){
+  for (const s of STARS){
+    const sy = SY(s.y); if (sy<-10||sy>H+10) continue;
+    const a = sstep(3200,5200,s.y)*(0.55+0.45*Math.sin(t*3+s.tw));
+    ctx.fillStyle = `rgba(255,243,227,${a})`;
+    const r = s.s*Math.max(0.6,cam.z);
+    ctx.fillRect(SX(s.x)-r/2, sy-r/2, r, r);
+  }
+}
+function drawClouds(){
+  for (const c of CLOUDS){
+    const y = SY(c.y), x = SX(c.x), w = c.w*cam.z, h = c.h*cam.z;
+    if (y<-h||y>H+h) continue;
+    ctx.fillStyle = `rgba(255,243,227,${c.a})`;
+    ctx.beginPath(); ctx.roundRect(x, y-h/2, w, h, h/2); ctx.fill();
+  }
+}
+function drawStreaks(t){
+  const v = Math.abs(camVAt(t));
+  const a = sstep(1500,4500,v);
+  if (a<=0.01) return;
+  const len = Math.min(900, v*0.09);
+  ctx.strokeStyle = `rgba(255,243,227,${0.22*a})`;
+  for (const s of STREAKS){
+    const y = SY(s.y); if (y < -len*cam.z || y > H+len*cam.z) continue;
+    ctx.lineWidth = s.w;
+    ctx.beginPath(); ctx.moveTo(SX(s.x), y); ctx.lineTo(SX(s.x), y + Math.sign(camVAt(t))*len*cam.z); ctx.stroke();
+  }
+}
+function drawGround(){
+  const L = LEDGES[0];
+  const y = SY(L.base);
+  if (y < H){ ctx.fillStyle = C.plum; ctx.fillRect(0, y, W, H-y+10); }
+}
+
+function drawWord(i, t, b, bc){
+  const L = LEDGES[i];
+  const yb = SY(L.base); const capS = L.cap*cam.z;
+  if (yb - capS > H + 200 || yb < -260) return;
+  const curSeg = b.seg;
+  const tgtLi = (curSeg.k==='c') ? curSeg.li : (['roll','teeter','walk','hang'].includes(curSeg.k) ? LEDGES.length-1 : -1);
+  const dodgeK = curSeg.k==='fall' ? 1 : 0.45;
+  // lit amount
+  let lit = 0, wipeR = 0;
+  if (i===0) { lit = 1; wipeR = 1e6; }
+  else if (L.litT >= 0 && t >= L.litT){
+    const tau = t - L.litT;
+    wipeR = 1400*easeOut(tau/0.32);
+    lit = 1 - sstep(L.passT-0.02, L.passT+0.12, t);
+  }
+  const isTop = i === LEDGES.length-1;
+  ctx.font = `800 ${L.size*cam.z}px ${DISPLAY}`;
+  ctx.lineJoin = 'round';
+  for (let j=0;j<L.letters.length;j++){
+    const lt = L.letters[j];
+    const cxw = L.left + lt.x0 + lt.w/2;
+    let dip = ledgeDip(i, cxw, t);
+    // make way for the ball (except the letter-row it stands on)
+    let dx = 0, rot = 0;
+    if (i !== tgtLi){
+      const cyw = L.base + L.cap/2 - dip;
+      const wy = Math.exp(-Math.pow((bc.y - cyw)/(L.cap*0.62 + R), 2));
+      const ddx = cxw - bc.x;
+      const wx = Math.exp(-Math.pow(ddx/(lt.w*0.5 + R + 60), 2));
+      const sgn = ddx === 0 ? 1 : Math.sign(ddx);
+      dx = sgn * 150 * wy * wx * dodgeK; rot = sgn * 0.22 * wy * wx * dodgeK;
+      dip -= 30*wy*wx*dodgeK;
+    }
+    const x = SX(L.left + lt.x0 + dx), y = SY(L.base - dip);
+    const w = lt.w*cam.z;
+    ctx.save();
+    ctx.translate(x + w/2, y); ctx.rotate(rot); ctx.translate(-w/2, 0);
+    // outline always: wide stroke on a layer, interior erased (no overlapping-contour seams)
+    OL.setTransform(ctx.getTransform());
+    OL.font = ctx.font; OL.lineJoin = 'round';
+    OL.lineWidth = Math.max(3.5, 12*cam.z); OL.strokeStyle = C.cream;
+    OL.globalCompositeOperation = 'source-over'; OL.strokeText(lt.ch, 0, 0);
+    OL.globalCompositeOperation = 'destination-out'; OL.fillText(lt.ch, 0, 0);
+    OL.globalCompositeOperation = 'source-over';
+    if (lit > 0){
+      // radial wipe from the landing point
+      const lx = SX(L.x) - (x + w/2), d = Math.abs(lx);
+      const cover = clamp((wipeR*cam.z - d + w)/ (w*1.2), 0, 1);
+      if (cover > 0){
+        ctx.globalAlpha = lit*cover;
+        ctx.fillStyle = isTop ? C.yellow : C.cream;
+        ctx.fillText(lt.ch, 0, 0);
+        ctx.globalAlpha = 1;
+      }
+    }
+    ctx.restore();
+  }
+}
+
+function drawRingsAndBits(t){
+  for (const L of LANDINGS){
+    const tau = t - L.t; if (tau < 0 || tau > 0.75) continue;
+    const x = SX(L.x), y = SY(L.y);
+    // ring
+    if (tau < 0.5){
+      const u = tau/0.5, rx = (50 + 300*Math.sqrt(u)*(L.heavy?1.3:1))*cam.z;
+      ctx.strokeStyle = L.li===LEDGES.length-1 ? C.yellow : C.cream;
+      ctx.globalAlpha = 1-u; ctx.lineWidth = 7*(1-u)*cam.z+1;
+      ctx.beginPath(); ctx.ellipse(x, y, rx, rx*0.24, 0, 0, Math.PI*2); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    // bits
+    const r = mulberry32(Math.floor(L.t*1000)+L.li*7+11);
+    const n = Math.round(10 + L.amp*26 + (L.heavy?10:0));
+    for (let k=0;k<n;k++){
+      const ang = Math.PI/2 + (r()-0.5)*2.3, sp = 500 + r()*1300, sz = 8 + r()*14, spin = (r()-0.5)*20, life = 0.45 + r()*0.3;
+      const col = r() < 0.45 ? C.yellow : C.cream;
+      if (tau > life) continue;
+      const px = L.x + Math.cos(ang)*sp*tau, py = L.y + Math.sin(ang)*sp*tau - 0.5*3600*tau*tau;
+      ctx.save(); ctx.translate(SX(px), SY(py)); ctx.rotate(spin*tau);
+      ctx.globalAlpha = 1 - sstep(life*0.6, life, tau);
+      ctx.fillStyle = col; ctx.fillRect(-sz*cam.z/2, -sz*cam.z/4, sz*cam.z, sz*cam.z/2);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+function ballCentre(b){
+  // squash anchored at the foot; stretch along velocity
+  const sq = clamp(b.squash, -0.3, 0.7);
+  const sy = (1 - sq) * (1 + b.stretchUp);
+  return {x:b.x, y:b.y + R*sy};
+}
+function drawBallAt(b, t, alpha){
+  const c = ballCentre(b);
+  const x = SX(c.x), y = SY(c.y), r = R*cam.z;
+  const sq = clamp(b.squash, -0.3, 0.7);
+  const speed = Math.hypot(b.vx, b.vy);
+  const st = Math.min(0.55, speed/9000) * (b.squash>0.02?0:1);
+  const ang = Math.atan2(-b.vy, b.vx);
+  ctx.save(); ctx.globalAlpha = alpha;
+  ctx.translate(x, y);
+  if (st > 0.001){ ctx.rotate(ang); ctx.scale(1+st, 1/(1+st)); ctx.rotate(-ang); }
+  const syk = (1-sq)*(1+b.stretchUp), sxk = 1/Math.sqrt(Math.max(0.2,syk))*(1+0.35*Math.max(0,sq));
+  ctx.scale(sxk, syk);
+  const spin = (b.x + 0.42*b.y)/R;
+  ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.fillStyle = C.yellow; ctx.fill();
+  ctx.save(); ctx.clip(); ctx.rotate(spin);
+  ctx.fillStyle = C.plum; ctx.fillRect(-r*1.2, -r*0.17, r*2.4, r*0.34);
+  ctx.restore();
+  ctx.lineWidth = Math.max(2, 5*cam.z)/Math.max(sxk,syk); ctx.strokeStyle = C.plum;
+  ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke();
+  ctx.restore();
+}
+function drawBall(t){
+  const b = ball(t);
+  // smear trail
+  const speed = Math.hypot(b.vx,b.vy);
+  if (speed > 1800){
+    for (let k=6;k>=1;k--){
+      const bt = ball(((t - k*0.012) % D + D) % D);
+      if (bt.seg.k !== b.seg.k) continue;
+      drawBallAt(bt, t, 0.12*(1-k/7)*sstep(1800,4000,speed));
+    }
+  }
+  drawBallAt(b, t, 1);
+  // locator ring when zoomed far out
+  const zr = sstep(0.75, 0.4, cam.z);
+  if (zr > 0){
+    const c = ballCentre(b);
+    ctx.strokeStyle = C.yellow; ctx.globalAlpha = zr; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(SX(c.x), SY(c.y), 46 + 6*Math.sin(t*14), 0, Math.PI*2); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  return b;
+}
+
+function drawArc(t){
+  // dotted path of the big jump, drawn while zoomed out
+  const s = SEGS.find(g=>g.k==='f' && g.remap);
+  const a = sstep(4.6, 5.0, t) * (1 - sstep(6.6, 7.0, t));
+  if (a <= 0) return;
+  ctx.fillStyle = C.yellow; ctx.globalAlpha = a*0.9;
+  const n = 64;
+  for (let i=0;i<=n;i++){
+    const tau = s.T*i/n;
+    const x = s.x0 + s.vx*tau, y = s.y0 + s.vy0*tau - 0.5*G*tau*tau + R;
+    ctx.beginPath(); ctx.arc(SX(x), SY(y), 4, 0, Math.PI*2); ctx.fill();
+  }
+  // apex marker + label
+  const tApex = s.vy0/G, ax = s.x0 + s.vx*tApex, ay = s.y0 + s.vy0*tApex - 0.5*G*tApex*tApex;
+  ctx.globalAlpha = a;
+  ctx.strokeStyle = C.yellow; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(SX(ax)-90, SY(ay+R*2)-16); ctx.lineTo(SX(ax)+90, SY(ay+R*2)-16); ctx.stroke();
+  ctx.font = `700 30px ${MONO}`; ctx.fillStyle = C.yellow; ctx.textAlign = 'right';
+  ctx.fillText(`APEX ${Math.round((ay+R*2)/10)} M`, SX(ax)-104, SY(ay+R*2)-6);
+  ctx.globalAlpha = 1;
+}
+
+function drawRuler(){
+  const yTop = cam.y + (H/2)/cam.z, yBot = cam.y - (H/2)/cam.z;
+  const step = cam.z > 0.6 ? 50 : 250;
+  ctx.strokeStyle = 'rgba(255,243,227,0.55)'; ctx.fillStyle = 'rgba(255,243,227,0.75)';
+  ctx.font = `700 22px ${MONO}`; ctx.textAlign = 'left';
+  for (let v = Math.ceil(yBot/step)*step; v <= yTop; v += step){
+    const y = SY(v); const major = v % 500 === 0;
+    ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(major?44:22, y); ctx.stroke();
+    if (major && v >= 0 && cam.z > 0.6) ctx.fillText(String(v/10).padStart(3,'0'), 52, y+7);
+  }
+}
+
+function drawHUD(t, b){
+  const sg = ctx.createLinearGradient(0,0,0,250); sg.addColorStop(0,'rgba(20,8,32,0.55)'); sg.addColorStop(1,'rgba(20,8,32,0)');
+  ctx.fillStyle = sg; ctx.fillRect(0,0,W,250);
+  ctx.fillStyle = C.cream; ctx.textAlign = 'left';
+  ctx.font = `700 26px ${MONO}`;
+  ctx.fillText('MIDDLE STUDIES', 64, 92);
+  ctx.fillText('REEL — 041  LOOK UP', 64, 126);
+  ctx.textAlign = 'right';
+  const alt = Math.max(0, Math.round(b.y/10));
+  ctx.font = `700 26px ${MONO}`; ctx.fillText('ALTITUDE', 1016, 92);
+  ctx.font = `700 64px ${MONO}`; ctx.fillText(`${String(alt).padStart(3,'0')} M`, 1016, 156);
+  // ledge counter
+  let lit = 0; for (let i=1;i<LEDGES.length;i++){ const L=LEDGES[i]; if (L.litT>=0 && t>=L.litT && t<L.passT) lit++; }
+  ctx.font = `700 26px ${MONO}`;
+  ctx.fillText(`WORDS LIT ${String(lit).padStart(2,'0')}/${LEDGES.length-1}`, 1016, 196);
+  // footer
+  ctx.textAlign = 'left';
+  ctx.fillText(`t ${t.toFixed(2).padStart(5,'0')} / 15.00`, 64, H-72);
+  ctx.textAlign = 'right';
+  ctx.fillText('Claude', 1016, H-72);
+}
+
+function caption(t){
+  // a single hint at the very start, and the "uh-oh" beat at the edge
+  const hs = window.__hangStart;
+  const a = sstep(hs-0.25, hs-0.05, t) * (1 - sstep(FALL.t0-0.02, FALL.t0+0.12, t));
+  if (a > 0){
+    ctx.globalAlpha = a; ctx.fillStyle = C.yellow; ctx.textAlign = 'center';
+    ctx.font = `800 120px ${DISPLAY}`;
+    ctx.fillText('…OH.', 540, 470);
+    ctx.globalAlpha = 1;
+  }
+  const d = sstep(FALL.t0+0.15, FALL.t0+0.3, t) * (1 - sstep(14.2, 14.5, t));
+  if (d > 0){
+    ctx.globalAlpha = d; ctx.textAlign = 'center';
+    ctx.font = `700 34px ${MONO}`;
+    ctx.fillStyle = C.yellow; ctx.beginPath(); ctx.roundRect(540-250, 1600-44, 500, 64, 32); ctx.fill();
+    ctx.fillStyle = C.plum; ctx.fillText('AND ALL THE WAY DOWN', 540, 1600);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function shake(t){
+  let s = 0;
+  for (const L of LANDINGS){ if (!L.heavy) continue; const tau = t - L.t; if (tau>0 && tau<0.5) s += 16*Math.exp(-9*tau)*Math.sin(60*tau); }
+  return s;
+}
+
+function render(t){
+  t = ((t % D) + D) % D;
+  const b = ball(t);
+  cam.z = zoomAt(t); cam.y = camAt(t);
+  cam.x = 540 + (b.x - 540)*0.12*(cam.z>0.8?1:0);
+  ctx.save();
+  ctx.translate(0, shake(t));
+  drawSky(); drawStars(t); drawClouds(); drawStreaks(t);
+  drawGround();
+  drawRuler();
+  const bc = ballCentre(b);
+  OL.setTransform(1,0,0,1,0,0); OL.clearRect(0,0,W,H);
+  for (let i=0;i<LEDGES.length;i++) drawWord(i, t, b, bc);
+  ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.drawImage(OLC,0,0); ctx.restore();
+  drawArc(t);
+  drawRingsAndBits(t);
+  drawBall(t);
+  caption(t);
+  ctx.restore();
+  drawHUD(t, b);
+}
+
+(async function init(){
+  await document.fonts.load(`800 300px ${DISPLAY}`, 'STOPLKUEGINJMHRAD');
+  await document.fonts.load(`700 26px ${MONO}`, '0123456789MIDLE');
+  await document.fonts.ready;
+  layout(); build(); scenery(); precomputeCamera();
+  window.__seek = t => { render(t); };
+  if (!location.search.includes('render')){
+    const t0 = performance.now();
+    const loop = () => { render(((performance.now()-t0)/1000) % D); requestAnimationFrame(loop); };
+    loop();
+  } else render(0);
+})();
+</script>
+</body>
+</html>
