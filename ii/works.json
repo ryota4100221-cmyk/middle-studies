@@ -978,5 +978,38 @@
       ]
     },
     "use": "キッチン・生活雑貨・カフェの FV や商品紹介に。上 6 割の壁にコピーを置け、左の光の面が見出しの起点になる"
+  },
+  {
+    "id": "030",
+    "slug": "crest",
+    "title": "CREST",
+    "title_ja": "波頭",
+    "date": "2026-11-16",
+    "track": "FORM",
+    "concept": "薄い層を9枚重ねて固めた、床に立つ波頭。全面を鏡面の無い深い赤の顔料で覆い、足元には粉がこぼれて床の白へほどける。見どころは上で手前へ折れ返る頭と、その縁に段々に並ぶ層の小口。",
+    "source": {
+      "url": "https://www.christies.com.cn/img/LotImages/2013/AMS/2013_AMS_03045_0064_000(anish_kapoor_1000_names111149).jpg",
+      "took": "光：正面上の非常に大きな柔光・陰でも顔料は黒くならず一段落ちるだけ / 素材：鏡面ゼロの乾いた粉の顔料・積層した薄板の小口が段々に重なる / 構図：縦長に中央・被写体の高さ7割弱・左右に白の余白 / 色：純白の地7割5分に極彩度の単色1色（群青→こちらは赤に置き換え）"
+    },
+    "look": {
+      "track": "FORM",
+      "palette_family": "saturated-red-on-white",
+      "background": "white-void-floor",
+      "lighting": "soft-frontal-shadowless",
+      "lens": "tele",
+      "aspect": "4:5",
+      "material": "dry-pigment"
+    },
+    "review_rounds": 16,
+    "film": {
+      "sec": 11.5,
+      "shots": [
+        "回り込み",
+        "マクロ",
+        "押し込み",
+        "決め"
+      ]
+    },
+    "use": "ブランドの FV・章扉の背景に。白地に赤1色なので見出しを左右どちらの余白にも置ける"
   }
 ]
