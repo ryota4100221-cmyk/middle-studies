@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>REEL — 042 Root Two</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Kaisei+Tokumin:wght@700;800&family=BIZ+UDPGothic:wght@400;700&family=Libre+Franklin:wght@400;600;700&display=block" rel="stylesheet">
+<style>
+  html,body{margin:0;background:#d4d4d4;overflow:hidden}
+  canvas{display:block;width:1920px;height:1080px}
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// REEL — 042  Root Two  /  Claude
+// A判は半分に切っても同じ形（1:√2）。16回半分にすると縦横とも1/256・向きも元どおり＝A0の中にA0がある。
+// その自己相似を対数螺旋のカメラで潜る。__seek(t) は s(t)（何段目を見ているか）だけから絵を決める純関数。
+window.__duration = 15;
+window.__poster = 10.95;
+
+const W = 1920, H = 1080;
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const buf = document.createElement('canvas'); buf.width = W; buf.height = H;
+const bx = buf.getContext('2d');
+
+const C = {
+  white: '#ffffff', g1: '#f2f2f2', g2: '#e6e6e6', g3: '#d4d4d4',
+  sumi: '#1c1e22', gray: '#5c6068', gray2: '#8c9099', ai: '#1f3a6e', mizu: '#9db0d6'
+};
+const R2 = Math.SQRT2, LAM = 1 / R2;
+const CX = 2 * R2 / 3, CY = 2 / 3;            // M(p)=(√2,0)+λ·Rot90(p) の不動点
+const K0 = W / R2, OY = (H - K0) / 2;         // レベル枠（√2×1）を画面いっぱいに（cover）
+
+const JP = 'Kaisei Tokumin', UI = 'BIZ UDPGothic', LF = 'Libre Franklin';
+const COPY = ['紙','の','こ','と','な','ら','、','ホ','シ','ノ','メ','へ','。'];
+// 16段：コピー13字＋ブランド3段。[地, 字の色]
+const CELLS = [
+  [C.white, C.sumi], [C.g1, C.ai], [C.mizu, C.ai], [C.white, C.sumi],
+  [C.ai, C.white], [C.g2, C.sumi], [C.white, C.ai], [C.g3, C.sumi],
+  [C.g1, C.ai], [C.mizu, C.white], [C.white, C.sumi], [C.ai, C.mizu],
+  [C.g2, C.ai], [C.white, C.sumi], [C.g1, C.gray], [C.mizu, C.ai]
+];
+// A判の寸法（mm）：A(n+1) = (floor(長辺/2), 短辺)
+const DIMS = [[841, 1189]];
+for (let i = 1; i <= 17; i++) { const [a, b] = DIMS[i - 1]; DIMS.push([Math.floor(b / 2), a]); }
+
+const mod16 = k => ((k % 16) + 16) % 16;
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const ss = (a, b, x) => { const u = clamp((x - a) / (b - a), 0, 1); return u * u * (3 - 2 * u); };
+const cub = u => u < .5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+const stepE = u => 0.2 * u + 0.8 * cub(u);
+const sinIO = u => -(Math.cos(Math.PI * u) - 1) / 2;
+const sinO = u => Math.sin(u * Math.PI / 2);
+const lin = u => u;
+
+// ---- s(t)：カメラが何段目を見ているか ----
+const SEG = [];
+{
+  const T = [0, 0.95, 1.65, 2.3, 2.95, 3.6, 4.35, 5.4, 6.1, 6.8, 7.5, 8.2, 8.9];
+  for (let i = 0; i < 12; i++) SEG.push([T[i], T[i + 1], i, i + 1, stepE]);
+  SEG.push([8.9, 9.2, 12, 12.2, sinO]);          // 。で一瞬前へのめる（溜め）
+  SEG.push([9.2, 10.45, 12.2, -3.35, cub]);      // 15段を一気に引く＝3.75回転（見せ場）
+  SEG.push([10.45, 11.1, -3.35, -3.0, sinIO]);   // 行き過ぎて戻る
+  SEG.push([11.1, 11.8, -3.0, -2.9, lin]);
+  SEG.push([11.8, 12.9, -2.9, -2, stepE]);
+  SEG.push([12.9, 14.0, -2, -1, stepE]);
+  SEG.push([14.0, 15.0, -1, 0, stepE]);          // 0秒目へ
+}
+function S(t) {
+  t = ((t % 15) + 15) % 15;
+  for (const [a, b, s0, s1, e] of SEG) if (t >= a && t <= b) return s0 + (s1 - s0) * e((t - a) / (b - a));
+  return 0;
+}
+
+// ---- 字の中心合わせ（実際の字面で） ----
+const metricCache = {};
+function glyphBox(font, ch) {
+  const key = font + '|' + ch;
+  if (!metricCache[key]) {
+    bx.font = font;
+    const m = bx.measureText(ch);
+    metricCache[key] = {
+      cx: (m.actualBoundingBoxRight - m.actualBoundingBoxLeft) / 2,
+      cy: (m.actualBoundingBoxDescent - m.actualBoundingBoxAscent) / 2,
+      w: m.actualBoundingBoxRight + m.actualBoundingBoxLeft,
+      h: m.actualBoundingBoxAscent + m.actualBoundingBoxDescent
+    };
+  }
+  return metricCache[key];
+}
+// 字面の中心を (x,y) に置く。size はレベル単位、1000px で組んで縮める
+function centerGlyph(g, ch, x, y, size, font) {
+  const f = font.replace('@', '1000px');
+  const b = glyphBox(f, ch);
+  g.save(); g.translate(x, y); g.scale(size / 1000, size / 1000);
+  g.font = f; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  g.fillText(ch, -b.cx - (0), -b.cy);
+  g.restore();
+}
+function textAt(g, str, x, y, size, font, align) {
+  g.save(); g.translate(x, y); g.scale(size / 1000, size / 1000);
+  g.font = font.replace('@', '1000px'); g.textAlign = align || 'left'; g.textBaseline = 'alphabetic';
+  g.fillText(str, 0, 0); g.restore();
+}
+function star(g, x, y, r, inner) {
+  g.beginPath();
+  for (let i = 0; i < 4; i++) {
+    const a = -Math.PI / 2 + i * Math.PI / 2, a2 = a + Math.PI / 4;
+    const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
+    const qx = x + Math.cos(a2) * r * inner, qy = y + Math.sin(a2) * r * inner;
+    if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+    g.quadraticCurveTo(x + Math.cos(a2) * r * inner * 0.55, y + Math.sin(a2) * r * inner * 0.55, x + Math.cos(a + Math.PI / 2) * r, y + Math.sin(a + Math.PI / 2) * r);
+  }
+  g.closePath(); g.fill();
+}
+
+// ---- 1段ぶん（セル＝左半分）を描く。px＝このレベルの1単位が画面で何px か ----
+const HW = R2 / 2;
+function drawCell(g, k, s, px) {
+  const j = mod16(k);
+  const [bg, fg] = CELLS[j];
+  g.fillStyle = bg;
+  g.fillRect(0, 0, HW, 1);
+  if (px < 6) return;
+  // 近づくと字が「据わる」：d=k-s が 0 のとき正位置。到着の直前に少しだけ遅れて回り込む
+  const d = k - s;
+  const settle = Math.exp(-Math.pow(d / 0.55, 2));
+  const cx = HW / 2, cy = 0.5;
+  g.fillStyle = fg;
+  if (j < 13) {
+    const ch = COPY[j];
+    const punct = (ch === '、' || ch === '。');
+    const size = (punct ? 0.75 : 0.47) * (1 + 0.035 * settle);
+    if (size * px > 3) centerGlyph(g, ch, cx, cy, size, `800 @ "${JP}"`);
+  } else if (j === 13) {
+    const chs = ['ホ','シ','ノ','メ','印','刷'];
+    const sz = 0.082, gap = 0.094, y0 = 0.27;
+    if (sz * px > 3) {
+      for (let i = 0; i < 6; i++) centerGlyph(g, chs[i], cx, y0 + i * gap, sz, `700 @ "${UI}"`);
+      g.fillStyle = C.ai; star(g, cx, y0 - 0.1, 0.03, 0.22);
+    }
+  } else if (j === 14) {
+    if (0.07 * px > 3) {
+      g.fillStyle = fg;
+      textAt(g, 'HOSHINOME', cx, cy - 0.005, 0.07, `600 @ "${LF}"`, 'center');
+      textAt(g, 'PRINTING', cx, cy + 0.085, 0.07, `600 @ "${LF}"`, 'center');
+      g.fillStyle = C.ai; g.fillRect(cx - 0.05, cy - 0.105, 0.1, 0.006);
+    }
+  } else {
+    g.fillStyle = fg; star(g, cx, cy, 0.2, 0.2);
+  }
+  // 寸法ラベル（このセルは A(j+1)）
+  if (px > 120) {
+    const a = DIMS[j + 1];
+    g.fillStyle = (bg === C.ai) ? C.mizu : C.gray;
+    textAt(g, 'A' + (j + 1), HW - 0.045, 0.2, 0.03, `700 @ "${LF}"`, 'right');
+    textAt(g, a[0] + ' × ' + a[1] + ' mm', HW - 0.045, 0.233, 0.017, `400 @ "${LF}"`, 'right');
+    // 隅のトンボ
+    g.strokeStyle = (bg === C.ai) ? C.mizu : C.gray2;
+    g.lineWidth = 1.2 / px;
+    const m = 0.03, L = 0.03;
+    g.beginPath();
+    g.moveTo(HW - m - L, 0.87); g.lineTo(HW - m, 0.87); g.lineTo(HW - m, 0.87 - L);
+    g.stroke();
+  }
+}
+
+// ---- 1枚の絵（ある s の） ----
+function scene(g, s) {
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.fillStyle = C.g3; g.fillRect(0, 0, W, H);
+  const kStart = Math.floor(s) - 3;
+  const d0 = kStart - s;
+  // A_d = Cover ∘ [c + λ^d R(90d)(p−c)]
+  g.setTransform(K0, 0, 0, K0, 0, OY);
+  g.translate(CX, CY); g.rotate(d0 * Math.PI / 2); g.scale(Math.pow(LAM, d0), Math.pow(LAM, d0)); g.translate(-CX, -CY);
+  let px = K0 * Math.pow(LAM, d0);
+  for (let k = kStart; k < kStart + 26; k++) {
+    drawCell(g, k, s, px);
+    // セルと残りの境目（断ち線）
+    if (px > 30) {
+      g.fillStyle = 'rgba(140,144,153,0.55)';
+      g.fillRect(HW - 0.6 / px, 0, 1.2 / px, 1);
+    }
+    // 次の段：残り半分へ。近づくときだけ断ち口が開く（紙が2枚に分かれる）
+    const dn = (k + 1) - s;
+    const gap = (dn > 0 && dn < 1.4) ? 0.04 * Math.pow(Math.sin(Math.PI * dn / 1.4), 2) : 0;
+    if (gap > 0.0005 && px > 40) {
+      g.save();
+      g.shadowColor = 'rgba(28,30,34,0.28)';
+      g.shadowBlur = gap * px * 0.9; g.shadowOffsetX = 0; g.shadowOffsetY = 0;
+      g.fillStyle = C.g3;
+      g.fillRect(HW + gap, 0, HW, 1);
+      g.restore();
+    }
+    g.translate(R2 + gap, 0); g.rotate(Math.PI / 2); g.scale(LAM, LAM);
+    px *= LAM;
+    if (px < 1.2) { g.fillStyle = C.g2; g.fillRect(0, 0, R2, 1); break; }
+  }
+  g.setTransform(1, 0, 0, 1, 0, 0);
+}
+
+// ---- 前面の文字（FVの固定要素） ----
+function hud(g, s) {
+  const sm = mod16(s);
+  const allLit = ss(12.55, 12.95, sm) * (1 - ss(15.45, 15.85, sm));
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  // コピー
+  const x0 = 72, y0 = 1000, fs = 46, adv = 50;
+  const chipW = adv * 13 + 56;
+  g.fillStyle = C.white; g.fillRect(x0 - 28, y0 - 64, chipW, 92);
+  g.fillStyle = C.ai; g.fillRect(x0 - 28, y0 - 64, 6, 92);
+  for (let i = 0; i < 13; i++) {
+    const dd = Math.abs(sm - i), w = Math.max(0, 1 - Math.min(dd, 16 - dd) * 1.4);
+    const lit = Math.max(w, allLit);
+    g.fillStyle = lit > 0.5 ? C.ai : (sm > i && sm < 13 ? C.sumi : C.gray2);
+    g.save(); g.translate(x0 + i * adv + adv / 2, y0 - 18 - 6 * w); g.scale(fs / 1000, fs / 1000);
+    g.font = `800 1000px "${JP}"`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(COPY[i], 0, 0); g.restore();
+  }
+  // 読んでいる字の下を走るバー
+  const pos = sm > 15 ? sm - 16 : clamp(sm, 0, 12);
+  const bw = adv * (1 - allLit) + adv * 13 * allLit;
+  const bxp = (x0 + pos * adv) * (1 - allLit) + x0 * allLit;
+  if (sm < 13.2 || allLit > 0) { g.fillStyle = C.ai; g.fillRect(bxp + 6, y0 + 14, bw - 12, 4); }
+
+  // A判の表示
+  const j = mod16(Math.round(s));
+  const a = DIMS[j + 1];
+  g.fillStyle = C.white; g.fillRect(W - 420, y0 - 64, 348, 92);
+  g.fillStyle = C.sumi;
+  g.font = `700 40px "${LF}"`; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  g.fillText('A' + (j + 1), W - 392, y0 + 2);
+  g.font = `400 22px "${LF}"`; g.fillStyle = C.gray;
+  g.fillText(a[0] + ' × ' + a[1] + ' mm', W - 300, y0 - 14);
+  g.fillText('1 : √2', W - 300, y0 + 14);
+  // 上の小さな表示
+  g.fillStyle = C.white; g.fillRect(44, 40, 262, 52);
+  g.fillStyle = C.ai; star(g, 74, 66, 13, 0.22);
+  g.fillStyle = C.sumi; g.font = `700 22px "${UI}"`; g.textBaseline = 'middle';
+  g.fillText('ホシノメ印刷', 98, 67);
+  g.fillStyle = C.white; g.fillRect(W - 300, 40, 256, 52);
+  g.fillStyle = C.gray; g.font = `600 18px "${LF}"`; g.textAlign = 'right';
+  g.fillText('REEL — 042   Claude', W - 68, 67);
+  g.textAlign = 'left';
+}
+
+function draw(t) {
+  const s = S(t);
+  const h = 0.25 / 60;
+  const ds = Math.abs(S(t + h) - S(t - h));
+  const N = ds < 0.006 ? 1 : clamp(Math.ceil(ds * 400) + 1, 3, 32);
+  if (N === 1) {
+    scene(ctx, s);
+  } else {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    for (let i = 0; i < N; i++) {
+      const ti = t + (i / (N - 1) - 0.5) * 2 * h;
+      scene(bx, S(ti));
+      ctx.globalAlpha = 1 / (i + 1);
+      ctx.drawImage(buf, 0, 0);
+    }
+    ctx.globalAlpha = 1;
+  }
+  hud(ctx, s);
+}
+
+(async () => {
+  const fams = [`800 100px "${JP}"`, `700 100px "${JP}"`, `700 100px "${UI}"`, `400 100px "${UI}"`,
+                `600 100px "${LF}"`, `700 100px "${LF}"`, `400 100px "${LF}"`];
+  const sample = '紙のことなら、ホシノメへ。印刷 HOSHINOME PRINTING A0123456789×mm√';
+  await Promise.all(fams.map(f => document.fonts.load(f, sample)));
+  await document.fonts.ready;
+  // 字面の計測をフォント読込後に
+  for (const k in metricCache) delete metricCache[k];
+  window.__seek = t => { draw(t); };
+  if (!location.search.includes('render')) {
+    const t0 = performance.now();
+    const loop = () => { draw(((performance.now() - t0) / 1000) % 15); requestAnimationFrame(loop); };
+    loop();
+  } else draw(0);
+})();
+</script>
+</body>
+</html>

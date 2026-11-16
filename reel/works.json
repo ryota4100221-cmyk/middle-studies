@@ -1586,5 +1586,49 @@
     "condition": "vertical",
     "format": "vertical",
     "slot": "2026-11-14"
+  },
+  {
+    "id": "042",
+    "slug": "root-two",
+    "title": "Root Two",
+    "date": "2026-11-16",
+    "concept": "架空の印刷会社「ホシノメ印刷」のFVに置く15秒を、確定値の9色・3書体のまま、A判の「半分に切っても同じ形（1:√2）」という性質だけで動かした。A0を16回半分にすると縦横とも1/256で向きも元に戻るので、A0の中にA0が入れ子になる。その渦を対数螺旋のカメラで1段ずつ潜り、紙・の・こ…と1字ずつ画面いっぱいに正立させて『紙のことなら、ホシノメへ。』を読ませる。見せ場は9.2〜10.5秒：「。」から15段を3.75回転で一気に引き抜いてホシノメ印刷の縦組みに着地し、そこから3段潜ると0秒目の「紙」に戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/042_root-two.mp4",
+    "techniques": [
+      "a-series-root-two-self-similar-subdivision",
+      "droste-recursion-period-16",
+      "log-spiral-camera-continuous-similarity-power",
+      "one-glyph-per-level-reading",
+      "stepped-dwell-easing-with-residual-velocity",
+      "fifteen-level-spin-pull-out-with-overshoot",
+      "cut-gap-separation-pulse-with-shadow",
+      "adaptive-subframe-motion-blur",
+      "live-paper-size-counter-hud",
+      "seamless-loop-by-returning-scale"
+    ],
+    "look": {
+      "palette": [
+        "#ffffff",
+        "#f2f2f2",
+        "#e6e6e6",
+        "#d4d4d4",
+        "#1c1e22",
+        "#5c6068",
+        "#8c9099",
+        "#1f3a6e",
+        "#9db0d6"
+      ],
+      "type": [
+        "Kaisei Tokumin",
+        "BIZ UDPGothic",
+        "Libre Franklin"
+      ],
+      "structure": "one self-similar A0 sheet, no cuts / frame 0 is 紙 on the A1 half with the whole spiral of halves beside it → log-spiral dive one level per beat, each next character turns upright as its half fills the screen, the cut opens and closes as you cross it, the copy line underlines the character being read (0–8.9 s) → 。 → 15 levels pulled out in 1.3 s, 3.75 turns with motion blur (hero 9.2–10.5 s) → overshoot and settle on the vertical ホシノメ印刷 wordmark at A14 → dive three levels through HOSHINOME PRINTING and the star back to 紙 = frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：0秒目と15秒目で下のコピー行の強調が飛ぶ（0秒目は「紙」が藍・14.95秒は全部灰）→強調の距離を16段で巻いて測るようにして継ぎ目を消した。あわせて静止に近いコマにも2枚重ねのブレが入って字に灰の縁が出ていたので、動きが小さいときは1枚で描く。2周目：中速の段移り（5.0秒のホ）でブレの重ねが段々に見える→サンプル数を速度に比例させて最大24→32に。ラベルがヘッダーに隠れていたのは試写の段階でセル右上へ移し、ホシノメ印刷の縦組みが下で切れていたのも詰めた。3周目：9.5秒の引き抜きも5.0秒も段差なく流れる。直すことが言えなくなった。許容した差：深い段の寸法ラベルは原理的に読めない大きさになる（入れ子の奥）／白いセルの上では上の白チップが地に溶ける。",
+    "condition": "case-values",
+    "slot": "2026-11-16"
   }
 ]
