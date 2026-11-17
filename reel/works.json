@@ -1630,5 +1630,46 @@
     "review": "1周目：0秒目と15秒目で下のコピー行の強調が飛ぶ（0秒目は「紙」が藍・14.95秒は全部灰）→強調の距離を16段で巻いて測るようにして継ぎ目を消した。あわせて静止に近いコマにも2枚重ねのブレが入って字に灰の縁が出ていたので、動きが小さいときは1枚で描く。2周目：中速の段移り（5.0秒のホ）でブレの重ねが段々に見える→サンプル数を速度に比例させて最大24→32に。ラベルがヘッダーに隠れていたのは試写の段階でセル右上へ移し、ホシノメ印刷の縦組みが下で切れていたのも詰めた。3周目：9.5秒の引き抜きも5.0秒も段差なく流れる。直すことが言えなくなった。許容した差：深い段の寸法ラベルは原理的に読めない大きさになる（入れ子の奥）／白いセルの上では上の白チップが地に溶ける。",
     "condition": "case-values",
     "slot": "2026-11-16"
+  },
+  {
+    "id": "043",
+    "slug": "one-line",
+    "title": "One Line",
+    "date": "2026-11-17",
+    "concept": "奥行きを使わず、1本の閉じた筆跡を最大1401個の回転円（フーリエ級数のエピサイクル）で描くことだけで15秒にした。単語はどれもペンを離さない一筆書きで、線路のような1本の基線から字へ上り下りする。遮断周波数を絞ると字が溶けて楕円になり、緩めると次の単語が立ち上がる。見せ場は7.2〜8.45秒：全部の腕が一直線にそろって目盛り付きの針になり、平面を1周掃いて ALL FLAT を FLAT OUT に塗り替える。最後は円2個（f=±1）の楕円まで削ってから、円を足していって ONE LINE に咲き戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/043_one-line.mp4",
+    "techniques": [
+      "fourier-epicycle-chain-1401-terms",
+      "single-stroke-word-paths-with-retrace",
+      "ifft-curve-evaluation-per-frame",
+      "low-pass-cutoff-melt-and-resolve",
+      "beat-low-pass-wobble-pulses",
+      "coefficient-lerp-word-morph",
+      "arm-alignment-into-ruler-needle",
+      "radial-sweep-wipe-swapping-words",
+      "staggered-band-and-diagonal-wipes",
+      "collapse-to-one-ellipse-then-bloom-loop"
+    ],
+    "look": {
+      "palette": [
+        "#ffe600",
+        "#141414",
+        "#ff2d95",
+        "#2f4bff",
+        "#ffffff",
+        "#ff5a36",
+        "#f3f0e8"
+      ],
+      "type": [
+        "monoline rail glyphs (original)",
+        "Martian Mono"
+      ],
+      "structure": "one flat plane, one pen, no camera / ONE LINE drawn by a whipping chain of 782 circles, a low-pass wobble on the beat (0.5 s) → cutoff drops, the word melts to a wavy loop and a black disc grows from the pen tip: NO LIFT resolves (1.6–2.5 s) → staggered bands slide in while it morphs into ALL FLAT on cobalt → every arm aligns into one ruler needle that sweeps a full turn, repainting ALL FLAT as FLAT OUT on vermilion (hero 7.2–8.45 s) → arms curl back → melt + diagonal wipe to REEL 043 on paper → circles cut down to f=±1, one ellipse fills with yellow → circles added back until ONE LINE = frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目（静止画）：字が細く小さい→単位を最大60px・線幅17pxに。回転円が弱い→不透明度と線幅を上げ、大きい8個を太線に。溶けた形がただの楕円→遮断の底を fmax 3.5〜5 に上げてうねりを残す。0〜1.5秒が単調→待ちの区間に拍ごとの低域パルス（字が一瞬ゆらいで戻る）を5か所入れた。2周目（本番）：掃引の針が6pxで色替えに負ける→11pxにし、目盛りを大きくし、境目にアクセント色の線。3周目：0.65秒のパルス・13.55秒の楕円の塗り広げ・14.2秒の咲き戻りを等倍で確認、直すことなし。許容した差：直線的な一筆書き字形では O が D に近く見える瞬間がある（OUT は文脈で読める）。",
+    "condition": "no-depth",
+    "slot": "2026-11-17"
   }
 ]

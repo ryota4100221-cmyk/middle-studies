@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>REEL — 043 One Line</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@400;700&display=block" rel="stylesheet">
+<style>html,body{margin:0;background:#111;overflow:hidden}canvas{display:block;transform-origin:0 0}</style>
+</head><body><canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// REEL 043 ONE LINE — a Fourier study. Everything happens on one flat plane:
+// one closed pen path per word, drawn by a chain of up to 1401 rotating circles.
+window.__duration = 15;
+window.__poster = 7.85;
+const W = 1920, H = 1080, TAU = Math.PI * 2;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const RENDER = location.search.includes('render');
+if (!RENDER) { const fit = () => { const s = Math.min(innerWidth / W, innerHeight / H); cv.style.transform = `scale(${s})`; }; addEventListener('resize', fit); fit(); }
+
+// ---------- monoline glyphs (units: cap height 6) ----------
+const G = {
+  O: [4, [[[0,0],[0,6],[4,6],[4,0],[0,0]]]],
+  N: [4, [[[0,0],[0,6],[4,0],[4,6]]]],
+  E: [4, [[[4,6],[0,6],[0,3],[0,0],[4,0]], [[0,3],[3,3]]]],
+  L: [3, [[[0,6],[0,0],[3,0]]]],
+  I: [0, [[[0,0],[0,6]]]],
+  F: [4, [[[4,6],[0,6],[0,3],[0,0]], [[0,3],[3,3]]]],
+  T: [4, [[[0,6],[2,6],[4,6]], [[2,6],[2,0]]]],
+  A: [4, [[[0,0],[0,3],[0,6],[4,6],[4,3],[4,0]], [[0,3],[4,3]]]],
+  U: [4, [[[0,6],[0,0],[4,0],[4,6]]]],
+  R: [4, [[[0,0],[0,3],[0,6],[4,6],[4,3],[2,3],[0,3]], [[2,3],[4,0]]]],
+  '0': [4, [[[0,0],[0,6],[4,6],[4,0],[0,0]], [[0,0],[4,6]]]],
+  '4': [4, [[[0,6],[0,3],[3,3],[4,3]], [[3,6],[3,3],[3,0]]]],
+  '3': [4, [[[0,6],[4,6],[4,3],[4,0],[0,0]], [[1,3],[4,3]]]],
+};
+const RAIL = -1.4, GAP = 1.7, SPACE = 3.2;
+
+// closed walk of a glyph from its anchor (bottom-most-left vertex), every edge out and back
+function glyphWalk(strokes) {
+  const key = p => p[0] + ',' + p[1];
+  const adj = new Map(), pts = new Map();
+  for (const s of strokes) for (let i = 0; i < s.length - 1; i++) {
+    const a = key(s[i]), b = key(s[i + 1]);
+    pts.set(a, s[i]); pts.set(b, s[i + 1]);
+    if (!adj.has(a)) adj.set(a, []); if (!adj.has(b)) adj.set(b, []);
+    const e = { used: false }; adj.get(a).push([b, e]); adj.get(b).push([a, e]);
+  }
+  let anchor = null;
+  for (const [k, p] of pts) if (!anchor || p[1] < anchor[1] - 1e-9 || (Math.abs(p[1] - anchor[1]) < 1e-9 && p[0] < anchor[0])) anchor = p;
+  const out = [anchor];
+  (function visit(v) {
+    for (const [u, e] of adj.get(v)) if (!e.used) { e.used = true; out.push(pts.get(u)); visit(u); out.push(pts.get(v)); }
+  })(key(anchor));
+  return { anchor, walk: out };
+}
+
+function wordPath(text) {
+  let x = 0; const segs = []; // list of points (units)
+  const glyphs = [];
+  for (const ch of text) {
+    if (ch === ' ') { x += SPACE; continue; }
+    const [w, strokes] = G[ch];
+    const g = glyphWalk(strokes);
+    glyphs.push({ x, g }); x += w + GAP;
+  }
+  const width = x - GAP;
+  const pts = [[-1.2, RAIL]];
+  for (const { x, g } of glyphs) {
+    const ax = x + g.anchor[0];
+    pts.push([ax, RAIL]);
+    for (const p of g.walk) pts.push([x + p[0], p[1]]);
+    pts.push([ax, RAIL]);
+  }
+  pts.push([width + 1.2, RAIL]);
+  pts.push([-1.2, RAIL]); // return along the rail (retrace) = closed
+  return { pts, width };
+}
+
+// ---------- FFT ----------
+const N = 4096, K = 700;
+function fft(re, im, sign) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit;
+    if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = sign * TAU / len, wr = Math.cos(ang), wi = Math.sin(ang), half = len >> 1;
+    for (let i = 0; i < n; i += len) {
+      let cr = 1, ci = 0;
+      for (let k = 0; k < half; k++) {
+        const a = i + k, b = a + half;
+        const xr = re[b] * cr - im[b] * ci, xi = re[b] * ci + im[b] * cr;
+        re[b] = re[a] - xr; im[b] = im[a] - xi; re[a] += xr; im[a] += xi;
+        const nr = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = nr;
+      }
+    }
+  }
+}
+
+const WORDS = ['ONE LINE', 'NO LIFT', 'ALL FLAT', 'FLAT OUT', 'REEL 043'];
+const SCENES = [
+  { bg: '#ffe600', ink: '#141414', acc: '#ff2d95' },
+  { bg: '#141414', ink: '#ffe600', acc: '#ff2d95' },
+  { bg: '#2f4bff', ink: '#ffffff', acc: '#ffe600' },
+  { bg: '#ff5a36', ink: '#141414', acc: '#ffffff' },
+  { bg: '#f3f0e8', ink: '#141414', acc: '#2f4bff' },
+];
+const CX = W / 2, CY = H / 2 + 20;
+const SPEC = WORDS.map(text => {
+  const { pts, width } = wordPath(text);
+  const u = Math.min(1640 / (width + 2.4), 60);
+  const mid = (RAIL + 6) / 2;
+  const P = pts.map(([x, y]) => [CX + (x - width / 2) * u, CY - (y - mid) * u]);
+  // resample by arc length
+  const L = [0]; for (let i = 1; i < P.length; i++) L.push(L[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
+  const tot = L[L.length - 1];
+  const re = new Float64Array(N), im = new Float64Array(N);
+  let seg = 0;
+  for (let j = 0; j < N; j++) {
+    const d = tot * j / N;
+    while (seg < P.length - 2 && L[seg + 1] < d) seg++;
+    const f = (d - L[seg]) / ((L[seg + 1] - L[seg]) || 1);
+    re[j] = P[seg][0] + (P[seg + 1][0] - P[seg][0]) * f;
+    im[j] = P[seg][1] + (P[seg + 1][1] - P[seg][1]) * f;
+  }
+  fft(re, im, -1);
+  for (let j = 0; j < N; j++) { re[j] /= N; im[j] /= N; }
+  return { re, im, u };
+});
+
+// ---------- easing ----------
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const sm = x => { x = clamp(x); return x * x * (3 - 2 * x); };
+const ioc = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const oexp = x => { x = clamp(x); return x >= 1 ? 1 : 1 - Math.pow(2, -10 * x); };
+const iexp = x => { x = clamp(x); return x <= 0 ? 0 : Math.pow(2, 10 * x - 10); };
+const io5 = x => { x = clamp(x); return x < .5 ? 16 * x ** 5 : 1 - Math.pow(-2 * x + 2, 5) / 2; };
+const lerp = (a, b, f) => a + (b - a) * f;
+const LK = Math.log(K);
+const cOf = fmax => Math.log(fmax) / LK;
+
+// ---------- spectrum mixing ----------
+function weight(f, c) {
+  const fmax = Math.exp(c * LK), a = Math.abs(f);
+  let w = clamp(fmax - a + 1);
+  const t0 = 0.72 * fmax; if (a > t0 && fmax > 4) w *= 0.5 + 0.5 * Math.cos(Math.PI * clamp((a - t0) / (fmax - t0 + 1e-9)));
+  return w;
+}
+function mixSpec(spec) { // {a,b,mix,c} → arrays of length 2K+1 indexed f+K
+  const A = SPEC[spec.a], B = SPEC[spec.b], m = spec.mix;
+  const re = new Float64Array(2 * K + 1), im = new Float64Array(2 * K + 1);
+  for (let f = -K; f <= K; f++) {
+    const j = (f + N) % N, w = f === 0 ? 1 : weight(f, spec.c);
+    re[f + K] = w * lerp(A.re[j], B.re[j], m); im[f + K] = w * lerp(A.im[j], B.im[j], m);
+  }
+  return { re, im };
+}
+const CR = new Float64Array(N), CI = new Float64Array(N);
+function curveOf(C) {
+  CR.fill(0); CI.fill(0);
+  for (let f = -K; f <= K; f++) { const j = (f + N) % N; CR[j] = C.re[f + K]; CI[j] = C.im[f + K]; }
+  fft(CR, CI, 1);
+  return { x: Float64Array.from(CR), y: Float64Array.from(CI) };
+}
+
+// ---------- timeline ----------
+const PHI = t => 0.6 * t + 0.05 * Math.sin(TAU * 6 * t / 15);
+const T = { t1: [1.6, 2.5], t2: [4.2, 5.0], hero: [6.6, 9.0], t4: [10.6, 11.4], t5: [12.6, 14.7] };
+const CLOW1 = cOf(3.5), CLOW2 = cOf(9), CLOW4 = cOf(5);
+const PULSES = [0.5, 3.35, 5.75, 9.75, 11.95];
+function pulse(t) { let c = 1; for (const q of PULSES) { const x = (t - q) / 0.42; if (x > 0 && x < 1) c = Math.min(c, lerp(cOf(14), 1, x < 0.25 ? 1 - ioc(x / 0.25) : oexp((x - 0.25) / 0.75))); } return c; }
+const SW0 = 7.2, SW1 = 8.45;
+function plan(t) { const q = plan0(t); if (q.label === 'HOLD') { const c = pulse(t); if (c < 1) { q.main = Object.assign({}, q.main, { c }); q.label = 'PULSE'; } } return q; }
+function plan0(t) {
+  const p = { main: { a: 0, b: 0, mix: 0, c: 1 }, sOut: 0, inner: null, U: 0, theta: -Math.PI / 2, sweep: 0, label: '' };
+  if (t < 1.6) { p.label = 'HOLD'; return p; }
+  if (t < 2.5) { // melt + disc from the pen
+    const c = t < 1.95 ? lerp(1, CLOW1, iexp((t - 1.6) / 0.35) * 0.0 + ioc((t - 1.6) / 0.35)) : lerp(CLOW1, 1, oexp((t - 1.95) / 0.55));
+    p.main = { a: 0, b: 1, mix: sm((t - 1.82) / 0.24), c };
+    const r = 2400 * io5((t - 1.78) / 0.55);
+    p.inner = { spec: p.main, s: 1, clip: { type: 'disc', r } };
+    p.label = 'LOW-PASS → MELT';
+    return p;
+  }
+  if (t < 4.2) { p.main = { a: 1, b: 1, mix: 0, c: 1 }; p.sOut = 1; p.label = 'HOLD'; return p; }
+  if (t < 5.0) { // bands
+    const c = t < 4.45 ? lerp(1, CLOW2, ioc((t - 4.2) / 0.25)) : lerp(CLOW2, 1, oexp((t - 4.6) / 0.4));
+    p.main = { a: 1, b: 2, mix: ioc((t - 4.36) / 0.32), c };
+    p.sOut = 1; p.inner = { spec: p.main, s: 2, clip: { type: 'bands', t: t - 4.28 } };
+    p.label = 'MORPH';
+    return p;
+  }
+  if (t < 6.6) { p.main = { a: 2, b: 2, mix: 0, c: 1 }; p.sOut = 2; p.label = 'HOLD'; return p; }
+  if (t < 9.0) { // hero: unfurl, sweep one full turn, curl back
+    p.sOut = 2;
+    const sw = io5((t - SW0) / (SW1 - SW0));
+    p.sweep = sw;
+    p.U = t < SW0 ? sm((t - 6.6) / 0.6) : t < SW1 ? 1 : 1 - ioc((t - SW1) / 0.55);
+    p.theta = -Math.PI / 2 + TAU * sw;
+    p.main = { a: 2, b: 2, mix: 0, c: 1 };
+    p.chain = { a: 2, b: 3, mix: sw, c: 1 };
+    if (t >= SW1) { p.main = { a: 3, b: 3, mix: 0, c: 1 }; p.sOut = 3; }
+    else if (sw > 0) p.inner = { spec: { a: 3, b: 3, mix: 0, c: 1 }, s: 3, clip: { type: 'wedge', a0: -Math.PI / 2, a1: p.theta } };
+    p.label = t < SW0 ? 'ALIGN ALL ARMS' : t < SW1 ? 'SWEEP' : 'RELEASE';
+    return p;
+  }
+  if (t < 10.6) { p.main = { a: 3, b: 3, mix: 0, c: 1 }; p.sOut = 3; p.label = 'HOLD'; return p; }
+  if (t < 11.4) { // melt + diagonal wipe
+    const c = t < 10.92 ? lerp(1, CLOW4, ioc((t - 10.6) / 0.32)) : lerp(CLOW4, 1, oexp((t - 10.98) / 0.42));
+    p.main = { a: 3, b: 4, mix: sm((t - 10.84) / 0.2), c }; p.sOut = 3;
+    p.inner = { spec: p.main, s: 4, clip: { type: 'diag', k: io5((t - 10.72) / 0.5) } };
+    p.label = 'LOW-PASS → MELT';
+    return p;
+  }
+  if (t < 12.6) { p.main = { a: 4, b: 4, mix: 0, c: 1 }; p.sOut = 4; p.label = 'HOLD'; return p; }
+  if (t < 14.7) { // collapse to one ellipse, it fills, bloom back to ONE LINE
+    let c;
+    if (t < 13.2) c = lerp(1, 0, ioc((t - 12.6) / 0.6));
+    else if (t < 13.7) c = 0;
+    else c = lerp(0, 1, ioc((t - 13.7) / 1.0));
+    p.main = { a: 4, b: 0, mix: sm((t - 12.85) / 0.3), c }; p.sOut = 4;
+    const g = (t - 13.2) / 0.5;
+    if (g > 0) { p.inner = { spec: p.main, s: 0, clip: { type: 'grow', g: g >= 1 ? 99 : 1 + 14 * iexp(g) } }; }
+    p.label = t < 13.2 ? 'CUT TO ONE CIRCLE PAIR' : t < 13.7 ? 'f = ±1' : 'ADD CIRCLES';
+    return p;
+  }
+  p.label = 'HOLD'; return p;
+}
+
+// ---------- drawing ----------
+function strokeCurve(cu, i0, n) {
+  ctx.beginPath();
+  for (let k = 0; k <= n; k++) { const j = ((i0 + k) % N + N) % N; k ? ctx.lineTo(cu.x[j], cu.y[j]) : ctx.moveTo(cu.x[j], cu.y[j]); }
+}
+function chainGeom(C, phi, U, theta) {
+  const terms = [];
+  for (let f = -K; f <= K; f++) if (f) { const r = Math.hypot(C.re[f + K], C.im[f + K]); if (r > 0.02) terms.push([r, f, Math.atan2(C.im[f + K], C.re[f + K])]); }
+  terms.sort((a, b) => b[0] - a[0]);
+  const n = terms.length, J = [[C.re[K], C.im[K]]];
+  let x = C.re[K], y = C.im[K];
+  for (let k = 0; k < n; k++) {
+    const [r, f, a0] = terms[k];
+    let a = a0 + TAU * f * phi;
+    if (U > 0) { const uk = sm((U - 0.4 * k / n) / 0.6); let d = theta - a; d -= TAU * Math.round(d / TAU); a += uk * d; }
+    x += r * Math.cos(a); y += r * Math.sin(a); J.push([x, y]);
+  }
+  return { terms, J };
+}
+function drawScene(sc, cu, geo, p, phi, t) {
+  ctx.fillStyle = sc.bg; ctx.fillRect(0, 0, W, H);
+  const { terms, J } = geo;
+  // circles
+  ctx.strokeStyle = sc.ink; ctx.lineWidth = 1.6;
+  ctx.globalAlpha = 0.42 * (1 - 0.7 * p.U);
+  ctx.beginPath();
+  for (let k = 0; k < Math.min(140, terms.length); k++) { const r = terms[k][0]; if (r < 2.5) break; ctx.moveTo(J[k][0] + r, J[k][1]); ctx.arc(J[k][0], J[k][1], r, 0, TAU); }
+  ctx.stroke();
+  ctx.lineWidth = 3; ctx.globalAlpha = 0.55 * (1 - 0.7 * p.U); ctx.beginPath();
+  for (let k = 0; k < Math.min(8, terms.length); k++) { const r = terms[k][0]; ctx.moveTo(J[k][0] + r, J[k][1]); ctx.arc(J[k][0], J[k][1], r, 0, TAU); }
+  ctx.stroke();
+  // ink
+  ctx.globalAlpha = 1;
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.strokeStyle = sc.ink; ctx.lineWidth = 17;
+  strokeCurve(cu, 0, N); ctx.closePath(); ctx.stroke();
+  // arms
+  ctx.globalAlpha = 0.9; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.moveTo(J[0][0], J[0][1]);
+  for (let k = 1; k < J.length; k++) ctx.lineTo(J[k][0], J[k][1]);
+  ctx.stroke();
+  // joints + ruler ticks (ticks show while the arms are aligned)
+  ctx.fillStyle = sc.ink; ctx.globalAlpha = 1;
+  for (let k = 0; k < Math.min(60, terms.length); k++) { const r = Math.max(2, Math.min(5, terms[k][0] * 0.05)); ctx.beginPath(); ctx.arc(J[k][0], J[k][1], r, 0, TAU); ctx.fill(); }
+  if (p.U > 0.01) {
+    const nx = -Math.sin(p.theta), ny = Math.cos(p.theta);
+    ctx.globalAlpha = sm(p.U * 1.4 - 0.2); ctx.lineWidth = 3; ctx.strokeStyle = sc.ink; ctx.beginPath();
+    for (let k = 0; k < Math.min(220, J.length); k++) { const L = k % 10 === 0 ? 46 : k % 5 === 0 ? 28 : 14; ctx.moveTo(J[k][0] - nx * L, J[k][1] - ny * L); ctx.lineTo(J[k][0] + nx * L, J[k][1] + ny * L); }
+    ctx.stroke();
+    ctx.lineWidth = 11; ctx.beginPath(); ctx.moveTo(J[0][0], J[0][1]); ctx.lineTo(J[J.length - 1][0], J[J.length - 1][1]); ctx.stroke();
+    if (p.sweep > 0 && p.sweep < 1) { ctx.strokeStyle = sc.acc; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(J[0][0], J[0][1]); ctx.lineTo(J[0][0] + 5000 * Math.cos(p.theta), J[0][1] + 5000 * Math.sin(p.theta)); ctx.stroke(); }
+  }
+  ctx.globalAlpha = 1;
+  // pen trail + tip
+  const tip = J[J.length - 1];
+  const tr = 1 - p.U;
+  if (tr > 0.01) {
+    const j1 = Math.floor((phi % 1 + 1) % 1 * N), len = Math.floor(0.075 * N);
+    ctx.globalAlpha = tr; ctx.strokeStyle = sc.acc; ctx.lineWidth = 20;
+    strokeCurve(cu, j1 - len, len); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = sc.acc; ctx.beginPath(); ctx.arc(tip[0], tip[1], 13, 0, TAU); ctx.fill();
+  ctx.strokeStyle = sc.ink; ctx.lineWidth = 3; ctx.stroke();
+  // base pivot
+  ctx.fillStyle = sc.bg; ctx.beginPath(); ctx.arc(J[0][0], J[0][1], 9, 0, TAU); ctx.fill(); ctx.strokeStyle = sc.ink; ctx.lineWidth = 3; ctx.stroke();
+  // HUD
+  const cnt = terms.length;
+  ctx.fillStyle = sc.ink; ctx.textBaseline = 'alphabetic';
+  ctx.font = '700 20px "Martian Mono"'; ctx.textAlign = 'left';
+  ctx.fillText('MIDDLE STUDIES  REEL — 043', 56, 72);
+  ctx.font = '400 20px "Martian Mono"';
+  ctx.fillText('ONE LINE — a Fourier study, no pen lifts', 56, 102);
+  ctx.textAlign = 'right'; ctx.font = '700 20px "Martian Mono"';
+  ctx.fillText(`CIRCLES ${String(cnt).padStart(4, '0')}`, W - 56, 72);
+  ctx.font = '400 20px "Martian Mono"';
+  ctx.fillText(p.label, W - 56, 102);
+  ctx.textAlign = 'left';
+  ctx.fillText(`t ${t.toFixed(2).padStart(5, '0')} / 15.00    φ ${((phi % 1 + 1) % 1).toFixed(3)}`, 56, H - 52);
+  ctx.textAlign = 'right'; ctx.fillText('Claude', W - 56, H - 52);
+}
+
+function clipPath(cl, info) {
+  ctx.beginPath();
+  if (cl.type === 'disc') ctx.arc(info.tip[0], info.tip[1], Math.max(0.01, cl.r), 0, TAU);
+  else if (cl.type === 'bands') {
+    const nb = 8, bh = H / nb;
+    for (let i = 0; i < nb; i++) {
+      const q = io5((cl.t - 0.045 * Math.abs(i - 3.5)) / 0.42), w = W * q;
+      if (w <= 0) continue;
+      if (i % 2 === 0) ctx.rect(0, i * bh, w, bh + 1); else ctx.rect(W - w, i * bh, w, bh + 1);
+    }
+  } else if (cl.type === 'wedge') {
+    ctx.moveTo(info.base[0], info.base[1]); ctx.arc(info.base[0], info.base[1], 5000, cl.a0, cl.a1, false); ctx.closePath();
+  } else if (cl.type === 'diag') {
+    const d = lerp(-700, W + 900, cl.k), s = 0.55;
+    ctx.moveTo(-10, -10); ctx.lineTo(d + s * 0 , -10); ctx.lineTo(d - s * H, H + 10); ctx.lineTo(-10, H + 10); ctx.closePath();
+  } else if (cl.type === 'grow') {
+    const c = info.base, cu = info.cu, g = cl.g;
+    if (g > 50) { ctx.rect(0, 0, W, H); }
+    else for (let j = 0; j < N; j += 4) { const x = c[0] + (cu.x[j] - c[0]) * g, y = c[1] + (cu.y[j] - c[1]) * g; j ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.closePath();
+  }
+}
+
+function renderAt(t) {
+  t = ((t % 15) + 15) % 15;
+  const p = plan(t), phi = PHI(t);
+  const Cm = mixSpec(p.main), cu = curveOf(Cm);
+  const Cc = p.chain ? mixSpec(p.chain) : Cm;
+  const geo = chainGeom(Cc, phi, p.U, p.theta);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  drawScene(SCENES[p.sOut], cu, geo, p, phi, t);
+  if (p.inner) {
+    const same = p.inner.spec === p.main;
+    const cu2 = same ? cu : curveOf(mixSpec(p.inner.spec));
+    const info = { tip: geo.J[geo.J.length - 1], base: geo.J[0], cu };
+    ctx.save(); clipPath(p.inner.clip, info); ctx.clip();
+    drawScene(SCENES[p.inner.s], cu2, geo, p, phi, t);
+    ctx.restore();
+  }
+}
+
+Promise.all([document.fonts.load('700 20px "Martian Mono"'), document.fonts.load('400 20px "Martian Mono"'), document.fonts.ready]).then(() => {
+  window.__seek = t => renderAt(t);
+  if (!RENDER) { const t0 = performance.now(); const loop = () => { renderAt((performance.now() - t0) / 1000 % 15); requestAnimationFrame(loop); }; loop(); }
+  else renderAt(0);
+});
+</script>
+</body></html>
