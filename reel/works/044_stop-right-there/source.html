@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 044 Stop Right There</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=DM+Mono:wght@400;500&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #0f0f12; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+window.__format = 'vertical';
+window.__duration = 15;
+window.__poster = 7.2;
+
+const W = 1080, H = 1920;
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+if (!location.search.includes('render')) {
+  const fit = () => { const s = Math.min(innerWidth / W, innerHeight / H); cv.style.width = W * s + 'px'; cv.style.height = H * s + 'px'; };
+  addEventListener('resize', fit); fit();
+}
+
+// ---------- seeded PRNG ----------
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const rnd = mulberry32(44044);
+
+// ---------- palette ----------
+const C = { bg: '#0f0f12', ink: '#111114', cream: '#f4efe6', red: '#ff3b1f', lime: '#c6f432', blue: '#2340ff', pink: '#ff8fcf', yellow: '#ffd400', slate: '#1d1d22' };
+
+// ---------- the feed (one period = 10 cards) ----------
+const CW = 920, GAP = 28, CX = 540, RAD = 34;
+const FEED = [
+  { h: 560, bg: C.red,    fg: C.cream, word: 'STOP',   meta: ['@middle.studies', 'REEL — 044'], foot: '♥ 15.0k   ↻ 044' },
+  { h: 380, bg: C.slate,  fg: C.lime,  word: 'RIGHT',  meta: ['@claude', '0:01'], foot: '♥ 2,418' },
+  { h: 380, bg: C.cream,  fg: C.ink,   word: 'THERE.', meta: ['@claude', '0:02'], foot: '♥ 9,031' },
+  { h: 420, bg: C.blue,   fg: C.cream, word: null, kind: 'ring', meta: ['@clock', 'LOOP'], foot: 'fifteen seconds, then again' },
+  { h: 340, bg: C.lime,   fg: C.ink,   word: "DON'T",  meta: ['@claude', '0:04'], foot: '♥ 611' },
+  { h: 460, bg: C.pink,   fg: C.ink,   word: null, kind: 'stripes', meta: ['@pattern', 'AD'], foot: 'swipe ↑ to skip' },
+  { h: 360, bg: C.slate,  fg: C.pink,  word: 'SCROLL', meta: ['@claude', '0:06'], foot: '♥ 3,377' },
+  { h: 420, bg: C.cream,  fg: C.ink,   word: null, kind: 'dots', meta: ['@halftone', '0:07'], foot: '♥ 88' },
+  { h: 340, bg: C.blue,   fg: C.cream, word: 'PAST',   meta: ['@claude', '0:08'], foot: '♥ 1,204' },
+  { h: 400, bg: C.yellow, fg: C.ink,   word: 'THIS.',  meta: ['@claude', '0:09'], foot: '♥ 12,9k' },
+];
+const NP = FEED.length;
+const CUM = []; { let y = 0; for (const c of FEED) { CUM.push(y); y += c.h + GAP; } }
+const HP = CUM[NP - 1] + FEED[NP - 1].h + GAP;           // period height
+const mod = (a, n) => ((a % n) + n) % n;
+const topOf = i => Math.floor(i / NP) * HP + CUM[mod(i, NP)];
+const cardOf = i => FEED[mod(i, NP)];
+
+// ---------- timeline ----------
+const V0 = 3000;          // feed speed px/s (frame 0 = frame 15)
+const TB = 0.40;          // the slam
+const TA0 = 8.6, TA1 = 11.2;   // re-assembly
+const TEND = 15;
+const SI = NP;            // the STOP card instance that gets pinned (period 1)
+const SB = topOf(SI) + FEED[0].h / 2 - 960;   // scroll offset at the slam: STOP centred
+const DELTA = (960 - FEED[0].h / 2) - 196;     // assembled: STOP top at y=196 (clear of the HUD)
+const SA = SB + DELTA;
+const S0 = SB - V0 * TB;
+const SEND = S0 + HP;
+const DD = SEND - SA, DUR = TEND - TA1, NPOW = V0 * DUR / DD;   // power-law launch: s = DD*u^n, s'(end)=V0
+function scrollAt(t) {
+  if (t <= TB) return SB - V0 * (TB - t);
+  if (t < TA1) return null;
+  const u = (t - TA1) / DUR; return SA + DD * Math.pow(u, NPOW);
+}
+function scrollVel(t) {
+  if (t <= TB) return V0;
+  if (t < TA1) return 0;
+  const u = (t - TA1) / DUR; return NPOW * DD / DUR * Math.pow(u, NPOW - 1);
+}
+
+// ---------- easing ----------
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, u) => a + (b - a) * u;
+const smoother = u => { u = clamp(u); return u * u * u * (u * (u * 6 - 15) + 10); };
+const ease = u => { u = clamp(u); return u < .5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; };
+
+// ---------- the pin (the thumb that holds the feed) ----------
+const PIN0 = { x: CX, y: 960 - FEED[0].h / 2 - GAP / 2 };
+const KEYS = [ [TB, 0, 0], [1.7, 0, 0], [2.2, 0, -320], [2.9, -420, -160], [3.6, 400, -420], [4.3, -300, -120], [5.0, 260, -300], [5.6, 0, 0], [6.0, 0, 0] ];
+const LASSO0 = 6.0, LASSO1 = 8.7;
+function lassoTheta(t) {   // integral of omega, omega = 2.1 rev/s * sin^2 window
+  const u = clamp((t - LASSO0) / (LASSO1 - LASSO0)), T = LASSO1 - LASSO0, w = 2 * Math.PI * 1.6;
+  // ∫ sin^2(pi u) du = u/2 - sin(2 pi u)/(4 pi)
+  return w * T * (u / 2 - Math.sin(2 * Math.PI * u) / (4 * Math.PI));
+}
+function pinAt(t) {
+  let dx = 0, dy = 0;
+  if (t > KEYS[0][0] && t < KEYS[KEYS.length - 1][0]) {
+    for (let k = 0; k < KEYS.length - 1; k++) {
+      const a = KEYS[k], b = KEYS[k + 1];
+      if (t >= a[0] && t <= b[0]) { const u = ease((t - a[0]) / (b[0] - a[0])); dx = lerp(a[1], b[1], u); dy = lerp(a[2], b[2], u); break; }
+    }
+  }
+  if (t > LASSO0 && t < LASSO1) {
+    const u = (t - LASSO0) / (LASSO1 - LASSO0), R = 560 * Math.pow(Math.sin(Math.PI * u), 2), th = lassoTheta(t);
+    dx += R * Math.sin(th); dy += R * (1 - Math.cos(th)) * -1 + 0;
+  }
+  return { x: PIN0.x + dx, y: PIN0.y + dy };
+}
+
+// ---------- chain: cards SI-3 .. SI+8 hinged at the gaps ----------
+const I0 = SI - 3, NC = 12, NJ = NC + 1, PJ = SI - I0;   // PJ = joint above STOP
+const L = []; for (let j = 0; j < NC; j++) L.push(cardOf(I0 + j).h + GAP);
+const J0 = []; for (let j = 0; j < NJ; j++) J0.push({ x: CX, y: (j < NC ? topOf(I0 + j) : topOf(I0 + NC - 1) + cardOf(I0 + NC - 1).h + GAP) - GAP / 2 - SB });
+const SR = 240, SUB = 4, DT = 1 / (SR * SUB), GRAV = 3400, ITER = 36;
+const NS = Math.ceil((TA1 - TB) * SR) + 2;
+const JX = new Float32Array(NS * NJ), JY = new Float32Array(NS * NJ);
+const CAM = new Float32Array(NS * 3);
+const ASM_CAM = { x: CX, y: 960 + DELTA, z: 1 };
+
+function simulate() {
+  const px = new Float64Array(NJ), py = new Float64Array(NJ), ox = new Float64Array(NJ), oy = new Float64Array(NJ);
+  for (let j = 0; j < NJ; j++) {
+    const jit = (rnd() - .5) * 16 + (j % 2 ? 34 : -34) * (j > PJ ? 1 : 0.4);
+    px[j] = J0[j].x + jit; py[j] = J0[j].y;
+    ox[j] = px[j]; oy[j] = py[j] + V0 * DT;   // moving up at V0
+  }
+  px[PJ] = J0[PJ].x; ox[PJ] = px[PJ];
+  let cx = CX, cy = 960, lz = 0, vx = 0, vy = 0, vz = 0;
+  for (let s = 0; s < NS; s++) {
+    const tS = TB + s / SR;
+    // store
+    for (let j = 0; j < NJ; j++) { JX[s * NJ + j] = px[j]; JY[s * NJ + j] = py[j]; }
+    // camera target from bbox
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (let j = 0; j < NJ; j++) { x0 = Math.min(x0, px[j]); x1 = Math.max(x1, px[j]); y0 = Math.min(y0, py[j]); y1 = Math.max(y1, py[j]); }
+    x0 -= CW * .5; x1 += CW * .5; y0 -= 200; y1 += 200;
+    const tz = Math.log(clamp(Math.min(940 / (x1 - x0), 1440 / (y1 - y0)), 0.2, 1));
+    const tx = (x0 + x1) / 2, ty = (y0 + y1) / 2;
+    CAM[s * 3] = cx; CAM[s * 3 + 1] = cy; CAM[s * 3 + 2] = lz;
+    const w = tS < TB + 0.25 ? 0.5 : (tS > LASSO0 - 0.3 && tS < LASSO1 + 0.4 ? 7.5 : 3.6), dtc = 1 / SR;
+    vx += (w * w * (tx - cx) - 2 * w * vx) * dtc; cx += vx * dtc;
+    vy += (w * w * (ty - cy) - 2 * w * vy) * dtc; cy += vy * dtc;
+    vz += (w * w * (tz - lz) - 2 * w * vz) * dtc; lz += vz * dtc;
+    // physics substeps
+    for (let k = 0; k < SUB; k++) {
+      const t = tS + (k + 1) * DT;
+      const damp = 1 - 0.9 * DT;
+      for (let j = 0; j < NJ; j++) {
+        const vxj = (px[j] - ox[j]) * damp, vyj = (py[j] - oy[j]) * damp;
+        ox[j] = px[j]; oy[j] = py[j];
+        px[j] += vxj; py[j] += vyj + GRAV * DT * DT;
+      }
+      const P = pinAt(t);
+      for (let it = 0; it < ITER; it++) {
+        px[PJ] = P.x; py[PJ] = P.y;
+        for (let j = 0; j < NC; j++) {
+          const dx = px[j + 1] - px[j], dy = py[j + 1] - py[j], d = Math.hypot(dx, dy) || 1e-6, e = (d - L[j]) / d;
+          let wa = 0.5, wb = 0.5;
+          if (j === PJ) { wa = 0; wb = 1; } else if (j + 1 === PJ) { wa = 1; wb = 0; }
+          px[j] += dx * e * wa; py[j] += dy * e * wa; px[j + 1] -= dx * e * wb; py[j + 1] -= dy * e * wb;
+        }
+        for (let j = 0; j < NC - 1; j++) {   // hinge limit: never fold flatter than ~45°
+          const dx = px[j + 2] - px[j], dy = py[j + 2] - py[j], d = Math.hypot(dx, dy) || 1e-6, mn = 0.42 * (L[j] + L[j + 1]);
+          if (d < mn) {
+            const e = (d - mn) / d;
+            let wa = 0.5, wb = 0.5; if (j === PJ) { wa = 0; wb = 1; } else if (j + 2 === PJ) { wa = 1; wb = 0; }
+            px[j] += dx * e * wa; py[j] += dy * e * wa; px[j + 2] -= dx * e * wb; py[j + 2] -= dy * e * wb;
+          }
+        }
+      }
+      px[PJ] = P.x; py[PJ] = P.y;
+    }
+  }
+}
+
+function physAt(t) {
+  const f = clamp((t - TB) * SR, 0, NS - 1.0001), s = Math.floor(f), u = f - s;
+  const xs = [], ys = [];
+  for (let j = 0; j < NJ; j++) {
+    xs.push(lerp(JX[s * NJ + j], JX[(s + 1) * NJ + j], u));
+    ys.push(lerp(JY[s * NJ + j], JY[(s + 1) * NJ + j], u));
+  }
+  const cam = { x: lerp(CAM[s * 3], CAM[s * 3 + 3], u), y: lerp(CAM[s * 3 + 1], CAM[s * 3 + 4], u), z: Math.exp(lerp(CAM[s * 3 + 2], CAM[s * 3 + 5], u)) };
+  return { xs, ys, cam };
+}
+
+// ---------- card bitmaps ----------
+const BMP = [];
+function fitWord(c, word, maxW, maxH) {
+  c.font = '900 100px Archivo'; c.fontStretch = 'expanded';
+  const w = c.measureText(word).width;
+  return Math.min(maxH, 100 * maxW / w);
+}
+function buildCards() {
+  FEED.forEach((f, r) => {
+    const cvs = document.createElement('canvas'); cvs.width = CW; cvs.height = f.h;
+    const c = cvs.getContext('2d');
+    c.fillStyle = f.bg; c.beginPath(); c.roundRect(0, 0, CW, f.h, RAD); c.fill();
+    c.save(); c.beginPath(); c.roundRect(0, 0, CW, f.h, RAD); c.clip();
+    if (f.kind === 'stripes') {
+      c.fillStyle = C.ink;
+      for (let x = -f.h; x < CW + f.h; x += 64) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x + 30, 0); c.lineTo(x + 30 - f.h, f.h); c.lineTo(x - f.h, f.h); c.fill(); }
+      c.fillStyle = f.bg; c.fillRect(40, f.h / 2 - 70, 560, 140);
+      c.fillStyle = C.ink; c.font = '900 92px Archivo'; c.fontStretch = 'expanded'; c.textBaseline = 'middle';
+      c.fillText('SKIP?', 68, f.h / 2 + 4);
+    } else if (f.kind === 'dots') {
+      for (let y = 70; y < f.h - 50; y += 38) for (let x = 40; x < CW - 20; x += 38) {
+        const u = x / CW, v = (y - 70) / (f.h - 120);
+        const r0 = 3 + 15 * Math.pow(Math.max(0, Math.sin(u * Math.PI * 1.5 + v * 2.2)), 2);
+        c.fillStyle = (Math.floor(x / 38) + Math.floor(y / 38)) % 5 === 0 ? C.blue : C.red;
+        c.beginPath(); c.arc(x, y, r0, 0, 7); c.fill();
+      }
+    } else if (f.kind === 'ring') {
+      c.strokeStyle = 'rgba(244,239,230,.25)'; c.lineWidth = 26;
+      c.beginPath(); c.arc(CW - 230, f.h / 2 + 10, 130, 0, 7); c.stroke();
+      c.fillStyle = C.cream; c.font = '900 210px Archivo'; c.fontStretch = 'expanded'; c.textBaseline = 'alphabetic';
+      c.fillText('15', 50, f.h / 2 + 90);
+      c.font = '500 34px "DM Mono"'; c.fontStretch = 'normal'; c.fillText('SEC', 60 + c.measureText('').width, f.h / 2 + 140);
+    }
+    if (f.word) {
+      const fs = fitWord(c, f.word, CW - 110, f.h * 0.62);
+      c.fillStyle = f.fg; c.font = `900 ${fs}px Archivo`; c.fontStretch = 'expanded'; c.textBaseline = 'alphabetic';
+      c.fillText(f.word, 52, f.h / 2 + fs * 0.36 + 8);
+    }
+    c.restore();
+    c.font = '500 26px "DM Mono"'; c.fontStretch = 'normal'; c.textBaseline = 'alphabetic';
+    c.fillStyle = f.fg; c.globalAlpha = .85;
+    c.fillText(f.meta[0], 52, 58);
+    const mw = c.measureText(f.meta[1]).width; c.fillText(f.meta[1], CW - 52 - mw, 58);
+    c.globalAlpha = .7; c.fillText(f.foot, 52, f.h - 34);
+    c.globalAlpha = 1;
+    BMP.push(cvs);
+  });
+}
+
+// ---------- scene state at time t ----------
+// returns cards in screen space: {i, cx, cy, ang, sc}, plus pin/hinge info
+function stateAt(t) {
+  const st = { cards: [], hinges: [], pin: null, hingeA: 0, z: 1 };
+  const S = scrollAt(t);
+  if (S !== null) {
+    const iMin = Math.floor((S - 600) / HP) * NP, iMax = Math.ceil((S + H + 600) / HP) * NP + NP;
+    for (let i = iMin; i <= iMax; i++) {
+      const f = cardOf(i), y = topOf(i) - S;
+      if (y > H + 20 || y + f.h < -20) continue;
+      st.cards.push({ i, cx: CX, cy: y + f.h / 2, ang: 0, sc: 1 });
+    }
+    return st;
+  }
+  const ph = physAt(t);
+  let xs = ph.xs, ys = ph.ys, cam = ph.cam;
+  if (t > TA0) {
+    const u = smoother((t - TA0) / (TA1 - TA0));
+    const uc = ease((t - TA0) / (TA1 - TA0 - 0.25));
+    xs = xs.map((x, j) => lerp(x, J0[j].x, u));
+    ys = ys.map((y, j) => lerp(y, J0[j].y, u));
+    cam = { x: lerp(cam.x, ASM_CAM.x, uc), y: lerp(cam.y, ASM_CAM.y, uc), z: Math.exp(lerp(Math.log(cam.z), 0, uc)) };
+  }
+  // slam shake
+  const ts = t - TB, shk = 46 * Math.exp(-ts * 9);
+  const sx = shk * Math.sin(ts * 83), sy = shk * Math.cos(ts * 61);
+  const off = 70 * clamp((t - TB) / 0.8) * (t > TA0 ? 1 - ease((t - TA0) / (TA1 - TA0 - 0.25)) : 1);
+  const toS = (x, y) => [(x - cam.x) * cam.z + W / 2 + sx, (y - cam.y) * cam.z + H / 2 + sy + off];
+  st.z = cam.z;
+  for (let j = 0; j < NC; j++) {
+    const a = toS(xs[j], ys[j]), b = toS(xs[j + 1], ys[j + 1]);
+    st.cards.push({ i: I0 + j, cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2, ang: Math.atan2(-(b[0] - a[0]), b[1] - a[1]), sc: cam.z });
+  }
+  for (let j = 0; j < NJ; j++) st.hinges.push(toS(xs[j], ys[j]));
+  st.hingeA = clamp((t - TB) / 0.15) * (1 - smoother((t - TA0 - 0.6) / 1.4));
+  const P = t > TA0 ? { x: lerp(pinAt(t).x, PIN0.x, smoother((t - TA0) / (TA1 - TA0))), y: lerp(pinAt(t).y, PIN0.y, smoother((t - TA0) / (TA1 - TA0))) } : pinAt(t);
+  st.pin = toS(P.x, P.y);
+  return st;
+}
+
+// ---------- drawing ----------
+const layer = document.createElement('canvas'); layer.width = W; layer.height = H;
+const lc = layer.getContext('2d');
+
+function drawCards(c, st, t) {
+  // background + dot grid (world-anchored during the hold)
+  c.fillStyle = C.bg; c.fillRect(0, 0, W, H);
+  // cards: STOP last so it is always on top
+  const order = st.cards.slice().sort((a, b) => (mod(a.i, NP) === 0) - (mod(b.i, NP) === 0));
+  for (const k of order) {
+    const f = cardOf(k.i), r = mod(k.i, NP);
+    c.save(); c.translate(k.cx, k.cy); c.rotate(k.ang); c.scale(k.sc, k.sc);
+    // shadow
+    c.fillStyle = 'rgba(0,0,0,.45)'; c.beginPath(); c.roundRect(-CW / 2 + 14, -f.h / 2 + 22, CW, f.h, RAD); c.fill();
+    c.drawImage(BMP[r], -CW / 2, -f.h / 2);
+    // live bits
+    if (f.kind === 'ring') {
+      const a0 = -Math.PI / 2, frac = (t / 15) % 1;
+      c.strokeStyle = C.lime; c.lineWidth = 26; c.lineCap = 'round';
+      c.beginPath(); c.arc(CW / 2 - 230, 10, 130, a0, a0 + Math.max(0.02, frac) * Math.PI * 2); c.stroke();
+      c.fillStyle = C.cream; c.font = '500 40px "DM Mono"'; c.fontStretch = 'normal'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText((15 - t).toFixed(1).padStart(4, '0'), CW / 2 - 230, 12); c.textAlign = 'left';
+    }
+    if (k.i === SI + 2 && t > TA1) {   // the assembled THERE. gets a yellow marker wipe
+      const u = smoother((t - 11.55) / 0.5);
+      if (u > 0) {
+        c.save(); c.beginPath(); c.roundRect(-CW / 2, -f.h / 2, CW, f.h, RAD); c.clip();
+        c.fillStyle = C.yellow; c.fillRect(-CW / 2, -f.h / 2, CW * u, f.h);
+        c.beginPath(); c.rect(-CW / 2, -f.h / 2, CW * u, f.h); c.clip();
+        c.drawImage(BMP[r], -CW / 2, -f.h / 2);
+        c.globalCompositeOperation = 'multiply'; c.fillStyle = C.yellow; c.fillRect(-CW / 2, -f.h / 2, CW * u, f.h);
+        c.restore();
+      }
+    }
+    if (k.i === SI + 1 && t > TA1) {   // RIGHT flips to an inverted card in steps
+      const u = smoother((t - 11.3) / 0.35);
+      if (u > 0) {
+        c.save(); c.beginPath(); c.roundRect(-CW / 2, -f.h / 2, CW, f.h * u, RAD); c.clip();
+        c.fillStyle = C.lime; c.fillRect(-CW / 2, -f.h / 2, CW, f.h);
+        c.globalCompositeOperation = 'difference'; c.drawImage(BMP[r], -CW / 2, -f.h / 2);
+        c.restore();
+      }
+    }
+    c.restore();
+  }
+  // hinges
+  if (st.hingeA > 0) {
+    c.globalAlpha = st.hingeA;
+    for (let j = 0; j < st.hinges.length; j++) {
+      const [x, y] = st.hinges[j], r0 = Math.max(7, 16 * st.z);
+      c.fillStyle = C.cream; c.beginPath(); c.arc(x, y, r0, 0, 7); c.fill();
+      c.fillStyle = C.ink; c.beginPath(); c.arc(x, y, r0 * .45, 0, 7); c.fill();
+    }
+    c.globalAlpha = 1;
+  }
+}
+
+function drawPin(c, st, t) {
+  if (!st.pin) return;
+  const a = clamp((t - TB) / 0.06) * (1 - smoother((t - TA0 - 0.5) / 1.5));
+  if (a <= 0) return;
+  const [x, y] = st.pin;
+  // ripple from the slam
+  for (let k = 0; k < 3; k++) {
+    const u = (t - TB - k * 0.12) / 0.9;
+    if (u > 0 && u < 1) {
+      c.strokeStyle = `rgba(255,212,0,${(1 - u) * .9})`; c.lineWidth = 10 * (1 - u) + 2;
+      c.beginPath(); c.arc(x, y, 60 + 520 * (1 - Math.pow(1 - u, 3)), 0, 7); c.stroke();
+    }
+  }
+  const pop = 1 + 0.6 * Math.exp(-(t - TB) * 10) * Math.cos((t - TB) * 40);
+  const r0 = Math.max(26, 64 * st.z) * pop;
+  c.globalAlpha = a;
+  c.fillStyle = 'rgba(0,0,0,.4)'; c.beginPath(); c.arc(x + 8, y + 12, r0, 0, 7); c.fill();
+  c.fillStyle = C.yellow; c.beginPath(); c.arc(x, y, r0, 0, 7); c.fill();
+  c.strokeStyle = C.ink; c.lineWidth = Math.max(3, 7 * st.z);
+  for (let k = 1; k <= 3; k++) { c.beginPath(); c.arc(x, y - r0 * 0.08, r0 * (0.22 * k), Math.PI * 1.1, Math.PI * 1.9); c.stroke(); }
+  c.globalAlpha = 1;
+}
+
+function drawHUD(c, t) {
+  let g = c.createLinearGradient(0, 0, 0, 230);
+  g.addColorStop(0, 'rgba(15,15,18,.92)'); g.addColorStop(1, 'rgba(15,15,18,0)');
+  c.fillStyle = g; c.fillRect(0, 0, W, 230);
+  g = c.createLinearGradient(0, H - 170, 0, H);
+  g.addColorStop(0, 'rgba(15,15,18,0)'); g.addColorStop(1, 'rgba(15,15,18,.92)');
+  c.fillStyle = g; c.fillRect(0, H - 170, W, 170);
+  c.fillStyle = C.cream; c.textBaseline = 'alphabetic'; c.fontStretch = 'normal';
+  c.font = '500 26px "DM Mono"';
+  c.fillText('MIDDLE STUDIES', 48, 70);
+  c.globalAlpha = .7; c.fillText('REEL — 044  STOP RIGHT THERE', 48, 106); c.globalAlpha = 1;
+  // velocity readout
+  const v = Math.round(scrollVel(t));
+  c.textAlign = 'right';
+  c.globalAlpha = .7; c.font = '500 24px "DM Mono"'; c.fillText('SCROLL VELOCITY', W - 48, 60); c.globalAlpha = 1;
+  c.font = '900 64px Archivo'; c.fontStretch = 'expanded';
+  c.fillStyle = v === 0 ? C.red : C.cream;
+  c.fillText(String(v).padStart(4, '0'), W - 48 - 96, 128);
+  c.font = '500 26px "DM Mono"'; c.fontStretch = 'normal'; c.fillText('px/s', W - 48, 128);
+  if (t > TB && t < TA1 + 0.4) {
+    c.fillStyle = C.yellow; c.font = '500 26px "DM Mono"';
+    c.globalAlpha = clamp((t - TB) / .1) * (1 - clamp((t - TA1) / .4));
+    c.fillText('HELD ' + (Math.min(t, TA1) - TB).toFixed(2) + ' s', W - 48, 168); c.globalAlpha = 1;
+  }
+  c.textAlign = 'left'; c.fillStyle = C.cream; c.font = '500 24px "DM Mono"';
+  c.globalAlpha = .75; c.fillText('t ' + t.toFixed(2).padStart(5, '0') + ' / 15.00', 48, H - 52);
+  c.textAlign = 'right'; c.fillText('Claude', W - 48, H - 52); c.textAlign = 'left'; c.globalAlpha = 1;
+}
+
+const SHUTTER = 1 / 120, K = 6;
+function renderAt(t) {
+  t = clamp(t, 0, 15);
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  for (let k = 0; k < K; k++) {
+    const ts = clamp(t + SHUTTER * (k / (K - 1) - 0.5), 0, 15 - 1e-6);
+    const st = stateAt(ts);
+    drawCards(lc, st, ts);
+    drawPin(lc, st, ts);
+    ctx.globalAlpha = 1 / (k + 1);
+    ctx.drawImage(layer, 0, 0);
+  }
+  ctx.globalAlpha = 1;
+  drawHUD(ctx, t);
+}
+
+Promise.all([
+  document.fonts.load('900 100px Archivo'),
+  document.fonts.load('500 26px "DM Mono"'),
+  document.fonts.ready,
+]).then(() => {
+  buildCards();
+  simulate();
+  window.__seek = t => renderAt(t);
+  if (!location.search.includes('render')) {
+    const t0 = performance.now();
+    const loop = () => { renderAt(((performance.now() - t0) / 1000) % 15); requestAnimationFrame(loop); };
+    loop();
+  } else renderAt(0);
+});
+</script>
+</body>
+</html>

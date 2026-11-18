@@ -1671,5 +1671,46 @@
     "review": "1周目（静止画）：字が細く小さい→単位を最大60px・線幅17pxに。回転円が弱い→不透明度と線幅を上げ、大きい8個を太線に。溶けた形がただの楕円→遮断の底を fmax 3.5〜5 に上げてうねりを残す。0〜1.5秒が単調→待ちの区間に拍ごとの低域パルス（字が一瞬ゆらいで戻る）を5か所入れた。2周目（本番）：掃引の針が6pxで色替えに負ける→11pxにし、目盛りを大きくし、境目にアクセント色の線。3周目：0.65秒のパルス・13.55秒の楕円の塗り広げ・14.2秒の咲き戻りを等倍で確認、直すことなし。許容した差：直線的な一筆書き字形では O が D に近く見える瞬間がある（OUT は文脈で読める）。",
     "condition": "no-depth",
     "slot": "2026-11-17"
+  },
+  {
+    "id": "044",
+    "slug": "stop-right-there",
+    "title": "Stop Right There",
+    "date": "2026-11-18",
+    "concept": "縦9:16で、親指で流し見するフィードそのものを題材にした。0秒目は毎秒3000pxで流れる自分のフィードで、0.4秒に黄色い親指のピンが赤い STOP のカードを打ち止める。速度計は0000に落ち、蝶番でつながったカードの列は勢いのまま座屈して、折れた鎖になってぶら下がる。ピンが引き回され、見せ場の6〜8.6秒には鎖ごと投げ縄のように振り回される。8.6秒から全部が元の列に戻って『STOP / RIGHT / THERE.』が読め、フィードがまた加速して0秒目へ流れていく。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/044_stop-right-there.mp4",
+    "techniques": [
+      "verlet-hinged-card-chain",
+      "pin-slam-momentum-buckling",
+      "hinge-angle-limit-constraint",
+      "kinematic-pin-drag-and-lasso",
+      "bbox-framing-critically-damped-camera",
+      "subframe-motion-blur-accumulation",
+      "feed-ui-as-subject",
+      "power-law-relaunch-to-loop-velocity",
+      "scroll-velocity-hud-hook"
+    ],
+    "look": {
+      "palette": [
+        "#0f0f12",
+        "#ff3b1f",
+        "#c6f432",
+        "#2340ff",
+        "#ff8fcf",
+        "#ffd400",
+        "#f4efe6"
+      ],
+      "type": [
+        "Archivo Expanded 900",
+        "DM Mono"
+      ],
+      "structure": "vertical, one feed, no cuts / feed scrolls at 3000 px/s (0 s) → thumb pin slams STOP at 0.4 s, velocity 0000, the hinged cards buckle into a folded chain while the camera pulls out → chain hangs, the pin yanks and drags it around (1.7–5.6 s) → lasso: the pin circles and the chain whips (hero 6–8.6 s) → every card flies back to its slot, STOP / RIGHT / THERE. read, markers wipe (8.6–12 s) → feed relaunches to 3000 px/s = frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：座屈がほとんど起きず列が棒のまま止まっていた→蝶番に左右互い違いの初期ずれを入れて折れるようにした。2〜3秒が垂れ下がるだけで止まっていた→1.7秒からピンを引き上げて振り回す。2周目：整列後の STOP の上端が上部 HUD の下に入り、赤地に赤い0000が重なっていた→STOP を y=196 に下げた。投げ縄の半径が小さく丸まっていた→半径560・1.6回転/秒にし、物理の区間は HUD の分だけ枠を下げた。3周目：投げ縄中にカメラが遅れ、鎖が画面外へ出ていた→その区間だけカメラのばねを7.5に締め、枠の余白を広げた。許容した差：8.2秒前後に左端で、9.8秒前後に右端でカードが少し切れる（振り回しと戻りの勢いとして残した）。整列時は STOP の上の THIS. が HUD の下からのぞく。",
+    "condition": "vertical",
+    "format": "vertical",
+    "slot": "2026-11-18"
   }
 ]
