@@ -1011,5 +1011,38 @@
       ]
     },
     "use": "ブランドの FV・章扉の背景に。白地に赤1色なので見出しを左右どちらの余白にも置ける"
+  },
+  {
+    "id": "032",
+    "slug": "torsion",
+    "title": "TORSION",
+    "title_ja": "ねじれる鋼板",
+    "date": "2026-11-20",
+    "track": "FORM",
+    "concept": "白い長いギャラリーに、耐候性鋼の板を外から内へ1.6周巻き込んだ渦。板は周に沿って内へ外へと倒れがねじれ、奥に漏斗・二枚の波・小さな渦が同じ素材で連なる。見どころは見下ろしたときに重なる巻きの層と、錆の面を締める細い小口の線。",
+    "source": {
+      "url": "https://cms.guggenheim-bilbao.eus/uploads/2012/05/2005-La-materia-del-tiempo-1024x806.jpg",
+      "took": "光：天窓の柔光で空間全体を上から満たし、鋼板は内側が一段沈む・落ち影はほぼ無い / 素材：艶消しの耐候性鋼の黄土の錆・縦の継ぎ目・小口の細い明るい線、磨いたコンクリートの床のむら / 構図：高い所から見下ろす広角・手前の大きな渦が下半分を占めて縁で切れ、同じ素材の形が奥へ反復する / 色：白い壁と灰の床6割強・黄土の錆3割・焦げ茶の陰1割"
+    },
+    "look": {
+      "track": "FORM",
+      "palette_family": "ochre-rust-on-white-grey",
+      "background": "long-white-gallery-concrete-floor",
+      "lighting": "skylight-overhead-with-wall-grazers",
+      "lens": "wide",
+      "aspect": "5:4",
+      "material": "weathering-steel-plate"
+    },
+    "review_rounds": 21,
+    "film": {
+      "sec": 11.2,
+      "shots": [
+        "スライド",
+        "マクロ",
+        "光の走り",
+        "決め"
+      ]
+    },
+    "use": "FV や章扉の背景に。上2割の白い壁と右の床に見出しを置ける余白があり、スクロールで渦の中へ降りる演出の起点にもなる"
   }
 ]
