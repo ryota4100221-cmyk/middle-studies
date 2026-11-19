@@ -1712,5 +1712,44 @@
     "condition": "vertical",
     "format": "vertical",
     "slot": "2026-11-18"
+  },
+  {
+    "id": "045",
+    "slug": "crease",
+    "title": "Crease",
+    "date": "2026-11-19",
+    "concept": "monaka design. のロゴを刷った1枚の紙を、折る・畳む・蛇腹にする・扇に開く、で15秒にした。平行投影なので折りの途中もすべてアフィン変換で、折り線で面を切り分けて回すだけで、裏のライムと表の白が層の順序どおりに入れ替わる。0.3秒目に右端がライムの裏を見せて折り返され、紙飛行機のように6回畳まれてから宙返りし、折り目を残したまま一気に開く。見せ場は8.6〜10.9秒：字形ごとに切った20枚の帯が扇に開き、monaka design. が弧に沿って読め、裏返りの波がライムを走らせる。扇は閉じて蛇腹が中心から開き、0秒目のロゴに戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/045_crease.mp4",
+    "techniques": [
+      "orthographic-affine-paper-folding",
+      "face-splitting-along-fold-lines",
+      "valley-mountain-layer-reordering",
+      "partial-corner-folds-two-sided-paper",
+      "packet-tumble-with-flip-and-layer-reversal",
+      "crease-memory-lines-on-unfold",
+      "glyph-aligned-accordion-pleats",
+      "travelling-compression-wave-bellows",
+      "width-proportional-card-fan",
+      "domino-flip-wave-across-fan"
+    ],
+    "look": {
+      "palette": [
+        "#0a0a0a",
+        "#ffffff",
+        "#a5e02e",
+        "#303030",
+        "#888888"
+      ],
+      "type": [
+        "monaka design. logo (original paths)",
+        "IBM Plex Mono 500"
+      ],
+      "structure": "one two-sided sheet (white front with the logo, lime back), no cuts / white lockup (0 s) → right strip valley-folds over, lime back (0.3 s) → corner and half folds like a paper plane, camera chases the shrinking packet (0.3–3.7 s) → packet spins once and flips twice (3.8–5.0 s) → unfolds in 1.1 s, crease lines remain → sheet becomes 20 glyph-aligned pleats, a compression wave runs through the logo → bellows squeeze to a sliver → cards fan open around a pivot, monaka design. reads along the arc (hero 8.6–10.9 s), radial pops on the beat, a flip wave shows lime backs → fan closes, bellows open from the centre → flat lockup = frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 4,
+    "review": "1周目：全面を谷折りすると外側が両面ライムになり、ロゴが2秒目から見えなくなる→折り線をずらした部分折り（帯・角）に変え、白のロゴとライムの折り返しが同じ面に並ぶように。最後のロゴに帯の境目が細く見えた（クリップのアンチエイリアス）→帯を1.5単位重ね、12.75秒からは1枚の紙で描く。2周目：扇でマークの帯が太く、次の帯がライムの三日月を隠した→帯の角度を幅に比例させ、隣り合う帯がちょうど触れる半径にロゴを置いた。3周目：蛇腹の区間が灰色の縞で止まって見えた→振幅と波の速さを上げ、カメラに小さなロールを足した。4周目：直すことが言えなくなった。許容した差：扇の両端の帯は画面の左右で少し切れる。",
+    "condition": "logo",
+    "slot": "2026-11-19"
   }
 ]
