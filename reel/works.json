@@ -1751,5 +1751,49 @@
     "review": "1周目：全面を谷折りすると外側が両面ライムになり、ロゴが2秒目から見えなくなる→折り線をずらした部分折り（帯・角）に変え、白のロゴとライムの折り返しが同じ面に並ぶように。最後のロゴに帯の境目が細く見えた（クリップのアンチエイリアス）→帯を1.5単位重ね、12.75秒からは1枚の紙で描く。2周目：扇でマークの帯が太く、次の帯がライムの三日月を隠した→帯の角度を幅に比例させ、隣り合う帯がちょうど触れる半径にロゴを置いた。3周目：蛇腹の区間が灰色の縞で止まって見えた→振幅と波の速さを上げ、カメラに小さなロールを足した。4周目：直すことが言えなくなった。許容した差：扇の両端の帯は画面の左右で少し切れる。",
     "condition": "logo",
     "slot": "2026-11-19"
+  },
+  {
+    "id": "046",
+    "slug": "reflow",
+    "title": "Reflow",
+    "date": "2026-11-20",
+    "concept": "架空の印刷会社「ホシノメ印刷」のFVに置く15秒を、確定値の9色・3書体のまま、組版の操作だけで動かした。紙も写真もカメラも使わず、『紙のことなら、ホシノメへ。』の13字が、FVの縦組み2行→横組み1行→ジャンプ率1:16.9→明朝からゴシックへの書体替え→円周、と字ごとに飛んで組み替わり、約物の「、」「。」は縦横で字面の位置まで移る。見せ場は7.3〜8.7秒：13字が840字の頁に増殖し、右上からの波で頁全体が横組みから縦組みへ組み直される（藍の1行だけが読める）。840字を13字に回収したあと字送りを-0.42emから全幅の均等割りまで振って、FVの縦組みに戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/046_reflow.mp4",
+    "techniques": [
+      "per-glyph-layout-interpolation",
+      "vertical-horizontal-typesetting-reflow",
+      "punctuation-position-rules-tate-yoko",
+      "jump-rate-geometric-type-scale",
+      "typeface-swap-by-squash-flip",
+      "ring-setting-with-tangent-rotation",
+      "840-glyph-page-spawn-from-13",
+      "wavefront-reflow-of-whole-page",
+      "collect-copies-into-single-line",
+      "tracking-sweep-negative-to-justified",
+      "velocity-driven-em-box-frames"
+    ],
+    "look": {
+      "palette": [
+        "#ffffff",
+        "#e6e6e6",
+        "#d4d4d4",
+        "#1c1e22",
+        "#5c6068",
+        "#8c9099",
+        "#1f3a6e",
+        "#9db0d6"
+      ],
+      "type": [
+        "Kaisei Tokumin",
+        "BIZ UDPGothic",
+        "Libre Franklin"
+      ],
+      "structure": "one corporate FV, header and footer fixed, no camera, no paper / FV vertical copy in two columns (0 s) → glyphs fly into one horizontal line (0.2–1.4 s) → jump rate 1:16.9 on one baseline with Q labels (1.6–2.9 s) → staircase while each glyph squash-flips from Kaisei Tokumin to BIZ UDPGothic (2.95–4.0 s) → ring with tangent rotation, spinning (4.2–5.9 s) → 13 glyphs spawn an 840-glyph page (5.9–7.0 s) → wavefront reflows the whole page from horizontal to vertical, the ai copy line stays readable (hero 7.3–8.7 s) → 840 collected back into 13 (9.0–10.2 s) → tracking -0.42 em → justified → 0 (10.2–12 s) → glyphs return to the vertical FV = frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 4,
+    "review": "1周目：頁（840字）の最上段がHUDの REFLOW 表示に重なっていた→字を40→37pxにして上端を214pxに下げた。止まっている頁の字まで灰#8c9099で藍の1行が埋もれていた→静止中は#d4d4d4、移動中だけ#8c9099に。2周目：840字を回収する場面で複製まで140pxに膨らんで灰の泥になっていた→複製は着くまでに1/4へ縮めて消し、藍の13字だけが行に着く形に。3周目：最後のFVへ戻るところで弧の振りが大きすぎ、「紙」が画面下端近くまで落ちてから上がっていた→振りを0.3→-0.1にして、字が右上の列へ流れ込むように。4周目：12.5〜13.4秒を見直し、直すことは出なかった。許容した差：円周へ移る4.7秒前後で段組みの字と円の字が一瞬重なって読めない（0.3秒ほどの通過なので残す）。FVの左側は余白のまま（縦組みFVの定型として、色や図形は足さない）。",
+    "condition": "case-values",
+    "slot": "2026-11-20"
   }
 ]
