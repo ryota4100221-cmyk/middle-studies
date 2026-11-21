@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 047 Even Odd</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=JetBrains+Mono:wght@500;700&display=block" rel="stylesheet">
+<style>
+  html,body{margin:0;background:#0b0b0b;overflow:hidden}
+  canvas{display:block;width:100vw;height:auto}
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// REEL — 047 EVEN ODD : one flat plane, every overlap flips (alpha XOR parity). No depth, no camera.
+const W = 1920, H = 1080, CX = 960, CY = 540, PI = Math.PI;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const mk = document.createElement('canvas'); mk.width = W; mk.height = H;
+const m = mk.getContext('2d');
+window.__duration = 15;
+window.__poster = 7.25;
+
+// ---------- easing ----------
+const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const r01 = (t, a, b) => cl((t - a) / (b - a));
+const lin = x => x;
+const eio3 = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const eoExpo = x => x >= 1 ? 1 : 1 - Math.pow(2, -10 * x);
+const eiExpo = x => x <= 0 ? 0 : Math.pow(2, 10 * x - 10);
+const eoBack = (x, s = 1.9) => 1 + (s + 1) * Math.pow(x - 1, 3) + s * Math.pow(x - 1, 2);
+const eiCubic = x => x * x * x;
+const eoCubic = x => 1 - Math.pow(1 - x, 3);
+const eioBack = (x, s = 1.7 * 1.525) => x < .5
+  ? (Math.pow(2 * x, 2) * ((s + 1) * 2 * x - s)) / 2
+  : (Math.pow(2 * x - 2, 2) * ((s + 1) * (x * 2 - 2) + s) + 2) / 2;
+const eoBounce = x => { const n = 7.5625, d = 2.75;
+  if (x < 1 / d) return n * x * x; if (x < 2 / d) return n * (x -= 1.5 / d) * x + .75;
+  if (x < 2.5 / d) return n * (x -= 2.25 / d) * x + .9375; return n * (x -= 2.625 / d) * x + .984375; };
+const lerp = (a, b, k) => a + (b - a) * k;
+// keyframe track: keys = [[t, [values], ease]] ; ease belongs to the segment ending at that key
+function track(keys, t) {
+  if (t <= keys[0][0]) return keys[0][1];
+  for (let i = 1; i < keys.length; i++) {
+    const [t1, v1, e] = keys[i];
+    if (t <= t1) { const [t0, v0] = keys[i - 1]; const k = (e || lin)(r01(t, t0, t1)); return v0.map((a, j) => lerp(a, v1[j], k)); }
+  }
+  return keys[keys.length - 1][1];
+}
+
+// ---------- palette (bg, fg) — swapped on the beat ----------
+const PAL = [
+  [0.0, '#f4f1ea', '#0b0b0b'],
+  [4.0, '#ff2e88', '#0b0b0b'],
+  [6.0, '#1d22ff', '#f4f1ea'],
+  [8.75, '#19e68c', '#0b0b0b'],
+  [11.4, '#f4f1ea', '#0b0b0b'],
+];
+const pal = t => { let p = PAL[0]; for (const q of PAL) if (t >= q[0]) p = q; return p; };
+
+// ---------- the one half-plane that runs through all 15 s : [phi, d] ----------
+const HK = [
+  [0, [0, 0]], [1.0, [0, 0]], [1.35, [PI / 2, 0], eio3],
+  [1.55, [PI / 2, 0]], [1.95, [PI / 2, 1300], eio3],
+  [4.0, [PI / 2, 1300]], [4.32, [PI / 2, -1300], eio3],
+  [4.5, [0, -1300]], [4.82, [0, 1300], eio3],
+  [5.0, [1.25 * PI, 1300]], [5.32, [1.25 * PI, -1300], eio3],
+  [5.5, [0.75 * PI, -1300]], [5.82, [0.75 * PI, 1300], eio3],
+  [6.0, [-PI / 2, 1300]], [6.32, [-PI / 2, -1300], eio3],
+  [8.72, [-PI / 2, -1300]], [9.1, [-PI / 2, -240], eoBack],
+  [11.35, [-PI / 2, -240]], [13.35, [2 * PI, 0], eio3],
+  [15, [2 * PI, 0]],
+];
+function halfPlane(t) {
+  const [phi, d] = track(HK, t);
+  if (d <= -1250) return;               // empty
+  const nx = Math.cos(phi), ny = Math.sin(phi);
+  const px = CX + nx * d, py = CY + ny * d, tx = -ny, ty = nx, L = 4000;
+  m.beginPath();
+  m.moveTo(px + tx * L, py + ty * L); m.lineTo(px - tx * L, py - ty * L);
+  m.lineTo(px - tx * L - nx * L, py - ty * L - ny * L); m.lineTo(px + tx * L - nx * L, py + ty * L - ny * L);
+  m.closePath(); m.fill();
+}
+function disc(x, y, r) { if (r <= 0.3) return; m.beginPath(); m.arc(x, y, r, 0, 2 * PI); m.fill(); }
+function ring(x, y, r0, r1) { if (r1 <= 0.3) return; m.beginPath(); m.arc(x, y, r1, 0, 2 * PI); if (r0 > 0.3) m.arc(x, y, r0, 0, 2 * PI, true); m.fill(); }
+
+// ---------- discs ----------
+function discs(t) {
+  // A: the one disc pops (frame 0 has r = 0), then buds a second disc
+  if (t < 4.2) {
+    let r = 380 * eoBack(r01(t, 0.05, 0.55), 2.2);
+    const s = eio3(r01(t, 1.4, 1.95));
+    let ang = PI;                                    // pair axis angle: disc 1 on the left
+    const beats = [2.5, 3.0, 3.5];
+    for (const b of beats) ang += (PI / 2) * eioBack(r01(t, b, b + 0.38));
+    const shrink = 1 - eiCubic(r01(t, 3.65, 4.05));
+    const R = 560 * s;
+    const r1 = lerp(r, 250, s) * shrink;
+    const r2 = 250 * eoBack(r01(t, 1.4, 1.95)) * shrink;
+    const pulse = b => 1 + 0.18 * Math.exp(-14 * Math.max(0, t - b)) * (t >= b ? 1 : 0);
+    let pk = 1; for (const b of [2.0, 2.5, 3.0, 3.5]) pk *= pulse(b + 0.3);
+    disc(CX + Math.cos(ang) * R, CY + Math.sin(ang) * R, r1 * (s > 0 ? pk : 1));
+    if (s > 0) disc(CX - Math.cos(ang) * R, CY - Math.sin(ang) * R, r2 * pk);
+  }
+  // C: a 5 x 3 grid of discs, popping outward from the centre on each beat, then sucked into the centre
+  if (t > 3.8 && t < 6.05) {
+    for (let j = 0; j < 3; j++) for (let i = 0; i < 5; i++) {
+      const gx = CX + (i - 2) * 380 + 50 * Math.sin(2 * PI * (t - 4) / 2 + j), gy = CY + (j - 1) * 360;
+      const dist = Math.hypot(i - 2, j - 1);
+      let r = 150 * eoBack(r01(t, 3.85 + dist * 0.06, 4.3 + dist * 0.06));
+      for (const b of [4.5, 5.0, 5.5]) { const u = t - b - dist * 0.05; if (u > 0) r += 70 * Math.exp(-9 * u) * Math.sin(u * 22) * (u < 0.5 ? 1 : 0) + 0; }
+      const suck = eiExpo(r01(t, 5.55 + dist * 0.03, 5.98));
+      const x = lerp(gx, CX, suck), y = lerp(gy, CY, suck);
+      disc(x, y, r * (1 - suck));
+    }
+  }
+  // F: the disc grows back and breathes out to r = 0 at 15 s (= frame 0)
+  if (t > 11.15) {
+    let r = 380 * eoBack(r01(t, 11.2, 11.75), 2.0);
+    for (const b of [12.0, 12.5, 13.0]) { const u = t - b; if (u > 0) r += 60 * Math.exp(-7 * u) * Math.sin(u * 16); }
+    r *= 1 - eiCubic(r01(t, 13.6, 15.0));
+    disc(CX, CY, r);
+  }
+}
+
+// ---------- hero: ripples born on the beat ----------
+function ripples(t) {
+  if (t < 6 || t > 9.4) return;
+  for (const born of [6.0, 6.5, 7.0, 7.5]) {
+    const u = t - born; if (u <= 0) continue;
+    const rho = 320 * u + 260 * u * u;
+    const w = 46 + 0.2 * rho;
+    if (rho - w > 1200) continue;
+    ring(CX, CY, Math.max(0, rho - w), rho);
+  }
+}
+
+// ---------- bars ----------
+function bars(t) {
+  // B: vertical bars thicken and scroll, kicked half a period on each beat
+  if (t > 2.0 && t < 4.0) {
+    const w = 140 * eoExpo(r01(t, 2.0, 2.4)) * (1 - eio3(r01(t, 3.6, 3.97)));
+    let off = 320 * (t - 2);
+    for (const b of [2.5, 3.0, 3.5]) off += 140 * eio3(r01(t, b, b + 0.25));
+    if (w > 0.5) { m.beginPath();
+      for (let k = -2; k < 10; k++) { const x = ((k * 280 + off) % 2800 + 2800) % 2800 - 300; m.rect(x, 0, w, H); }
+      m.fill(); }
+  }
+  // D: thin bars rotate in-plane about the centre against the ripples
+  if (t > 6.2 && t < 9.0) {
+    // bars go hairline while a word is standing, and fatten between words
+    let settle = 0;
+    for (const [a, b] of [[6.3, 6.8], [7.2, 7.7], [8.1, 8.5]]) settle = Math.max(settle, eio3(r01(t, a, a + 0.18)) * (1 - eio3(r01(t, b, b + 0.15))));
+    const w = lerp(76, 16, settle) * eoExpo(r01(t, 6.25, 6.7)) * (1 - eio3(r01(t, 8.4, 8.85)));
+    const th = 0.75 * PI * Math.sin(PI / 2 * r01(t, 6.25, 8.85)) ** 2;
+    if (w > 0.5) { m.save(); m.translate(CX, CY); m.rotate(th); m.beginPath();
+      for (let k = -9; k <= 8; k++) m.rect(k * 140 + 35 - w / 2 + 35, -1300, w, 2600);
+      m.fill(); m.restore(); }
+  }
+}
+
+// ---------- E: rolling squares on the floor ----------
+function squares(t) {
+  if (t < 8.85 || t > 11.6) return;
+  const s = 130, floor = 780, n = 6, gap = 240, x0 = 165;
+  const rolls = [[9.5, 1], [10.0, 1], [10.5, -1], [11.0, -1]];
+  for (let i = 0; i < n; i++) {
+    const drop = eoBounce(r01(t, 8.85 + i * 0.05, 9.35 + i * 0.05));
+    const yoff = (1 - drop) * -900;
+    let x = x0 + i * gap, ang = 0, piv = 0;
+    for (const [b, dir] of rolls) {
+      const k = eioBack(r01(t, b + i * 0.035, b + i * 0.035 + 0.4), 1.2);
+      if (k >= 1) { x += dir * s; continue; }
+      if (k > 0) { ang = dir * k * PI / 2; piv = dir; }
+      break;
+    }
+    const sc = 1 - eiCubic(r01(t, 11.05 + i * 0.04, 11.4 + i * 0.04));
+    if (sc <= 0) continue;
+    m.save();
+    if (piv !== 0) {
+      const px = piv > 0 ? x + s : x;
+      m.translate(px, floor + yoff); m.rotate(ang);
+      m.translate(piv > 0 ? -s / 2 : s / 2, -s / 2); m.scale(sc, sc);
+      m.fillRect(-s / 2, -s / 2, s, s);
+    } else {
+      m.translate(x + s / 2, floor - s / 2 + yoff); m.scale(sc, sc);
+      m.fillRect(-s / 2, -s / 2, s, s);
+    }
+    m.restore();
+  }
+}
+
+// ---------- words ----------
+const SLOTS = [
+  { w: 'FIGURE', tin: -10, tout: 1.7, dir: 1 },
+  { w: 'GROUND', tin: 1.85, tout: 3.7, dir: 1 },
+  { w: 'FLIP', tin: 3.95, tout: 5.5, dir: -1 },
+  { w: 'EVEN', tin: 6.05, tout: 6.8, dir: 1 },
+  { w: 'ODD', tin: 6.95, tout: 7.7, dir: -1 },
+  { w: 'EVEN', tin: 7.85, tout: 8.5, dir: 1 },
+  { w: 'FLAT', tin: 8.85, tout: 11.1, dir: -1, cy: 395, cap: 470 },
+  { w: 'FIGURE', tin: 11.45, tout: 99, dir: 1, hop: true },
+];
+let CAP = 0.73;
+function layout(slot) {
+  const capMax = slot.cap || 620;
+  if (slot.L) return slot.L;
+  m.font = '100px Anton';
+  const track = 0.02;
+  const ws = [...slot.w].map(ch => m.measureText(ch).width);
+  const tot1 = ws.reduce((a, b) => a + b, 0) + track * 100 * (ws.length - 1);
+  const fs = Math.min(1560 / tot1 * 100, capMax / CAP);
+  const sc = fs / 100, xs = []; let x = CX - tot1 * sc / 2;
+  ws.forEach(w => { xs.push(x); x += w * sc + track * fs; });
+  return slot.L = { fs, xs };
+}
+function words(t) {
+  for (const s of SLOTS) {
+    const n = s.w.length;
+    if (t < s.tin - 0.01 || t > s.tout + 0.03 * n + 0.4) continue;
+    const { fs, xs } = layout(s);
+    m.font = fs + 'px Anton';
+    const base = (s.cy || CY) + fs * CAP / 2;
+    [...s.w].forEach((ch, i) => {
+      const ti = r01(t, s.tin + i * 0.035, s.tin + i * 0.035 + 0.42);
+      const to = r01(t, s.tout + i * 0.03, s.tout + i * 0.03 + 0.36);
+      let y = base + s.dir * 1150 * (1 - eoExpo(ti)) - s.dir * 1150 * eiExpo(to);
+      if (s.hop) { const u = r01(t, 13.45 + i * 0.07, 13.45 + i * 0.07 + 0.42); y -= 70 * Math.sin(PI * u) * (u > 0 && u < 1 ? 1 : 0); }
+      if (y > H + fs || y < -fs) return;
+      m.fillText(ch, xs[i], y);
+    });
+  }
+}
+
+// ---------- HUD (also XOR-ed, so it is always the opposite of what is under it) ----------
+const SECT = [[0, 'FIGURE'], [1.85, 'GROUND'], [3.95, 'FLIP'], [6.0, 'EVEN / ODD'], [8.75, 'FLAT'], [11.4, 'FIGURE']];
+function hud(t) {
+  m.font = '700 20px "JetBrains Mono"'; m.textBaseline = 'alphabetic';
+  m.textAlign = 'left';
+  m.fillText('REEL — 047', 48, 62);
+  m.font = '500 20px "JetBrains Mono"';
+  m.fillText('EVEN–ODD FILL · ONE PLANE', 48, 90);
+  m.fillText('t ' + t.toFixed(2).padStart(5, '0') + ' / 15.00', 48, H - 44);
+  m.textAlign = 'right';
+  let sec = SECT[0][1]; for (const q of SECT) if (t >= q[0]) sec = q[1];
+  m.font = '700 20px "JetBrains Mono"';
+  m.fillText(sec, W - 48, 62);
+  m.font = '500 20px "JetBrains Mono"';
+  m.fillText('Claude', W - 48, H - 44);
+  m.textAlign = 'left';
+}
+
+function draw(t) {
+  t = ((t % 15) + 15) % 15;
+  m.setTransform(1, 0, 0, 1, 0, 0);
+  m.globalCompositeOperation = 'source-over';
+  m.clearRect(0, 0, W, H);
+  m.globalCompositeOperation = 'xor';
+  m.fillStyle = '#000';
+  halfPlane(t); discs(t); ripples(t); bars(t); squares(t); words(t); hud(t);
+  const [, bg, fg] = pal(t);
+  m.globalCompositeOperation = 'source-in';
+  m.fillStyle = fg; m.fillRect(0, 0, W, H);
+  m.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(mk, 0, 0);
+}
+
+(async () => {
+  await Promise.all([document.fonts.load('100px Anton'), document.fonts.load('500 20px "JetBrains Mono"'), document.fonts.load('700 20px "JetBrains Mono"')]);
+  m.font = '100px Anton';
+  CAP = m.measureText('H').actualBoundingBoxAscent / 100;
+  window.__seek = t => draw(t);
+  draw(0);
+  if (!location.search.includes('render')) {
+    const t0 = performance.now();
+    const loop = () => { draw(((performance.now() - t0) / 1000) % 15); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  }
+})();
+</script>
+</body>
+</html>
