@@ -1836,5 +1836,47 @@
     "review": "1周目：見せ場の EVEN/ODD が輪と帯の二重模様に埋もれて読めない／8.0秒生まれの波紋が FLAT の区間（9.4秒）に太い輪で残る／FLAT の字の下半分に150pxの正方形が重なってうるさい → 字が立つ間だけ帯を76pxから16pxへ細らせ字の間で太らせる、波紋を4本（6.0〜7.5秒）に減らす、FLAT を字高470pxで上へ置き正方形を130pxにして床の上だけで転がす。2周目：EVEN/ODD/EVEN が読めるようになり、正方形は字に触れず転がる。直すことは出なかった。3周目：つなぎ目（0.12・1.75・2.05・3.85・4.05・5.65・5.95・8.65・8.9秒）を等倍で確認し、どこも次の場面へ動きがつながっていて静止も切れもない。許容した差：8.75〜8.9秒、ミントへ切り替わった直後に EVEN の抜けと最後の波紋が一瞬残る（波が引いていく通過として残す）。5.95秒の円の吸い込みは最後の0.1秒で一気に縮むので、小さな格子が一瞬見える。",
     "condition": "no-depth",
     "slot": "2026-11-21"
+  },
+  {
+    "id": "048",
+    "slug": "hourglass",
+    "title": "Hourglass",
+    "date": "2026-11-22",
+    "concept": "縦9:16で、15秒のリールそのものを15秒の砂時計にした。0秒目は3,224粒の砂で積んだ縞の「15」で、0.12秒から下の段から崩れ落ち、漏斗を流れてくびれから1本の糸になって落ちる。粒はくびれを通った瞬間の時刻で6色に染まるので、下の山には注いだ順の地層が山形に積もる。3秒でくびれに寄り、流れを追って山まで降りる。12.25秒に画面ごと180°返り、逆さに吊られた地層の山が舞い上がって、注いだ順に上の段から「15」の縞に組み戻り、0秒目に戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/048_hourglass.mp4",
+    "techniques": [
+      "velocity-cellular-automaton-sand",
+      "per-grain-identity-tracking",
+      "bottom-up-erosion-release-wave",
+      "neck-gathering-single-stream",
+      "dye-by-crossing-time-strata",
+      "precomputed-sim-recorded-per-frame",
+      "point-symmetric-glass-for-180-flip",
+      "rotate-to-fit-scale-flip",
+      "pour-order-reassembly-flight",
+      "countdown-hud-in-glass-wedges"
+    ],
+    "look": {
+      "palette": [
+        "#15101c",
+        "#ff5a36",
+        "#ffb000",
+        "#ffe9c7",
+        "#ff7eb6",
+        "#1fc8b0",
+        "#7b5cff"
+      ],
+      "type": [
+        "Big Shoulders Display 900",
+        "Azeret Mono"
+      ],
+      "structure": "vertical, one hourglass, no cuts / striped sand 15 in the upper bulb (0 s), erodes from the bottom up from 0.12 s, pours into the funnel (0–1.8 s) → push in on the neck at 2.4–3 s and ride the thin stream down to the growing pile (3–5.7 s) → pull out, STILL HERE?, the cone builds chevron strata dyed by crossing time while the top drains (6.5–11.3 s), TIME WELL SPENT. → the whole hourglass rotates 180° scaled to fit (12.25–13.35 s) → the upside-down pile flies up and re-stacks into the striped 15 in pour order = frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目（試写）：流れが9セル幅の柱になり山の上に塔が立った→くびれを3セルにして中心へ寄せ、横ぶれを止めて砂時計らしい1本の糸に。落ち切りが7.5秒で残りが止まって見えた→1コマあたりの段数を2.5にして11.3秒まで流す。「15」の色が粒ごとのノイズになった→注いだ順で上の段に割り当て、横縞にした。2周目：カウンタの「1」の字送りで『1 3.1 6』と空いた→等幅の枠に中央揃え。6.6〜11.3秒が静か→山へ寄る遅いプッシュを足した。3周目：0.5・1.5・3秒を等倍で確認（0.5秒で縞の15が下から崩れ、1.5秒で漏斗が埋まり、3秒でくびれに寄る）。14.98秒と0秒の絵が一致。許容した差：反転中の砂は1枚の絵として回すので、反転中に砂は流れない。",
+    "condition": "vertical",
+    "format": "vertical",
+    "slot": "2026-11-22"
   }
 ]

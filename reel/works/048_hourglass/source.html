@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 048 Hourglass</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@900&family=Azeret+Mono:wght@500;700&display=block" rel="stylesheet">
+<style>
+  html,body{margin:0;background:#15101c;overflow:hidden}
+  canvas{display:block}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// REEL — 048  Hourglass  (vertical 1080×1920, 15 s, 60 fps)
+// The reel is its own 15-second hourglass. "15" is built from ~3,500 grains of sand,
+// crumbles at 0.12 s, pours through the neck (each grain dyed by the moment it passes),
+// builds sand-art strata, the screen flips 180°, and the grains re-assemble into "15".
+// Sand = velocity cellular automaton on a 135×240 grid, solved once at load and recorded.
+window.__duration = 15;
+window.__format = 'vertical';
+window.__poster = 9.2;
+
+const W = 1080, H = 1920, FPS = 60, NF = 900;
+const CW = 135, CH = 240, CELL = 8, CX = 67;
+const cv = document.getElementById('c');
+cv.width = W; cv.height = H;
+const ctx = cv.getContext('2d');
+const L = document.createElement('canvas'); L.width = W; L.height = H;
+const lx = L.getContext('2d');
+
+// ---------- palette ----------
+const BG = '#15101c';
+const SAND = ['#ff5a36', '#ffb000', '#ffe9c7', '#ff7eb6', '#1fc8b0', '#7b5cff'];
+const INK = '#ffe9c7';
+function shade(hex, k) {
+  const n = parseInt(hex.slice(1), 16);
+  let r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+  const f = v => Math.max(0, Math.min(255, Math.round(v * k)));
+  return `rgb(${f(r)},${f(g)},${f(b)})`;
+}
+const NSH = 3, SHK = [0.9, 1.0, 1.07];
+const FILL = SAND.map(h => SHK.map(k => shade(h, k)));
+
+// ---------- seeded PRNG ----------
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const rnd = mulberry32(48048);
+function hash2(a, b) { let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x632be5ab, 0xc2b2ae35); h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12; return h >>> 0; }
+
+// ---------- easing ----------
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, k) => a + (b - a) * k;
+const eio = k => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+const eo = k => 1 - Math.pow(1 - k, 3);
+const ei = k => k * k * k;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+
+// ---------- hourglass geometry (point-symmetric under 180° rotation) ----------
+// half-width in cells for row y (interior = |x-CX| <= hw)
+function hwTop(y) { return y < 56 ? 64 : Math.max(1, 64 - (y - 56)); }
+function hw(y) { return y < 120 ? hwTop(y) : hwTop(CH - 1 - y); }
+const NECK = 120;   // first row of the lower half: crossing it dyes the grain
+const wall = new Uint8Array(CW * CH);
+for (let y = 0; y < CH; y++) for (let x = 0; x < CW; x++) wall[y * CW + x] = Math.abs(x - CX) > hw(y) ? 1 : 0;
+
+let N = 0, slotX, slotY, relF, simX, simY, neckF, initCol, bandCol, shd, flyFrom, flyDelay, NSIM;
+const T_FLIP0 = 12.25, T_FLIP1 = 13.35, T_FLY0 = 13.35;
+const F_SIM = Math.round(T_FLIP0 * FPS);   // last simulated frame
+
+function buildMask() {
+  // "15" rendered at full res, sampled per cell
+  const m = document.createElement('canvas'); m.width = W; m.height = H;
+  const g = m.getContext('2d');
+  g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+  let fs = 900;
+  g.font = `900 ${fs}px "Big Shoulders Display"`;
+  let mt = g.measureText('15');
+  const capH = mt.actualBoundingBoxAscent + mt.actualBoundingBoxDescent;
+  const targetH = 616;
+  fs = fs * targetH / capH;
+  g.font = `900 ${fs}px "Big Shoulders Display"`;
+  g.letterSpacing = '-0.01em';
+  mt = g.measureText('15');
+  const top = 6 * CELL;
+  const base = top + mt.actualBoundingBoxAscent;
+  g.fillText('15', CX * CELL + CELL / 2, base);
+  const d = g.getImageData(0, 0, W, H).data;
+  const cells = [];
+  let clipped = 0;
+  for (let y = 0; y < CH; y++) for (let x = 0; x < CW; x++) {
+    let s = 0;
+    for (let j = 1; j < CELL; j += 2) for (let i = 1; i < CELL; i += 2) s += d[((y * CELL + j) * W + x * CELL + i) * 4 + 3];
+    if (s / 16 > 127) { if (wall[y * CW + x] || y >= NECK - 6) clipped++; else cells.push([x, y]); }
+  }
+  return { cells, clipped };
+}
+
+function simulate() {
+  const grid = new Int32Array(CW * CH).fill(-1);
+  for (let i = 0; i < CW * CH; i++) if (wall[i]) grid[i] = -2;
+  const x = new Int16Array(N), y = new Int16Array(N), vy = new Float32Array(N), acc = new Float32Array(N);
+  const rel = new Uint8Array(N);
+  neckF = new Int32Array(N).fill(1 << 30);
+  for (let i = 0; i < N; i++) { x[i] = slotX[i]; y[i] = slotY[i]; grid[y[i] * CW + x[i]] = i; }
+  NSIM = F_SIM + 1;
+  simX = new Uint8Array(NSIM * N); simY = new Uint8Array(NSIM * N);
+  const SP = 2.5, G = 0.05, VMAX = 4;
+  let step = 0, lastMove = 0;
+  const free = (cx, cy) => cx >= 0 && cx < CW && cy < CH && grid[cy * CW + cx] === -1;
+  for (let f = 0; f < NSIM; f++) {
+    const S = Math.floor(f * SP) - Math.floor((f - 1) * SP);
+    if (f > 0) for (let s = 0; s < S; s++, step++) {
+      for (let i = 0; i < N; i++) if (!rel[i] && f >= relF[i]) rel[i] = 1;
+      let moved = 0;
+      for (let yy = CH - 1; yy >= 0; yy--) {
+        const dir = ((step + yy) & 1) ? 1 : -1;
+        for (let k = 0; k < CW; k++) {
+          const xx = dir > 0 ? k : CW - 1 - k;
+          const id = grid[yy * CW + xx];
+          if (id < 0 || !rel[id]) continue;
+          let cx = xx, cy = yy;
+          // the neck gathers grains into one central stream; below it the stream frays a little
+          if (cy >= 108 && cy <= 126 && cx !== CX) {
+            const o = cx < CX ? 1 : -1;
+            if (free(cx + o, cy + 1) && grid[cy * CW + cx + o] === -1) {
+              grid[yy * CW + xx] = -1; cx += o; cy++; grid[cy * CW + cx] = id; x[id] = cx; y[id] = cy; moved++;
+              vy[id] = Math.min(VMAX, vy[id] + G);
+              if (cy >= NECK && neckF[id] > f) neckF[id] = f;
+              continue;
+            }
+          }
+          if (cy > 126 && free(cx, cy + 1) && (hash2(id, step * 3 + 1) % 23) === -1) {
+            const o = (hash2(id, step) & 2) ? 1 : -1;
+            if (free(cx + o, cy + 1) && grid[cy * CW + cx + o] === -1) cx += o;
+          }
+          if (free(cx, cy + 1)) {
+            vy[id] = Math.min(VMAX, vy[id] + G);
+            acc[id] += vy[id];
+            let n = Math.floor(acc[id]); acc[id] -= n;
+            if (n < 1) n = 1;
+            let m = 0;
+            while (m < n && free(cx, cy + 1)) { cy++; m++; }
+            if (m < n) { vy[id] *= 0.35; }
+          } else {
+            const h = hash2(id, step);
+            const o = (h & 1) ? 1 : -1;
+            // avalanche: a sliding grain may take up to two diagonal hops per step
+            let hop = 0, d = 0;
+            for (let r = 0; r < 2; r++) {
+              const oo = d || o;
+              if (!free(cx, cy + 1) && free(cx + oo, cy + 1) && grid[cy * CW + cx + oo] === -1) { cx += oo; cy++; d = oo; hop++; }
+              else if (!d && !free(cx, cy + 1) && free(cx - oo, cy + 1) && grid[cy * CW + cx - oo] === -1) { cx -= oo; cy++; d = -oo; hop++; }
+              else break;
+            }
+            if (hop) vy[id] *= 0.6; else { vy[id] = 0; acc[id] = 0; }
+          }
+          if (cx !== xx || cy !== yy) {
+            grid[yy * CW + xx] = -1; grid[cy * CW + cx] = id; x[id] = cx; y[id] = cy; moved++;
+            if (cy >= NECK && neckF[id] > f) neckF[id] = f;
+          }
+        }
+      }
+      if (moved) lastMove = f;
+    }
+    simX.set(x, f * N); simY.set(y, f * N);
+  }
+  return { lastMove, finX: x, finY: y };
+}
+
+function precompute() {
+  const { cells, clipped } = buildMask();
+  N = cells.length;
+  slotX = new Int16Array(N); slotY = new Int16Array(N);
+  cells.forEach((c, i) => { slotX[i] = c[0]; slotY[i] = c[1]; });
+  // release: erode from the bottom row up, 0.12 s → 1.75 s
+  let ymin = 1e9, ymax = -1;
+  for (let i = 0; i < N; i++) { ymin = Math.min(ymin, slotY[i]); ymax = Math.max(ymax, slotY[i]); }
+  relF = new Int32Array(N);
+  shd = new Uint8Array(N);
+  for (let i = 0; i < N; i++) {
+    const k = (ymax - slotY[i]) / (ymax - ymin);
+    relF[i] = Math.round((0.12 + 1.6 * Math.pow(k, 0.85) + rnd() * 0.06) * FPS);
+    shd[i] = Math.floor(rnd() * NSH);
+  }
+  const r = simulate();
+  // colour band by the frame the grain crossed the neck
+  const BAND = 38;
+  bandCol = new Uint8Array(N);
+  let f0 = 1e9; for (let i = 0; i < N; i++) f0 = Math.min(f0, neckF[i]);
+  for (let i = 0; i < N; i++) bandCol[i] = neckF[i] < (1 << 30) ? Math.floor((neckF[i] - f0) / BAND) % SAND.length : 2;
+  // fly: rotated final pile → slots (row-major order on both sides)
+  const pile = []; for (let i = 0; i < N; i++) pile.push(i);
+  const rx = i => CW - 1 - r.finX[i], ry = i => CH - 1 - r.finY[i];
+  // earliest-poured grains (the floor of the pile, the top after the flip) fill the top rows of "15",
+  // so the digits wear the strata as horizontal bands
+  pile.sort((a, b) => (neckF[a] - neckF[b]) || (rx(a) - rx(b)));
+  const slots = []; for (let i = 0; i < N; i++) slots.push(i);
+  slots.sort((a, b) => (slotY[a] - slotY[b]) || (slotX[a] - slotX[b]));
+  flyFrom = new Int32Array(N);   // flyFrom[slot grain] = pile grain that lands there
+  initCol = new Uint8Array(N);
+  flyDelay = new Float32Array(N);
+  for (let k = 0; k < N; k++) {
+    const s = slots[k], p = pile[k];
+    flyFrom[s] = p; initCol[s] = bandCol[p];
+    flyDelay[s] = (1 - k / N) * 0.38 + rnd() * 0.05;
+  }
+  // a grain's shade travels with it, so the slot grain inherits the pile grain's shade
+  const shd2 = new Uint8Array(N); for (let s = 0; s < N; s++) shd2[s] = shd[flyFrom[s]];
+  window.__stats = { N, clipped, lastMove: r.lastMove / FPS, settleOK: r.lastMove < F_SIM - 6 };
+  shdSlot = shd2;
+}
+let shdSlot;
+
+// ---------- drawing ----------
+const buckets = Array.from({ length: SAND.length * NSH }, () => []);
+function drawGrains(g, xs, ys, cols, shs, n, s, ox, oy) {
+  for (const b of buckets) b.length = 0;
+  for (let i = 0; i < n; i++) buckets[cols[i] * NSH + shs[i]].push(i);
+  for (let c = 0; c < buckets.length; c++) {
+    const b = buckets[c]; if (!b.length) continue;
+    g.fillStyle = FILL[Math.floor(c / NSH)][c % NSH];
+    for (const i of b) {
+      const x0 = Math.round(xs[i] * CELL * s + ox), y0 = Math.round(ys[i] * CELL * s + oy);
+      const x1 = Math.round((xs[i] + 1) * CELL * s + ox), y1 = Math.round((ys[i] + 1) * CELL * s + oy);
+      if (x1 < 0 || y1 < 0 || x0 > W || y0 > H) continue;
+      g.fillRect(x0, y0, x1 - x0, y1 - y0);
+    }
+  }
+}
+
+function glassPath(g, s, ox, oy, inset) {
+  // boundary at cell edges, straight segments between the corners of the profile
+  const pts = [[0, 64], [56, 64], [119, 1], [121, 1], [184, 64], [240, 64]];
+  g.beginPath();
+  for (const side of [-1, 1]) {
+    pts.forEach(([yy, h], i) => {
+      const px = (side < 0 ? (CX - h) * CELL - inset : (CX + h + 1) * CELL + inset) * s + ox;
+      const py = yy * CELL * s + oy;
+      i ? g.lineTo(px, py) : g.moveTo(px, py);
+    });
+  }
+}
+
+const xs = new Float32Array(8000), ys = new Float32Array(8000), cs = new Uint8Array(8000), ss = new Uint8Array(8000);
+
+function camera(t) {
+  // s: zoom, (fx, fy): world point (px) at the screen centre
+  let s = 1, fx = W / 2, fy = H / 2;
+  const a = eio(seg(t, 2.35, 3.05));        // push in on the neck
+  const b = eio(seg(t, 3.05, 5.7));         // ride the stream down to the pile
+  const c = eio(seg(t, 5.7, 6.55));         // pull out
+  const zin = lerp(1, 2.15, a);
+  s = lerp(zin, 1, c);
+  // slow push toward the pile while the glass drains, released before the flip
+  const dr = Math.sin(Math.PI * seg(t, 6.55, 12.25));
+  s *= 1 + 0.07 * dr * dr;
+  const fyIn = lerp(lerp(H / 2, 940, a), 1430, b);
+  fy = lerp(fyIn, H / 2, c) + 160 * Math.pow(Math.sin(Math.PI * seg(t, 6.55, 12.25)), 2);
+  // tiny breathing on the hook
+  s *= 1 + 0.025 * Math.sin(Math.PI * clamp(t / 2.35));
+  const ox = W / 2 - fx * s, oy = H / 2 - fy * s;
+  return { s, ox, oy };
+}
+
+function textBlock(g, lines, x, y, size, align, alpha, prog, color) {
+  // per-line rise reveal: prog 0..1 in, then held; alpha for fade
+  if (alpha <= 0) return;
+  g.save(); g.globalAlpha = alpha; g.fillStyle = color || INK; g.textAlign = align; g.textBaseline = 'alphabetic';
+  g.font = `900 ${size}px "Big Shoulders Display"`;
+  lines.forEach((ln, i) => {
+    const k = eo(clamp(prog * 1.6 - i * 0.3));
+    const lh = size * 0.92;
+    const yy = y + i * lh;
+    g.save();
+    g.beginPath(); g.rect(-5000, yy - size * 0.86, 10000, size * 0.9); g.clip();
+    g.fillText(ln, x, yy + (1 - k) * size * 0.95);
+    g.restore();
+  });
+  g.restore();
+}
+
+function phrases(t) {
+  const P = [
+    { a: -1, b: 2.3, l: ['SECONDS', 'OF SAND.'] },
+    { a: 6.45, b: 9.45, l: ['STILL', 'HERE?'] },
+    { a: 9.55, b: 12.05, l: ['TIME', 'WELL', 'SPENT.'] },
+    { a: 13.55, b: 16.5, l: ['SECONDS', 'OF SAND.'] },
+  ];
+  for (const p of P) if (t >= p.a && t < p.b) {
+    const pin = p.a < 0 ? 1 : clamp((t - p.a) / 0.45);
+    const out = clamp((p.b - t) / 0.22);
+    return { lines: p.l, prog: pin, alpha: out };
+  }
+  return null;
+}
+
+function drawHud(g, t, s, ox, oy, alpha) {
+  if (alpha <= 0) return;
+  g.save();
+  g.setTransform(s, 0, 0, s, ox, oy);
+  // left wedge: countdown
+  const rem = t >= T_FLY0 ? 15 : Math.max(0, 15 * (1 - t / T_FLIP0));
+  g.globalAlpha = alpha;
+  g.fillStyle = INK; g.textAlign = 'left';
+  g.font = `900 150px "Big Shoulders Display"`;
+  const str = rem.toFixed(2).padStart(5, '0');
+  // fixed-width digits so the counter doesn't wobble
+  let xx = 40;
+  g.textAlign = 'center';
+  for (const ch of str) { const w = ch === '.' ? 24 : 64; g.fillText(ch, xx + w / 2, 1010); xx += w; }
+  g.textAlign = 'left';
+  g.font = `700 26px "Azeret Mono"`;
+  g.fillText('SEC LEFT', 44, 1052);
+  g.globalAlpha = alpha * 0.6;
+  g.font = `500 24px "Azeret Mono"`;
+  g.fillText('REEL — 048', 44, 820);
+  g.fillText('HOURGLASS', 44, 852);
+  g.textAlign = 'right';
+  g.fillText('Claude', W - 44, 1180);
+  g.fillText(`${N} GRAINS`, W - 44, 1212);
+  g.restore();
+  // right wedge: phrase
+  const p = phrases(t);
+  if (p) {
+    g.save(); g.setTransform(s, 0, 0, s, ox, oy);
+    textBlock(g, p.lines, W - 40, 905 - (p.lines.length - 2) * 60, 112, 'right', alpha * p.alpha, p.prog);
+    g.restore();
+  }
+}
+
+function drawGlass(g, s, ox, oy, alpha) {
+  g.save();
+  g.lineJoin = 'round';
+  g.strokeStyle = INK; g.globalAlpha = 0.55 * alpha; g.lineWidth = 3 * s;
+  glassPath(g, s, ox, oy, 3); g.stroke();
+  g.globalAlpha = 0.14 * alpha; g.lineWidth = 2 * s;
+  glassPath(g, s, ox, oy, -14); g.stroke();
+  g.restore();
+}
+
+function background(g) {
+  g.fillStyle = BG; g.fillRect(0, 0, W, H);
+  const rg = g.createRadialGradient(W / 2, H / 2, 100, W / 2, H / 2, H * 0.75);
+  rg.addColorStop(0, 'rgba(60,34,70,0.55)'); rg.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = rg; g.fillRect(0, 0, W, H);
+}
+
+function seek(t) {
+  t = clamp(t, 0, 15);
+  const f = Math.min(NF - 1, Math.round(t * FPS));
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (t < T_FLIP0) {
+    const fr = Math.min(f, NSIM - 1);
+    for (let i = 0; i < N; i++) {
+      xs[i] = simX[fr * N + i]; ys[i] = simY[fr * N + i];
+      cs[i] = neckF[i] <= fr ? bandCol[i] : initCol[i];
+      ss[i] = neckF[i] <= fr ? shd[i] : shdSlot[i];
+    }
+    const { s, ox, oy } = camera(t);
+    background(ctx);
+    drawGlass(ctx, s, ox, oy, 1);
+    drawGrains(ctx, xs, ys, cs, ss, N, s, ox, oy);
+    drawHud(ctx, t, s, ox, oy, clamp((T_FLIP0 - 0.05 - t) / 0.25));
+  } else if (t < T_FLIP1) {
+    // whole hourglass rotates 180°, scaled to stay inside the frame
+    const fr = NSIM - 1;
+    for (let i = 0; i < N; i++) { xs[i] = simX[fr * N + i]; ys[i] = simY[fr * N + i]; cs[i] = neckF[i] <= fr ? bandCol[i] : initCol[i]; ss[i] = neckF[i] <= fr ? shd[i] : shdSlot[i]; }
+    lx.setTransform(1, 0, 0, 1, 0, 0); lx.clearRect(0, 0, W, H);
+    drawGlass(lx, 1, 0, 0, 1);
+    drawGrains(lx, xs, ys, cs, ss, N, 1, 0, 0);
+    const k = eio(seg(t, T_FLIP0, T_FLIP1));
+    const th = Math.PI * k;
+    const c = Math.abs(Math.cos(th)), sn = Math.abs(Math.sin(th));
+    const fit = Math.min(W / (W * c + H * sn), H / (W * sn + H * c));
+    background(ctx);
+    ctx.save();
+    ctx.translate(W / 2, H / 2); ctx.rotate(th); ctx.scale(fit, fit);
+    ctx.drawImage(L, -W / 2, -H / 2);
+    ctx.restore();
+    // turn counter in the middle
+    ctx.save(); ctx.globalAlpha = Math.sin(Math.PI * k) * 0.9; ctx.fillStyle = INK;
+    ctx.font = '700 30px "Azeret Mono"'; ctx.textAlign = 'center';
+    ctx.fillText(`FLIP ${Math.round(k * 180).toString().padStart(3, '0')}°`, W / 2, H - 70);
+    ctx.restore();
+  } else {
+    // grains rise from the upside-down pile into the "15"
+    const fr = NSIM - 1;
+    const u = t - T_FLY0;
+    for (let i = 0; i < N; i++) {
+      const p = flyFrom[i];
+      const sx = CW - 1 - simX[fr * N + p], sy = CH - 1 - simY[fr * N + p];
+      const k = clamp((u - flyDelay[i]) / 0.95);
+      const e = eio(k);
+      // slight sideways swirl on the way
+      const sw = Math.sin(Math.PI * e) * (hash2(i, 7) % 9 - 4) * 0.9;
+      xs[i] = lerp(sx, slotX[i], e) + sw; ys[i] = lerp(sy, slotY[i], e);
+      cs[i] = initCol[i]; ss[i] = shdSlot[i];
+    }
+    background(ctx);
+    drawGlass(ctx, 1, 0, 0, 1);
+    drawGrains(ctx, xs, ys, cs, ss, N, 1, 0, 0);
+    drawHud(ctx, t, 1, 0, 0, clamp((t - T_FLY0 - 0.1) / 0.4));
+  }
+}
+
+(async () => {
+  await document.fonts.load('900 100px "Big Shoulders Display"');
+  await document.fonts.load('700 30px "Azeret Mono"');
+  await document.fonts.load('500 30px "Azeret Mono"');
+  if (!document.fonts.check('900 100px "Big Shoulders Display"')) console.error('font missing');
+  precompute();
+  window.__seek = t => seek(t);
+  seek(0);
+  if (!/[?&]render/.test(location.search)) {
+    const t0 = performance.now();
+    const loop = () => { seek(((performance.now() - t0) / 1000) % 15); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  }
+})();
+</script>
+</body>
+</html>
