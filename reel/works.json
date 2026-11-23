@@ -1878,5 +1878,43 @@
     "condition": "vertical",
     "format": "vertical",
     "slot": "2026-11-22"
+  },
+  {
+    "id": "049",
+    "slug": "solari",
+    "title": "Solari",
+    "date": "2026-11-23",
+    "concept": "monaka design. のロゴの実パスだけを、64×36＝2,304枚のパタパタ表示板（split-flap）の絵柄にして15秒にした。0.2秒目に白地のロックアップがマークから波紋状にめくれ、フラップは重力で落ちて着地で跳ね、途中で別の絵を挟みながら、三日月の大写し→ライムの monaka→ロックアップのティッカー→design. と組み替わる。見せ場は6.9〜9.3秒：カメラが板全体まで引き、巨大なロックアップの上を黒・白・ライムの反転の波がマーク・ピリオド・中心・上辺から拍ごとに交差する。最後は発車標のように行送りで寄って白地のロックアップに揃い、継ぎ目が閉じて0秒目につながる。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/049_solari.mp4",
+    "techniques": [
+      "split-flap-board-2304-cells",
+      "gravity-flap-fall-with-landing-bounce",
+      "flap-shading-by-hinge-angle",
+      "per-cell-flip-event-scheduling",
+      "intermediate-cycle-flips-before-settle",
+      "radial-and-sweep-flip-wavefronts",
+      "crossing-inversion-waves-on-the-beat",
+      "logo-paths-as-board-imagery",
+      "board-pull-out-to-full-grid",
+      "raster-to-vector-handoff-at-rest"
+    ],
+    "look": {
+      "palette": [
+        "#ffffff",
+        "#0a0a0a",
+        "#a5e02e",
+        "#303030"
+      ],
+      "type": [
+        "monaka design. logo (original paths)",
+        "Geist Mono 500"
+      ],
+      "structure": "one split-flap board of 64 x 36 flaps, no cuts / white lockup (0 s), grid opens, flaps ripple out from the mark to a huge white-and-lime mark on black (0.2-1.5 s) → column sweep to black monaka on lime (1.55 s) → scattered cycling flips to a ticker of white lockups (2.75 s) → diagonal wave to design. on white, camera drifts and tilts (4.0 s) → frenzy of cycling flips while the camera pulls out to the whole board, a lockup across all 2,304 flaps (5.3-6.7 s) → inversion waves cross on the beat from the mark, the full stop, the centre and the top edge: black → white → lime → black → white (hero 6.9-9.3 s) → departure-board row sweep to lime while pushing in (9.45 s) → centre-out flip to the white lockup, seams close, slow push-in = frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：6.3〜7.3秒で引いた板の frenzy が早く収まって止まって見えた・0〜2.6秒はカメラが静止・最初のめくれが0.3秒から→反転の波を6.85秒からに前倒しして4本に増やし、序盤に1.05倍の押し込みと僅かな傾きを入れ、最初のめくれを0.18秒に。2周目：見せ場は拍ごとに波が交差し静止区間は0.4秒未満に。等倍でフラップの陰影と巨大ロックアップの字が読めることを確認。3周目：12.85/12.95秒のラスター→ベクター切替と14.98秒→0秒のループに段差が無いことを等倍で確認、直すことなし。許容した差：6.5〜6.85秒、板が黒いロックアップで揃ってカメラだけが落ち着く0.35秒は残した（波の前の溜め）。",
+    "condition": "logo",
+    "slot": "2026-11-23"
   }
 ]
