@@ -1044,5 +1044,38 @@
       ]
     },
     "use": "FV や章扉の背景に。上2割の白い壁と右の床に見出しを置ける余白があり、スクロールで渦の中へ降りる演出の起点にもなる"
+  },
+  {
+    "id": "034",
+    "slug": "ember",
+    "title": "EMBER",
+    "title_ja": "燠",
+    "date": "2026-11-25",
+    "track": "FORM",
+    "concept": "縦長のカプセル形に注いだ染めた樹脂の板。縁ほど厚く中心ほど薄い断面だけで色を出し、白い壁の光が芯でクリームに、その外で橙に、縁で黒に沈む。右からの光が板を抜けて、左の壁に砂色の影を落とす",
+    "source": {
+      "url": "https://assets.basta.app/accounts/4832eb18-f9a7-4c12-8295-871abe232696/images/eb5d9c62-47fd-4102-94b2-3064ce6c4674?format=webp&width=1200&quality=75",
+      "took": "光：右手前の大きな1灯で白い壁を起こし、板は壁の照り返しを背負って透ける・左の壁へ色の付いたぼけた影 / 素材：染めた注型樹脂の鏡面・厚みの差だけで芯のクリーム→橙→黒 / 構図：縦長・被写体は中央、下に白い直方体の台 / 色：白〜明るい灰7割・黒2割強・琥珀は芯と壁の影にだけ"
+    },
+    "look": {
+      "track": "FORM",
+      "palette_family": "black-amber-on-white",
+      "background": "white-sweep-plinth",
+      "lighting": "soft-right-front-colored-shadow",
+      "lens": "normal",
+      "aspect": "3:4",
+      "material": "dyed-cast-resin"
+    },
+    "review_rounds": 20,
+    "film": {
+      "sec": 11.5,
+      "shots": [
+        "スライド",
+        "マクロ",
+        "回り込み",
+        "決め"
+      ]
+    },
+    "use": "サイトの FV 背景・章の区切りに。板の左右と上に余白があり、壁の影の側に見出しを置ける"
   }
 ]
