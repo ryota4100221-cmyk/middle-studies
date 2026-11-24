@@ -1916,5 +1916,49 @@
     "review": "1周目：6.3〜7.3秒で引いた板の frenzy が早く収まって止まって見えた・0〜2.6秒はカメラが静止・最初のめくれが0.3秒から→反転の波を6.85秒からに前倒しして4本に増やし、序盤に1.05倍の押し込みと僅かな傾きを入れ、最初のめくれを0.18秒に。2周目：見せ場は拍ごとに波が交差し静止区間は0.4秒未満に。等倍でフラップの陰影と巨大ロックアップの字が読めることを確認。3周目：12.85/12.95秒のラスター→ベクター切替と14.98秒→0秒のループに段差が無いことを等倍で確認、直すことなし。許容した差：6.5〜6.85秒、板が黒いロックアップで揃ってカメラだけが落ち着く0.35秒は残した（波の前の溜め）。",
     "condition": "logo",
     "slot": "2026-11-23"
+  },
+  {
+    "id": "050",
+    "slug": "slit",
+    "title": "Slit",
+    "date": "2026-11-24",
+    "concept": "架空の印刷会社「ホシノメ印刷」のFVに置く15秒を、確定値の9色・3書体のまま、スリットスキャンだけで動かした。画面のどの点も「印字ヘッドが通った瞬間」の絵で刷られるので、止まっている字は正しく刷られ、動いている字は伸び・ねじれ・鏡文字になる。ヘッドは縦の掃引→横→レーダー→同心円→固定スリット→8本のシャッター→下からの掃引→縦の掃引と形を替え、前の刷りを次の刷りが塗り替えていく。見せ場は5.9〜8.3秒：紙が毎秒1150pxで流れる固定スリットの下で、『紙のことなら、』は紙と同じ速さで通って正しく刷られ、『ホ』は5倍に伸びた波になり、『シ』は回りながらリボンになり、列が逆走すると鏡文字で刷られ、ゴシックで『ホシノメへ。』と刷り直される。最後の掃引でFVが刷り戻され、0秒目につながる。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/050_slit.mp4",
+    "techniques": [
+      "slit-scan-time-displacement",
+      "print-head-crossing-time-inversion",
+      "photo-finish-fixed-slit-with-moving-paper",
+      "speed-ratio-stretch-and-mirror-print",
+      "radar-wedge-scan-of-counter-rotating-rings",
+      "concentric-ring-scan-scale-locked-starburst",
+      "staggered-alternating-shutter-bands",
+      "pass-chain-records-overwriting",
+      "source-velocity-matched-legibility",
+      "glyph-sprite-strip-clipping"
+    ],
+    "look": {
+      "palette": [
+        "#ffffff",
+        "#f2f2f2",
+        "#e6e6e6",
+        "#d4d4d4",
+        "#1c1e22",
+        "#5c6068",
+        "#8c9099",
+        "#1f3a6e",
+        "#9db0d6"
+      ],
+      "type": [
+        "Kaisei Tokumin",
+        "BIZ UDPGothic",
+        "Libre Franklin"
+      ],
+      "structure": "one corporate FV printed over and over by a print head, no camera, no paper / FV (0 s) → vertical head sweeps right, the copy waves on ai (0.1–1.2 s) → horizontal head down over spinning glyphs (1.2–2.4 s) → radar head over two counter-rotating rings of the copy on mizu (2.4–3.6 s) → ring head from the centre, giant 紙 scale-locked to the ring = checker starburst (3.6–4.7 s) → fixed slit, paper at 1150 px/s: 紙のことなら、 printed true, ホ stretched 5× into a wave, シ spun into ribbons, the train runs backwards = mirror print, then ホシノメへ。 reprinted in gothic (hero 5.9–9.35 s) → 8 alternating shutter bands print the vertical setting dropping in on ai (9.35–10.5 s) → head up over glyphs rising at different speeds = tall equalizer (10.55–11.7 s) → vertical head prints the FV back = frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：固定スリットの帯がスリット位置の列を写さず字が出ない→各帯に「スリット上の列」をずらして描くよう直した。止めた区間で字がスリットの隙間に来ていた→列の速度を紙の速度比（1→0.2→0.26→-0.95→1）で組み、ホ・シ・鏡・ゴシックが順に刷られるようにした。生の側まで拍で水色に光る→生の側は白のまま。11秒の上向き掃引が弱い→字を速さ違いでヘッドと一緒に上げ、縦に伸びたイコライザーにした。最後の掃引を短縮。2周目：シャッターの大きな「紙」が速く回りすぎて塊になる→回転を0.28回転/秒に。冒頭0.3秒で藍がまだ細い→最初の掃引の出だしを速めた。3周目：最終FVの「ホ」が飛行中に刷られて欠ける→着地を12.1秒までに早め、0秒目と最終フレームの差が圧縮ノイズだけになることを確認。許容した差：シャッター区間の落ちてくる縦組みの末尾（メへ。）は落下中に刷られて崩れるが、次の掃引で塗り替わる一瞬なので残した。",
+    "condition": "case-values",
+    "slot": "2026-11-24"
   }
 ]

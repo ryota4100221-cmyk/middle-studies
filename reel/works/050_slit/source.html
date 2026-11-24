@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>REEL — 050 Slit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Kaisei+Tokumin:wght@800&family=Libre+Franklin:wght@500;600&display=block" rel="stylesheet">
+<style>
+  html,body{margin:0;background:#ffffff;overflow:hidden}
+  canvas{display:block;width:100vw;height:56.25vw}
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// REEL — 050 Slit / Claude
+// ホシノメ印刷 FV。印字ヘッドが通った瞬間の時刻で、その場所を刷る（スリットスキャン）。
+// 止まっている字は正しく刷られ、動いている字は伸び・ねじれ・鏡になる。
+window.__duration = 15;
+window.__poster = 6.55;
+const W = 1920, H = 1080;
+const WH = '#ffffff', G1 = '#f2f2f2', G2 = '#e6e6e6', G3 = '#d4d4d4',
+      SUMI = '#1c1e22', S2 = '#5c6068', S3 = '#8c9099', AI = '#1f3a6e', MIZU = '#9db0d6';
+const COPY = [...'紙のことなら、ホシノメへ。'];
+const N = COPY.length;
+const PUNCT = new Set(['、', '。']);
+const TAU = Math.PI * 2;
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+
+// ---------- helpers ----------
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const sstep = x => { x = clamp(x); return x * x * (3 - 2 * x); };
+const eio = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const eout = x => 1 - Math.pow(1 - clamp(x), 3);
+const eback = x => { x = clamp(x); const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+// monotone cubic through keys [[t,v],...]
+function mono(keys) {
+  const n = keys.length, xs = keys.map(k => k[0]), ys = keys.map(k => k[1]);
+  const d = [], m = [];
+  for (let i = 0; i < n - 1; i++) d.push((ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]));
+  m[0] = d[0] * 0.5; m[n - 1] = d[n - 2] * 0.5;
+  for (let i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (d[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+    const a = m[i] / d[i], b = m[i + 1] / d[i], s = a * a + b * b;
+    if (s > 9) { const k = 3 / Math.sqrt(s); m[i] = k * a * d[i]; m[i + 1] = k * b * d[i]; }
+  }
+  return t => {
+    if (t <= xs[0]) return ys[0];
+    if (t >= xs[n - 1]) return ys[n - 1];
+    let i = 0; while (t > xs[i + 1]) i++;
+    const h = xs[i + 1] - xs[i], u = (t - xs[i]) / h;
+    const h00 = 2 * u * u * u - 3 * u * u + 1, h10 = u * u * u - 2 * u * u + u, h01 = -2 * u * u * u + 3 * u * u, h11 = u * u * u - u * u;
+    return h00 * ys[i] + h10 * h * m[i] + h01 * ys[i + 1] + h11 * h * m[i + 1];
+  };
+}
+// table of a monotone function f on [t0,t1] -> inverse lookup
+function table(f, t0, t1, n = 3000) {
+  const T = new Float64Array(n + 1), V = new Float64Array(n + 1);
+  for (let i = 0; i <= n; i++) { T[i] = t0 + (t1 - t0) * i / n; V[i] = f(T[i]); }
+  const inc = V[n] >= V[0];
+  return {
+    f, t0, t1,
+    inv(v) { // time when f crosses v (first)
+      if (inc ? v <= V[0] : v >= V[0]) return t0;
+      if (inc ? v >= V[n] : v <= V[n]) return t1;
+      let lo = 0, hi = n;
+      while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (inc ? V[mid] < v : V[mid] > v) lo = mid; else hi = mid; }
+      const dv = V[hi] - V[lo]; const k = dv === 0 ? 0 : (v - V[lo]) / dv;
+      return T[lo] + (T[hi] - T[lo]) * k;
+    }
+  };
+}
+
+// ---------- sprites ----------
+const E = 360, C = 520;
+const FONTS = { K: '800 ' + E + 'px "Kaisei Tokumin"', G: '700 ' + E + 'px "BIZ UDPGothic"' };
+const SPR = {};
+function sprite(ch, f, col) {
+  const key = ch + f + col;
+  if (SPR[key]) return SPR[key];
+  const c = document.createElement('canvas'); c.width = c.height = C;
+  const x = c.getContext('2d');
+  x.font = FONTS[f]; x.fillStyle = col; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText(ch, C / 2, C / 2 + E * 0.04);
+  return SPR[key] = c;
+}
+// glyph: {i, f, col, x, y, s, r, sx, sy, tate}
+function G(i, x, y, s, o = {}) { return Object.assign({ i, f: 'K', col: SUMI, x, y, s, r: 0, sx: 1, sy: 1, tate: false }, o); }
+function grad(g) { return g.s * 0.78 * Math.max(Math.abs(g.sx), Math.abs(g.sy), 1) + (g.tate ? g.s * 0.6 : 0); }
+function drawGlyph(c, g) {
+  const ch = COPY[g.i];
+  const k = g.s / E, cs = Math.cos(g.r), sn = Math.sin(g.r);
+  let x = g.x, y = g.y;
+  if (g.tate && PUNCT.has(ch)) { x += g.s * 0.5; y -= g.s * 0.5; }
+  c.setTransform(cs * g.sx * k, sn * g.sx * k, -sn * g.sy * k, cs * g.sy * k, x, y);
+  c.drawImage(sprite(ch, g.f, g.col), -C / 2, -C / 2);
+}
+
+// ---------- the FV page (header, sub copy, footer) ----------
+let FVPAGE, FVIMG;
+const FV_S = 150, FV_X = 200;
+function fvPos(i) {
+  const line = i < 7 ? 0 : 1, k = i < 7 ? i : i - 7;
+  return { x: FV_X + FV_S * (k + 0.5), y: line ? 640 : 470 };
+}
+function fvGlyphs() {
+  return COPY.map((_, i) => { const p = fvPos(i); return G(i, p.x, p.y, FV_S, { col: (i >= 7 && i <= 10) ? AI : SUMI }); });
+}
+function buildFV() {
+  FVPAGE = document.createElement('canvas'); FVPAGE.width = W; FVPAGE.height = H;
+  const x = FVPAGE.getContext('2d');
+  x.fillStyle = WH; x.fillRect(0, 0, W, H);
+  // header
+  x.fillStyle = SUMI; x.textBaseline = 'alphabetic';
+  x.font = '700 30px "BIZ UDPGothic"'; x.fillText('ホシノメ印刷', 120, 92);
+  x.fillStyle = S3; x.font = '600 18px "Libre Franklin"'; x.fillText('HOSHINOME PRINTING CO.', 314, 91);
+  x.fillStyle = SUMI; x.font = '400 20px "BIZ UDPGothic"';
+  const nav = ['事業内容', '設備紹介', '制作実績', '会社案内'];
+  let nx = 1060; for (const n of nav) { x.fillText(n, nx, 90); nx += x.measureText(n).width + 44; }
+  x.fillStyle = AI; x.fillRect(1600, 58, 200, 48);
+  x.fillStyle = WH; x.font = '700 20px "BIZ UDPGothic"'; x.textAlign = 'center'; x.fillText('お問い合わせ', 1700, 89); x.textAlign = 'left';
+  x.fillStyle = G3; x.fillRect(120, 136, 1680, 1);
+  // sub copy
+  x.fillStyle = S2; x.font = '400 26px "BIZ UDPGothic"';
+  x.fillText('印刷・製本・紙加工。1枚の試し刷りから、10万部の本刷りまで。', FV_X, 800);
+  // ruler + scroll
+  x.fillStyle = AI; x.fillRect(FV_X, 846, 64, 3);
+  x.fillStyle = S3; x.font = '500 18px "Libre Franklin"';
+  x.fillText('SCROLL', 120, 1020); x.fillRect(206, 1013, 80, 1);
+  x.textAlign = 'right'; x.fillText('REEL — 050   Claude', 1800, 1020); x.textAlign = 'left';
+  // whole FV with the copy
+  FVIMG = document.createElement('canvas'); FVIMG.width = W; FVIMG.height = H;
+  const y = FVIMG.getContext('2d');
+  y.drawImage(FVPAGE, 0, 0);
+  for (const g of fvGlyphs()) drawGlyph(y, g);
+  y.setTransform(1, 0, 0, 1, 0, 0);
+}
+
+// ---------- sources: what the world looks like at time τ ----------
+const LINE_S = 128, LINE_X0 = (W - N * LINE_S) / 2;
+function lineGlyphs(s, cy, o) { const x0 = (W - N * s) / 2; return COPY.map((_, i) => G(i, x0 + s * (i + .5), cy, s, o ? o(i) : {})); }
+const accent = i => i >= 7 && i <= 10;
+
+// P0 sweep-x : FV copy waving on ai
+function src0(t) {
+  const amp = 150 * sstep((t - 0.08) / 0.35);
+  const gl = fvGlyphs().map((g, i) => {
+    const ph = TAU * 2.6 * t - i * 0.55;
+    g.y += amp * Math.sin(ph); g.r = 0.35 * Math.cos(ph) * amp / 150;
+    g.col = accent(i) ? MIZU : WH; return g;
+  });
+  return { bg: AI, gl };
+}
+// P1 sweep-y : one line, glyphs spinning
+function src1(t) {
+  const gl = lineGlyphs(LINE_S, 545, i => ({ col: accent(i) ? AI : SUMI }));
+  gl.forEach((g, i) => { g.r = (i % 2 ? -1 : 1) * TAU * 1.4 * (t - 1.2) + i * 0.4; g.y += 60 * Math.sin(TAU * 2 * t + i * .7); });
+  return { bg: WH, gl };
+}
+// P2 radar : two counter-rotating rings
+let RADAR;
+function src2(t) {
+  const th = RADAR.f(t) + Math.PI / 2;
+  const gl = [];
+  for (let i = 0; i < N; i++) {
+    const a = -Math.PI / 2 + i * TAU / N + 0.62 * th;
+    gl.push(G(i, 960 + 350 * Math.cos(a), 540 + 350 * Math.sin(a), 120, { r: a + Math.PI / 2, col: accent(i) ? WH : AI }));
+    const b = -Math.PI / 2 + i * TAU / N - 0.55 * th;
+    gl.push(G(i, 960 + 175 * Math.cos(b), 540 + 175 * Math.sin(b), 74, { f: 'G', r: b + Math.PI / 2, col: SUMI }));
+  }
+  return { bg: MIZU, gl };
+}
+// P3 ring : giant 紙, scale chained to the ring → star-burst, then let go
+let RING;
+function src3(t) {
+  const step = Math.floor((t - 3.6) / 0.09);
+  const bg = [AI, WH, MIZU, WH, AI, MIZU, WH, AI][((step % 8) + 8) % 8];
+  const r = RING.f(t);
+  const k = sstep((t - 4.0) / 0.45);
+  const s = lerp(Math.max(60, r * 2.7), 980, k);
+  const gl = [G(0, 960, 540, s, { col: bg === AI ? WH : AI, r: (1 - k) * 1.4 * (t - 3.6) })];
+  return { bg, gl };
+}
+// P4 slit : the train passes under a fixed slit while the paper runs
+const XS = 1240;
+let PAPER, TRAIN;
+const SLIT_T0 = 4.7, SLIT_T1 = 9.35;
+function paperV(t) { // px/s
+  return 1150 * sstep((t - SLIT_T0) / 0.25) * (1 - sstep((t - (SLIT_T1 - 0.45)) / 0.45));
+}
+let TRAINQ;
+function trainV(t) { // velocity of the glyph train (px/s, + = right) = -paper × q
+  return -paperV(t) * TRAINQ(t);
+}
+function integ(fn, t0, t1, n) { const A = new Float64Array(n + 1); let s = 0; A[0] = 0; const dt = (t1 - t0) / n; for (let i = 1; i <= n; i++) { s += fn(t0 + (i - .5) * dt) * dt; A[i] = s; } return t => { const u = clamp((t - t0) / dt, 0, n); const i = Math.floor(u); if (i >= n) return A[n]; return A[i] + (A[i + 1] - A[i]) * (u - i); }; }
+function src4(t) {
+  const s = 176, x0 = XS + 40 + TRAIN(t);
+  const gothic = t > 8.21;
+  const beat = (t > 5.95 && t < 7.7) && ((t - 5.95) % 0.25) < 0.045;
+  const bg = beat ? MIZU : (t > 7.74 && t < 8.2) ? G2 : WH;
+  const wave = sstep((t - 5.94) / 0.08) * (1 - sstep((t - 6.86) / 0.08));
+  const spin = sstep((t - 6.9) / 0.06) * (1 - sstep((t - 7.66) / 0.06));
+  const gl = COPY.map((_, i) => {
+    const y = 540 + wave * 150 * Math.sin(TAU * 2 * (t - 5.94)) * (i % 2 ? -1 : 1);
+    const r = spin * (i % 2 ? -1 : 1) * TAU * 1.0 * (t - 6.9);
+    return G(i, x0 + s * (i + .5), y, s, { r, col: accent(i) ? AI : SUMI, f: gothic ? 'G' : 'K' });
+  });
+  return { bg, gl, bgLive: (t > 7.74 && t < 8.2) ? G2 : WH };
+}
+// P5 shutter : 8 bands; vertical setting dropping in on ai, a giant 紙 spinning on the left
+function src5(t) {
+  const gl = [];
+  const big = G(0, 470, 540, 560, { col: MIZU, r: TAU * 0.28 * (t - 9.35) - 0.3 });
+  gl.push(big);
+  for (let i = 0; i < N; i++) {
+    const col1 = i < 7, k = col1 ? i : i - 7;
+    const x = col1 ? 1420 : 1270, y0 = col1 ? 200 : 320;
+    const y = y0 + 118 * k;
+    const ld = 9.4 + 0.045 * i;
+    const p = eback((t - ld) / 0.32);
+    gl.push(G(i, x, lerp(y - 900, y, p), 118, { tate: true, col: accent(i) ? MIZU : WH, r: (1 - p) * 1.2 }));
+  }
+  return { bg: AI, gl };
+}
+// P6 sweep-y up : one line, widths breathing
+function src6(t) {
+  const gl = lineGlyphs(132, 650, i => ({ f: 'G', col: accent(i) ? AI : SUMI }));
+  gl.forEach((g, i) => {
+    const v = 614 * (0.12 + 0.72 * (0.5 + 0.5 * Math.sin(i * 1.7 + 0.4)));
+    g.y = 650 - v * clamp(t - 10.75, -0.2, 1.2);
+  });
+  return { bg: G1, gl };
+}
+// P7 final sweep-x : glyphs settle into the FV, the page is printed back
+function src7(t) {
+  const from = src6(11.75).gl;
+  const gl = fvGlyphs().map((g, i) => {
+    const p = eio((t - (11.7 + 0.012 * i)) / 0.36);
+    const f = from[i];
+    g.x = lerp(f.x, g.x, p); g.y = lerp(f.y, g.y, p) - Math.sin(Math.PI * p) * 120;
+    g.s = lerp(f.s, g.s, p); g.sx = lerp(f.sx, 1, p); g.sy = lerp(f.sy, 1, p);
+    g.f = p < 0.5 ? 'G' : 'K';
+    return g;
+  });
+  return { bg: 'FV', gl };
+}
+
+// ---------- passes ----------
+// kind x / y : head = position over time, per band
+const PASSES = [];
+function build() {
+  const X0 = mono([[0.10, -12], [0.26, 330], [0.98, 1320], [1.22, 1932]]);
+  PASSES.push({ kind: 'x', t0: 0.10, t1: 1.22, src: src0, name: 'SWEEP →', bands: [{ a: 0, b: W, tb: table(X0, 0.10, 1.22) }] });
+  const Y1 = mono([[1.22, -12], [1.42, 360], [2.06, 730], [2.40, 1092]]);
+  PASSES.push({ kind: 'y', t0: 1.22, t1: 2.40, src: src1, name: 'SWEEP ↓', bands: [{ a: 0, b: H, tb: table(Y1, 1.22, 2.40) }] });
+  const R2 = mono([[2.40, -Math.PI / 2], [2.62, -Math.PI / 2 + 1.2], [3.38, -Math.PI / 2 + TAU - 1.0], [3.62, -Math.PI / 2 + TAU]]);
+  RADAR = table(R2, 2.40, 3.62);
+  PASSES.push({ kind: 'a', t0: 2.40, t1: 3.62, src: src2, name: 'RADAR', tb: RADAR, cx: 960, cy: 540 });
+  const R3 = mono([[3.62, 0], [4.05, 260], [4.45, 620], [4.70, 1110]]);
+  RING = table(R3, 3.62, 4.70);
+  PASSES.push({ kind: 'r', t0: 3.62, t1: 4.70, src: src3, name: 'RING', tb: RING, cx: 960, cy: 540 });
+  TRAINQ = mono([[4.7, 1], [5.86, 1], [5.96, 0.2], [6.88, 0.2], [6.95, 0.26], [7.68, 0.26], [7.76, -0.95], [8.17, -0.95], [8.25, 1], [9.35, 1]]);
+  const D = integ(paperV, SLIT_T0, SLIT_T1, 4000);
+  PAPER = table(D, SLIT_T0, SLIT_T1, 4000);
+  TRAIN = integ(trainV, SLIT_T0, SLIT_T1, 4000);
+  PASSES.push({ kind: 's', t0: SLIT_T0, t1: SLIT_T1, src: src4, name: 'SLIT', D });
+  const bands = [];
+  for (let i = 0; i < 8; i++) {
+    const a = i * 240, b = a + 240, ts = 9.35 + 0.075 * i, te = ts + 0.62;
+    const dir = i % 2 === 0;
+    const f = mono([[ts, dir ? a - 2 : b + 2], [te, dir ? b + 2 : a - 2]].map(([tt, v], n) => [tt, v]));
+    const g = t => { const u = eio((t - ts) / (te - ts)); return dir ? lerp(a - 2, b + 2, u) : lerp(b + 2, a - 2, u); };
+    bands.push({ a, b, tb: table(g, ts, te, 800), ts, te });
+  }
+  PASSES.push({ kind: 'x', t0: 9.35, t1: 9.35 + 0.075 * 7 + 0.62, src: src5, name: 'SHUTTER', bands });
+  const Y6 = mono([[10.55, 1092], [10.75, 760], [11.45, 330], [11.70, -12]]);
+  PASSES.push({ kind: 'y', t0: 10.55, t1: 11.70, src: src6, name: 'SWEEP ↑', bands: [{ a: 0, b: H, tb: table(Y6, 10.55, 11.70) }] });
+  const X7 = mono([[11.78, -12], [12.16, 220], [13.45, 1280], [14.15, 1932]]);
+  PASSES.push({ kind: 'x', t0: 11.78, t1: 14.15, src: src7, name: 'SWEEP →', bands: [{ a: 0, b: W, tb: table(X7, 11.78, 14.15) }] });
+}
+
+// ---------- drawing a source inside a clip ----------
+function paintSource(c, S, bx, by, bw, bh, hit) {
+  if (S.bg === 'FV') c.drawImage(FVPAGE, bx, by, bw, bh, bx, by, bw, bh);
+  else { c.fillStyle = S.bg; c.fillRect(bx, by, bw, bh); }
+  for (const g of S.gl) if (hit(g)) drawGlyph(c, g);
+  c.setTransform(1, 0, 0, 1, 0, 0);
+}
+const STRIP = 2;
+function drawStripsX(c, P, t, band) {
+  const { a, b, tb } = band;
+  for (let x = a; x < b; x += STRIP) {
+    const tau = tb.inv(x + STRIP / 2);
+    if (tau > t) continue;
+    if (tau >= P.t1 && t >= P.t1) { /* fine */ }
+    const S = P.src(tau);
+    c.save(); c.beginPath(); c.rect(x, 0, STRIP, H); c.clip();
+    paintSource(c, S, x, 0, STRIP, H, g => Math.abs(g.x - (x + 1)) < grad(g) + 2);
+    c.restore();
+  }
+}
+function drawStripsY(c, P, t, band) {
+  const { a, b, tb } = band;
+  for (let y = a; y < b; y += STRIP) {
+    const tau = tb.inv(y + STRIP / 2);
+    if (tb.f(tb.t0) > tb.f(tb.t1)) { /* decreasing */ }
+    if (tau > t) continue;
+    const S = P.src(tau);
+    c.save(); c.beginPath(); c.rect(0, y, W, STRIP); c.clip();
+    paintSource(c, S, 0, y, W, STRIP, g => Math.abs(g.y - (y + 1)) < grad(g) + 2);
+    c.restore();
+  }
+}
+const WEDGES = 900;
+function drawWedges(c, P, t) {
+  const th0 = P.tb.f(P.t0), th1 = P.tb.f(P.t1), R = 1300;
+  const thNow = P.tb.f(Math.min(t, P.t1));
+  for (let k = 0; k < WEDGES; k++) {
+    const a0 = th0 + (th1 - th0) * k / WEDGES, a1 = th0 + (th1 - th0) * (k + 1) / WEDGES;
+    if ((a0 + a1) / 2 > thNow) break;
+    const tau = P.tb.inv((a0 + a1) / 2);
+    const S = P.src(tau);
+    c.save(); c.beginPath(); c.moveTo(P.cx, P.cy); c.arc(P.cx, P.cy, R, a0 - 0.0015, a1 + 0.0015); c.closePath(); c.clip();
+    const am = (a0 + a1) / 2;
+    paintSource(c, S, 0, 0, W, H, g => {
+      const dx = g.x - P.cx, dy = g.y - P.cy, d = Math.hypot(dx, dy), rr = grad(g);
+      if (d < rr + 4) return true;
+      let da = Math.atan2(dy, dx) - am; da = Math.atan2(Math.sin(da), Math.cos(da));
+      return Math.abs(da) < Math.asin(Math.min(1, (rr + 4) / d)) + (a1 - a0);
+    });
+    c.restore();
+  }
+}
+const DR = 3;
+function drawRings(c, P, t) {
+  const rNow = P.tb.f(Math.min(t, P.t1));
+  for (let r = 0; r < 1110; r += DR) {
+    if (r + DR / 2 > rNow) break;
+    const tau = P.tb.inv(r + DR / 2);
+    const S = P.src(tau);
+    c.save(); c.beginPath(); c.arc(P.cx, P.cy, r + DR + 0.6, 0, TAU, false);
+    if (r > 0) c.arc(P.cx, P.cy, r, 0, TAU, true);
+    c.clip();
+    const bb = r + DR + 1;
+    paintSource(c, S, Math.max(0, P.cx - bb), Math.max(0, P.cy - bb), Math.min(W, 2 * bb), Math.min(H, 2 * bb), g => {
+      const d = Math.hypot(g.x - P.cx, g.y - P.cy), rr = grad(g);
+      return d + rr > r - 2 && d - rr < r + DR + 2;
+    });
+    c.restore();
+  }
+}
+function drawSlit(c, P, t, prev) {
+  const tt = Math.min(t, P.t1);
+  const Dt = P.D(tt);
+  // previous record runs away with the paper
+  c.drawImage(prev, -Dt, 0);
+  for (let x = 0; x < XS; x += STRIP) {
+    const u = Dt - (XS - (x + STRIP / 2));
+    if (u < 0) continue;
+    const tau = PAPER.inv(u);
+    const S = P.src(tau), dx = (x + STRIP / 2) - XS;
+    S.gl = S.gl.filter(g => Math.abs(g.x - XS) < grad(g) + 2).map(g => Object.assign({}, g, { x: g.x + dx }));
+    c.save(); c.beginPath(); c.rect(x, 0, STRIP, H); c.clip();
+    paintSource(c, S, x, 0, STRIP, H, g => true);
+    c.restore();
+  }
+  // live world to the right of the slit
+  const S = P.src(tt); if (S.bgLive) S.bg = S.bgLive;
+  c.save(); c.beginPath(); c.rect(XS, 0, W - XS, H); c.clip();
+  paintSource(c, S, XS, 0, W - XS, H, g => g.x + grad(g) > XS);
+  c.restore();
+}
+
+// ---------- records ----------
+const REC = {};
+function record(k) {
+  if (k < 0) return FVIMG;
+  if (REC[k]) return REC[k];
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  paintPass(c.getContext('2d'), k, PASSES[k].t1);
+  return REC[k] = c;
+}
+function paintPass(c, k, t) {
+  const P = PASSES[k], prev = record(k - 1);
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  if (P.kind === 's') { drawSlit(c, P, t, prev); return; }
+  c.drawImage(prev, 0, 0);
+  if (P.kind === 'x') for (const b of P.bands) drawStripsX(c, P, t, b);
+  else if (P.kind === 'y') for (const b of P.bands) drawStripsY(c, P, t, b);
+  else if (P.kind === 'a') drawWedges(c, P, t);
+  else if (P.kind === 'r') drawRings(c, P, t);
+}
+
+// ---------- head + HUD ----------
+function headCol(bg) { return bg === AI ? WH : AI; }
+function drawHead(c, k, t) {
+  const P = PASSES[k];
+  if (t > P.t1) return;
+  const S = P.src(t);
+  const col = headCol(S.bg === 'FV' ? WH : S.bg);
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.fillStyle = col; c.strokeStyle = col;
+  if (P.kind === 'x') {
+    for (const b of P.bands) {
+      if (b.ts !== undefined && (t < b.ts || t > b.te)) continue;
+      const x = b.tb.f(t);
+      c.fillRect(x - 2, b.ts !== undefined ? 0 : 0, 4, H);
+      c.fillRect(x - 9, 0, 18, 26); c.fillRect(x - 9, H - 26, 18, 26);
+    }
+  } else if (P.kind === 'y') {
+    const y = P.bands[0].tb.f(t);
+    c.fillRect(0, y - 2, W, 4); c.fillRect(0, y - 9, 26, 18); c.fillRect(W - 26, y - 9, 26, 18);
+  } else if (P.kind === 'a') {
+    const a = P.tb.f(t);
+    c.lineWidth = 4; c.beginPath(); c.moveTo(P.cx, P.cy); c.lineTo(P.cx + 1400 * Math.cos(a), P.cy + 1400 * Math.sin(a)); c.stroke();
+    c.beginPath(); c.arc(P.cx, P.cy, 12, 0, TAU); c.fill();
+  } else if (P.kind === 'r') {
+    const r = P.tb.f(t);
+    c.lineWidth = 4; c.beginPath(); c.arc(P.cx, P.cy, Math.max(1, r), 0, TAU); c.stroke();
+  } else if (P.kind === 's') {
+    c.fillStyle = AI; c.fillRect(XS - 2, 0, 4, H);
+    c.fillRect(XS - 11, 0, 22, 30); c.fillRect(XS - 11, H - 30, 22, 30);
+    // paper ticks travel with the paper
+    const Dt = P.D(t);
+    c.fillStyle = S3;
+    for (let u = Math.floor((Dt - XS) / 48) * 48; u <= Dt; u += 48) {
+      const x = XS - (Dt - u);
+      if (x < 0) continue;
+      const big = Math.round(u / 48) % 5 === 0;
+      c.fillRect(x, H - 64 - (big ? 12 : 0), 2, big ? 22 : 10);
+    }
+  }
+}
+function drawHud(c, k, t) {
+  const P = PASSES[k];
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.fillStyle = G1; c.fillRect(40, 1000, 440, 44);
+  c.fillStyle = AI; c.fillRect(40, 1000, 6, 44);
+  c.fillStyle = SUMI; c.font = '600 18px "Libre Franklin"'; c.textBaseline = 'middle';
+  let pos = '';
+  const tt = Math.min(t, P.t1);
+  if (P.kind === 'x' && P.bands.length === 1) pos = 'X ' + String(Math.round(clamp(P.bands[0].tb.f(tt), 0, W))).padStart(4, '0');
+  else if (P.kind === 'y') pos = 'Y ' + String(Math.round(clamp(P.bands[0].tb.f(tt), 0, H))).padStart(4, '0');
+  else if (P.kind === 'a') pos = String(Math.round(((P.tb.f(tt) + Math.PI / 2) / TAU) * 360)).padStart(3, '0') + '°';
+  else if (P.kind === 'r') pos = 'R ' + String(Math.round(P.tb.f(tt))).padStart(4, '0');
+  else if (P.kind === 's') pos = String(Math.round(paperV(tt))).padStart(4, '0') + ' px/s';
+  else pos = '8 BANDS';
+  c.fillText('HEAD ' + String(k + 1).padStart(2, '0'), 62, 1023);
+  c.fillText(P.name, 160, 1023);
+  c.fillText(pos, 280, 1023);
+  c.fillStyle = S2; c.textAlign = 'right'; c.fillText('τ ' + t.toFixed(2) + 's', 466, 1023); c.textAlign = 'left';
+  c.textBaseline = 'alphabetic';
+}
+
+function render(t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  let k = -1;
+  for (let i = 0; i < PASSES.length; i++) if (t >= PASSES[i].t0) k = i;
+  if (k < 0) { ctx.drawImage(FVIMG, 0, 0); return; }
+  const P = PASSES[k];
+  if (t >= P.t1) ctx.drawImage(record(k), 0, 0);
+  else paintPass(ctx, k, t);
+  const last = k === PASSES.length - 1 && t >= P.t1;
+  if (!last) { drawHead(ctx, k, t); drawHud(ctx, k, t); }
+}
+
+(async () => {
+  const fams = ['800 100px "Kaisei Tokumin"', '700 100px "BIZ UDPGothic"', '400 100px "BIZ UDPGothic"', '600 18px "Libre Franklin"', '500 18px "Libre Franklin"'];
+  const text = COPY.join('') + 'ホシノメ印刷事業内容設備紹介制作実績会社案内お問い合わせ印刷・製本・紙加工。1枚の試し刷りから、10万部の本刷りまで。';
+  await Promise.all(fams.map(f => document.fonts.load(f, text + 'HOSHINOMEPRINTINGCOREEL—050ClaudeSCROLLτ0123456789XYRADING SWEEP↓↑→BANDSpx/s°')));
+  await document.fonts.ready;
+  buildFV();
+  for (const ch of COPY) for (const f of ['K', 'G']) for (const col of [SUMI, AI, WH, MIZU]) sprite(ch, f, col);
+  build();
+  for (let k = 0; k < PASSES.length; k++) record(k);
+  window.__seek = t => render(clamp(t, 0, 14.9999));
+  render(0);
+  if (!location.search.includes('render')) {
+    const st = performance.now();
+    const loop = () => { render(((performance.now() - st) / 1000) % 15); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  }
+})();
+</script>
+</body>
+</html>
