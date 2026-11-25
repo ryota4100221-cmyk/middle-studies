@@ -1,0 +1,188 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>REEL — 051 Seven</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@800&family=Spline+Sans+Mono:wght@500&display=block" rel="stylesheet">
+<style>html,body{margin:0;background:#111;overflow:hidden}canvas{display:block}</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// REEL — 051 SEVEN : 7 tangram pieces, one plane, no depth. Pure function of t.
+const W=1920,H=1080,cv=document.getElementById('c'),g=cv.getContext('2d');
+const S=Math.SQRT2, PI=Math.PI, TAU=2*PI;
+const VERM='#ff4a1c', INK='#141416';
+const NAMES=['L1','L2','M','SQ','S1','S2','P'];
+const COL={L1:'#f3ede2',L2:'#2b59ff',M:'#ffd23f',SQ:'#ff8fc7',S1:'#19c58a',S2:'#7fd4ff',P:'#8a4dff'};
+const AREA={L1:4,L2:4,M:2,SQ:2,S1:1,S2:1,P:2};
+// canonical square 0..4 (y down)
+const CAN={L1:[[0,0],[4,0],[2,2]],L2:[[0,0],[2,2],[0,4]],M:[[4,2],[4,4],[2,4]],SQ:[[2,2],[3,1],[4,2],[3,3]],
+  S1:[[4,0],[4,2],[3,1]],S2:[[2,2],[3,3],[1,3]],P:[[0,4],[1,3],[3,3],[2,4]]};
+const cen=v=>{let x=0,y=0;for(const p of v){x+=p[0];y+=p[1]}return[x/v.length,y/v.length]};
+const LOC={};for(const n of NAMES){const c=cen(CAN[n]);LOC[n]=CAN[n].map(p=>[p[0]-c[0],p[1]-c[1]])}
+// ---- solve rigid pose (x,y,a,f) mapping LOC[n] onto target verts
+function solve(n,T){const c=cen(T);
+  for(const f of[0,1])for(let k=0;k<8;k++){const a=k*PI/4,co=Math.cos(a),si=Math.sin(a);let ok=true;
+    for(const v of LOC[n]){const vx=f?-v[0]:v[0],vy=v[1];const X=c[0]+co*vx-si*vy,Y=c[1]+si*vx+co*vy;
+      if(!T.some(p=>Math.abs(p[0]-X)<1e-6&&Math.abs(p[1]-Y)<1e-6)){ok=false;break}}
+    if(ok&&T.length===LOC[n].length)return{x:c[0],y:c[1],a:a>PI+1e-9?a-TAU:a,f}}
+  throw new Error('no pose for '+n+' '+JSON.stringify(T))}
+function figure(verts){const o={};for(const n of NAMES)o[n]=solve(n,verts[n]);return o}
+// ---- figures (units)
+const FIG_SQ=figure(CAN); for(const n of NAMES){FIG_SQ[n].x-=2;FIG_SQ[n].y-=2}
+const FIG_ARROW=(()=>{const x0=-6*S,t=-S/2,b=S/2,a=x0+S;const v={
+  L1:[[0,0],[-2*S,-2*S],[-2*S,0]],L2:[[0,0],[-2*S,2*S],[-2*S,0]],
+  S1:[[x0,b],[x0,t],[x0+S,t]],P:[[x0,b],[x0+S,b],[x0+2*S,t],[x0+S,t]],
+  M:[[a,b],[a+2*S,b],[a+S,t]],S2:[[a+S,t],[a+2*S,t],[a+2*S,b]],SQ:[[x0+3*S,t],[-2*S,t],[-2*S,b],[x0+3*S,b]]};
+  const F=figure(v);for(const n of NAMES)F[n].x+=3*S;return F})();
+const FIG_PLAY=(()=>{const r={L1:[[0,0],[4,0],[2,2]],L2:[[4,0],[4,4],[2,2]],M:[[4,0],[6,0],[4,2]],P:[[6,0],[8,0],[7,1],[5,1]],
+  S1:[[5,1],[7,1],[6,2]],SQ:[[5,1],[6,2],[5,3],[4,2]],S2:[[4,2],[5,3],[4,4]]};const v={};
+  for(const n of NAMES)v[n]=r[n].map(p=>[p[1]-4/3,p[0]-4]);return figure(v)})();
+const FIG_BIRD=figure({SQ:[[0,-1],[1,0],[0,1],[-1,0]],S1:[[0,-1],[1,0],[2,-1]],M:[[0,-1],[2,-1],[2,-3]],
+  S2:[[2,-3],[2,-1],[3,-2]],P:[[-1,0],[0,1],[-2,1],[-3,0]],L1:[[0,-1],[-4,-1],[-2,-3]],L2:[[0,1],[-4,1],[-2,3]]});
+const FIG_ROW=(()=>{const v={};let x=0;const add=(n,pts,w)=>{v[n]=pts.map(p=>[p[0]+x,p[1]]);x+=w+.5};
+  add('L1',[[0,0],[4,0],[2,-2]],4);add('L2',[[0,0],[4,0],[2,-2]],4);add('M',[[0,0],[2*S,0],[S,-S]],2*S);
+  add('SQ',[[0,0],[S,0],[S,-S],[0,-S]],S);add('P',[[0,0],[2,0],[3,-1],[1,-1]],3);
+  add('S1',[[0,0],[2,0],[1,-1]],2);add('S2',[[0,0],[2,0],[1,-1]],2);const w=x-.5;
+  for(const n in v)v[n]=v[n].map(p=>[p[0]-w/2,p[1]]);const F=figure(v);F._cx={};for(const n in v)F._cx[n]=cen(v[n])[0];return F})();
+// ---- helpers
+const cl=(x,a=0,b=1)=>Math.max(a,Math.min(b,x)),lerp=(a,b,u)=>a+(b-a)*u,seg=(t,a,b)=>cl((t-a)/(b-a));
+const eIO=u=>u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2, eOut=u=>1-Math.pow(1-u,3), eIn=u=>u*u*u;
+const eExpo=u=>u===0?0:u===1?1:u<.5?Math.pow(2,20*u-10)/2:(2-Math.pow(2,-20*u+10))/2;
+const eBack=u=>{const c1=1.9,c3=c1+1;return 1+c3*Math.pow(u-1,3)+c1*Math.pow(u-1,2)};
+const eSnap=u=>{u=cl(u);return u<.62?eIn(u/.62)*1.0:1+Math.sin((u-.62)/.38*PI)*.06*(1-(u-.62)/.38)};
+// place a figure: pose in screen space
+function place(F,n,cx,cy,U,rot){const p=F[n],co=Math.cos(rot),si=Math.sin(rot);
+  return{x:cx+U*(co*p.x-si*p.y),y:cy+U*(si*p.x+co*p.y),a:p.a+rot,f:p.f,s:U}}
+// ---- states
+function sSquare(n,t){ // opening/ending square
+  let rot=0,U=132;
+  if(t>12){const u=seg(t,12.95,14.2);rot=PI/4*(1-eBack(u));}
+  return place(FIG_SQ,n,960,540,U,rot)}
+function arrowX(t){ // arrow centre over time
+  if(t<1.55)return 800-80*eOut(seg(t,1.25,1.55));
+  if(t<2.12)return lerp(720,1920+900,eIn(seg(t,1.55,2.12)));
+  return lerp(-560,960,eExpo(seg(t,2.12,2.75))*.5+eOut(seg(t,2.12,2.75))*.5)}
+function sArrow(n,t){return place(FIG_ARROW,n,arrowX(t),540,104,0)}
+function sPlay(n,t){let rot=0;for(const b of[3.5,4.0])rot+=PI/2*eBack(seg(t,b,b+.32));
+  const p=place(FIG_PLAY,n,960,540,104,rot);
+  // beat breathing: pieces kick out radially
+  let k=0;for(const b of[3.25,3.5,3.75,4.0,4.25])k+=Math.exp(-Math.max(0,t-b)*14)*(t>=b?1:0);
+  const dx=p.x-960,dy=p.y-540,d=Math.hypot(dx,dy)||1;p.x+=dx/d*k*26;p.y+=dy/d*k*26;return p}
+function birdPath(t){const tau=(t-5.1)/4.0;const ph=TAU*tau;
+  return[960-540*Math.cos(ph*0.9+.35), 530+190*Math.sin(ph*1.8+.7)]}
+function flap(t){const ph=((t-5.0)*2)%1;const s=Math.sin(TAU*ph);return (0.5+0.5*Math.sign(s)*Math.pow(Math.abs(s),.6))}
+function sBird(n,t){const P=birdPath(t),P2=birdPath(t+1/60);let head=Math.atan2(P2[1]-P[1],P2[0]-P[0]);
+  if(Math.cos(head)<0){} // keep forward
+  const U=80,F=FIG_BIRD[n];let lx=F.x,ly=F.y,la=F.a;
+  const phi=-(0.12+0.95*flap(t));// radians, wing swing
+  const wing=(hx,hy,ang)=>{const co=Math.cos(ang),si=Math.sin(ang),dx=lx-hx,dy=ly-hy;lx=hx+co*dx-si*dy;ly=hy+si*dx+co*dy;la+=ang};
+  if(n==='L1')wing(0,-1,-phi);if(n==='L2')wing(0,1,phi);
+  const co=Math.cos(head),si=Math.sin(head);return{x:P[0]+U*(co*lx-si*ly),y:P[1]+U*(si*lx+co*ly),a:la+head,f:F.f,s:U}}
+function sRow(n,t){const p=place(FIG_ROW,n,960,700,74,0);const i=NAMES.indexOf(n);
+  const b1=10.0+i*.05;p.a+=TAU*eBack(seg(t,b1,b1+.42))*(i%2?-1:1);
+  const b2=10.5+i*.05;const hu=seg(t,b2,b2+.4);p.y-=Math.sin(PI*hu)*150*(1-hu*.2);p.a+=PI*2*eIO(hu)*(i%2?1:-1)*0;
+  const b3=11.0+(6-i)*.05;const fu=seg(t,b3,b3+.36);p.a+=PI*eBack(fu)*(i<2?0:0)+0;
+  if(n==='P'){p.f=(p.f+ (eIO(fu)>.5?1:0))%2; p._sq=Math.abs(Math.cos(PI*eIO(fu)))}
+  else{const k=Math.abs(Math.cos(PI*eIO(fu)));p._sq=k}
+  // flat squash on landing of hop
+  const land=Math.exp(-Math.max(0,t-(b2+.4))*16)*(t>b2+.4?1:0);p._sy=1-land*.22;p._sx=1+land*.22;
+  return p}
+// ---- transitions: from state A frozen at ta to live state B
+const SP={a:[1,-1,1,-2,1,-1,2],b:[-1,1,-1,1,2,-2,1],c:[2,-1,1,-1,-1,1,-2],d:[-1,2,-1,1,1,-1,1],e:[1,1,-1,-1,2,-1,-1]};
+function trans(n,t,A,ta,B,t0,dur,stg,spins,arc,ease){const i=NAMES.indexOf(n);
+  const pa=A(n,ta),pb=B(n,t);const u=seg(t,t0+i*stg,t0+i*stg+dur),e=ease(u);
+  let ab=pb.a;while(ab-pa.a>PI)ab-=TAU;while(ab-pa.a<-PI)ab+=TAU;ab+=TAU*spins[i];
+  const x=lerp(pa.x,pb.x,e),y=lerp(pa.y,pb.y,e);const dx=pb.x-pa.x,dy=pb.y-pa.y,L=Math.hypot(dx,dy)||1;
+  const bump=Math.sin(PI*cl(e,0,1))*arc*(i%2?1:-1)*Math.min(L,700);
+  const p={x:x-dy/L*bump,y:y+dx/L*bump,a:lerp(pa.a,ab,e),s:lerp(pa.s,pb.s,e),f:0,_u:u};
+  p._fx=lerp(pa.f?-1:1,pb.f?-1:1,eIO(u));Object.assign(p,{_sx:pb._sx,_sy:pb._sy});if(u>=1){p._sq=pb._sq;p.f=pb.f;p._fx=undefined}
+  return p}
+function burstThenArrow(n,t){ // pieces burst radially from square, then fly into arrow
+  const i=NAMES.indexOf(n),pa=sSquare(n,0),pb=sArrow(n,t);
+  const dx=pa.x-960,dy=pa.y-540,d=Math.hypot(dx,dy)||1;const ub=eOut(seg(t,.3,.62));
+  const bx=pa.x+dx/d*230*ub,by=pa.y+dy/d*230*ub,ba=pa.a+(i%2?1:-1)*1.2*ub;
+  const u=seg(t,.58+i*.05,1.28+i*.0),e=eExpo(u)*.6+eIO(u)*.4;let ab=pb.a;while(ab-ba>PI)ab-=TAU;while(ab-ba<-PI)ab+=TAU;ab+=TAU*SP.a[i];
+  return{x:lerp(bx,pb.x,e),y:lerp(by,pb.y,e),a:lerp(ba,ab,e),s:lerp(pa.s,pb.s,e),f:0,_fx:lerp(1,pb.f?-1:1,eIO(u))}}
+function pose(n,t){
+  if(t<0.3)return sSquare(n,0);
+  if(t<1.3)return burstThenArrow(n,t);
+  if(t<2.72)return sArrow(n,t);
+  if(t<3.3+.3)return t<2.72?sArrow(n,t):trans(n,t,sArrow,2.72,sPlay,2.72,.5,.03,SP.b,.18,eExpo);
+  if(t<4.4)return sPlay(n,t);
+  if(t<5.6)return trans(n,t,sPlay,4.4,sBird,4.4,.7,.045,SP.c,.25,u=>eIO(u));
+  if(t<9.0)return sBird(n,t);
+  if(t<10.0)return trans(n,t,sBird,9.0,sRow,9.0,.62,.04,SP.d,.2,eExpo);
+  if(t<11.8)return sRow(n,t);
+  if(t<12.95)return trans(n,t,sRow,11.8,sSquare,11.8,.75,.04,SP.e,.22,eExpo);
+  return sSquare(n,t)}
+// ---- drawing
+function inset(v,d){if(d<=0)return v;const n=v.length,L=[];
+  for(let i=0;i<n;i++){const a=v[i],b=v[(i+1)%n];let ex=b[0]-a[0],ey=b[1]-a[1];const l=Math.hypot(ex,ey);ex/=l;ey/=l;
+    // inward normal: polygon orientation
+    L.push([a,ex,ey])}
+  let ar=0;for(let i=0;i<n;i++){const a=v[i],b=v[(i+1)%n];ar+=a[0]*b[1]-b[0]*a[1]}const sg=ar>0?1:-1;
+  const lines=L.map(([a,ex,ey])=>{const nx=-ey*sg,ny=ex*sg;return[[a[0]+nx*d,a[1]+ny*d],ex,ey]});
+  const out=[];for(let i=0;i<n;i++){const[p1,x1,y1]=lines[(i+n-1)%n],[p2,x2,y2]=lines[i];
+    const den=x1*y2-y1*x2;const tt=((p2[0]-p1[0])*y2-(p2[1]-p1[1])*x2)/den;out.push([p1[0]+x1*tt,p1[1]+y1*tt])}return out}
+function world(n,p){const co=Math.cos(p.a),si=Math.sin(p.a);let fx=p._fx!==undefined?p._fx:(p.f?-1:1);
+  const sq=p._sq!==undefined?p._sq:1;const sx=(p._sx||1),sy=(p._sy||1);
+  return LOC[n].map(v=>{let vx=v[0]*fx,vy=v[1];const X=co*vx-si*vy,Y=si*vx+co*vy;return[p.x+p.s*X*sx,p.y+p.s*Y*sy]}).map((q,i,arr)=>{
+    if(sq===1)return q;const c=[p.x,p.y];return[c[0]+(q[0]-c[0])*sq,q[1]]})}
+function poly(v){g.beginPath();g.moveTo(v[0][0],v[0][1]);for(let i=1;i<v.length;i++)g.lineTo(v[i][0],v[i][1]);g.closePath()}
+const mix=(a,b,u)=>{const A=parseInt(a.slice(1),16),B=parseInt(b.slice(1),16);const r=Math.round(lerp(A>>16,B>>16,u)),gg=Math.round(lerp(A>>8&255,B>>8&255,u)),bb=Math.round(lerp(A&255,B&255,u));return`rgb(${r},${gg},${bb})`};
+const FD='800 PX Sora',FM='500 PX "Spline Sans Mono"';const font=(f,px)=>f.replace('PX',px+'px');
+function word(txt,x,y,px,t,tin,tout,col,align){ // per-letter rise through a flat clip line
+  if(t<tin-.01||t>tout+.4)return;g.save();g.font=font(FD,px);g.fillStyle=col;g.textBaseline='alphabetic';
+  let w=g.measureText(txt).width;let cx=align==='c'?x-w/2:align==='r'?x-w:x;
+  g.beginPath();g.rect(0,y-px*1.0,W,px*1.22);g.clip();
+  for(let i=0;i<txt.length;i++){const ch=txt[i],cw=g.measureText(ch).width;
+    const ui=eOut(seg(t,tin+i*.035,tin+i*.035+.32)),uo=eIn(seg(t,tout+i*.025,tout+i*.025+.25));
+    g.fillText(ch,cx,y+(1-ui)*px*1.15-uo*px*1.15);cx+=cw}g.restore()}
+function mono(txt,x,y,px,col,align){g.font=font(FM,px);g.fillStyle=col;g.textAlign=align||'left';g.fillText(txt,x,y);g.textAlign='left'}
+function bgAt(t){return t<1.55?VERM:INK}
+function draw(t){
+  t=((t%15)+15)%15;
+  // ---- background (flat wipes)
+  g.fillStyle=VERM;g.fillRect(0,0,W,H);
+  if(t>=1.55&&t<8.6){const tip=t<2.12?arrowX(t)+3*S*104+10:W+10;g.fillStyle=INK;g.fillRect(0,0,Math.min(W,tip),H)}
+  if(t>=8.6&&t<9.6){g.fillStyle=INK;g.fillRect(0,0,W,H);const P=birdPath(8.6);const r=eIn(seg(t,8.6,9.35))*2300;g.fillStyle=VERM;g.beginPath();g.arc(P[0],P[1],r,0,TAU);g.fill()}
+  const ink=t>=1.55&&t<9.4;const fg=ink?'#f3ede2':INK;
+  // speed lines in bird section (single plane, one speed)
+  if(t>5.3&&t<8.9){g.strokeStyle='rgba(243,237,226,.16)';g.lineWidth=3;const a=cl(seg(t,5.3,5.7))*cl(1-seg(t,8.5,8.9));g.globalAlpha=a;
+    for(let k=0;k<26;k++){const y=150+((k*397)%740),len=120+(k*173)%380,sp=2600;const x=((k*733-(t-5.3)*sp)%(W+len*2)+W+len*2)%(W+len*2)-len;
+      g.beginPath();g.moveTo(x,y);g.lineTo(x+len,y);g.stroke()}g.globalAlpha=1}
+  // ---- words (under pieces)
+  const wc=t<1.6?INK:(t<9.4?'#f3ede2':INK);
+  word('ONE.',110,990,190,t,13.35,99,INK);
+  word('ONE.',110,990,190,t,-1,0.14,INK);
+  word('SEVEN.',110,990,190,t,0.36,1.3,INK);
+  word('GO.',110,990,190,t,1.55,2.5,'#f3ede2');
+  word('PLAY.',110,990,190,t,2.95,4.35,'#f3ede2');
+  word('FLY.',110,990,190,t,5.4,8.45,'#f3ede2');
+  // row equation
+  if(t>9.7&&t<12.2){g.save();const terms=['4','+4','+2','+2','+2','+1','+1'];let s='';
+    for(let i=0;i<7;i++)if(t>9.95+i*.11)s+=terms[i];if(t>10.9)s+=' = 16';
+    const out=eIn(seg(t,11.8,12.1));g.globalAlpha=1-out;g.font=font(FD,150);g.fillStyle=INK;g.textAlign='center';g.fillText(s,960,380-out*40);g.restore();
+    for(const n of NAMES){const x=960+74*FIG_ROW._cx[n];const a=cl(seg(t,9.9,10.1))*(1-out);g.globalAlpha=a;mono(AREA[n]+'',x,790,30,INK,'center');}g.globalAlpha=1}
+  // ---- pieces (with short shutter trail)
+  const gapBase=t<0.3?eOut(seg(t,.08,.3))*5:t>13.9?5*(1-eIO(seg(t,13.9,14.55))):5;
+  const colU0=t<0.3?0:1;
+  const flash=t>=.3&&t<.42?1-seg(t,.3,.42):0;
+  for(const n of NAMES){const p=pose(n,t);const ii=NAMES.indexOf(n);const colU=t>13.9?colU0*(1-eIO(seg(t,13.95+ii*.07,14.07+ii*.07))):colU0;
+    for(let k=3;k>=1;k--){const q=pose(n,t-k/240);const d=Math.hypot(q.x-p.x,q.y-p.y);if(d<4)continue;g.globalAlpha=.18;g.fillStyle=mix(INK,COL[n],colU);poly(inset(world(n,q),gapBase));g.fill()}
+    g.globalAlpha=1;g.fillStyle=flash>0?mix(COL[n],'#ffffff',flash*.7):mix(INK,COL[n],colU);poly(inset(world(n,p),gapBase));g.fill()}
+  // ---- knife slashes at the opening
+  if(t<0.42){const C=[[4,0,0,4],[0,0,3,3],[4,2,2,4],[3,1,4,2],[1,3,3,3]];g.strokeStyle='#ffffff';g.lineCap='round';
+    C.forEach((c,i)=>{const u=seg(t,.04+i*.04,.14+i*.04),o=seg(t,.15+i*.02,.31);if(u<=0||o>=1)return;const U=132,ox=960-2*U,oy=540-2*U;
+      const ext=.35;const dx=c[2]-c[0],dy=c[3]-c[1],L=Math.hypot(dx,dy);const ax=c[0]-dx/L*ext,ay=c[1]-dy/L*ext,bx=c[2]+dx/L*ext,by=c[3]+dy/L*ext;
+      const s0=o,s1=u;g.lineWidth=6*(1-o)+1;g.beginPath();g.moveTo(ox+U*lerp(ax,bx,s0),oy+U*lerp(ay,by,s0));g.lineTo(ox+U*lerp(ax,bx,s1),oy+U*lerp(ay,by,s1));g.stroke()})}
+  // ---- HUD
+  const hc=ink?'rgba(243,237,226,.85)':'rgba(20,20,22,.85)';
+  const fig=t<0.3||t>=12.95?'FIG. 01  SQUARE':t<2.95?'FIG. 02  ARROW':t<4.6?'FIG. 03  TRIANGLE':t<9.2?'FIG. 04  BIRD':'FIG. 05  INVENTORY';
+  mono('REEL — 051  SEVEN',70,84,22,hc);mono(fig,W-70,84,22,hc,'right');
+  mono('7 PIECES · 16 UNITS² · 0 DEPTH',W-70,H-62,22,hc,'right');mono('Claude',W-70,H-96,22,hc,'right');
+  mono(('0'+(Math.floor(t*2)%30+1)).slice(-2)+' / 30',70,124,22,hc);
+}
+window.__duration=15;window.__poster=6.6;
+(async()=>{await document.fonts.load(font(FD,190)+'');await document.fonts.load(font(FM,22));await document.fonts.ready;
+  window.__seek=t=>{draw(t)};
+  if(!location.search.includes('render')){const t0=performance.now();const loop=()=>{draw(((performance.now()-t0)/1000)%15);requestAnimationFrame(loop)};loop()}})();
+</script></body></html>

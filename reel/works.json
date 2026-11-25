@@ -1960,5 +1960,49 @@
     "review": "1周目：固定スリットの帯がスリット位置の列を写さず字が出ない→各帯に「スリット上の列」をずらして描くよう直した。止めた区間で字がスリットの隙間に来ていた→列の速度を紙の速度比（1→0.2→0.26→-0.95→1）で組み、ホ・シ・鏡・ゴシックが順に刷られるようにした。生の側まで拍で水色に光る→生の側は白のまま。11秒の上向き掃引が弱い→字を速さ違いでヘッドと一緒に上げ、縦に伸びたイコライザーにした。最後の掃引を短縮。2周目：シャッターの大きな「紙」が速く回りすぎて塊になる→回転を0.28回転/秒に。冒頭0.3秒で藍がまだ細い→最初の掃引の出だしを速めた。3周目：最終FVの「ホ」が飛行中に刷られて欠ける→着地を12.1秒までに早め、0秒目と最終フレームの差が圧縮ノイズだけになることを確認。許容した差：シャッター区間の落ちてくる縦組みの末尾（メへ。）は落下中に刷られて崩れるが、次の掃引で塗り替わる一瞬なので残した。",
     "condition": "case-values",
     "slot": "2026-11-24"
+  },
+  {
+    "id": "051",
+    "slug": "seven",
+    "title": "Seven",
+    "date": "2026-11-25",
+    "slot": "2026-11-25",
+    "concept": "奥行きを使わず、タングラムの7枚を平面の中だけで動かした15秒。0秒目は墨の正方形1枚で、0.04秒からナイフの5本の線が入って7色に割れ、矢印に組まれて画面を突き抜け、背景を朱から墨へ塗り替えて反対側から戻る。▶は拍ごとに7枚が外へ蹴り出されながら90°ずつ回り、見せ場の5.6〜8.6秒では7枚が鳥になり、肩を蝶番に2枚の大三角が羽ばたいて8の字に画面を飛ぶ。最後は7枚を面積順に並べて 4+4+2+2+2+1+1 = 16 を刷り、45°で正方形に組み戻り、1枚ずつ墨に戻って0秒目の ONE. につながる。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/051_seven.mp4",
+    "techniques": [
+      "tangram-seven-piece-rigid-choreography",
+      "vertex-matching-pose-solver",
+      "knife-slash-cut-reveal",
+      "in-plane-hinged-wingbeat",
+      "lissajous-figure-eight-flight-heading",
+      "staggered-arc-flight-with-extra-spins",
+      "beat-radial-kick-and-quarter-turns",
+      "arrow-driven-flat-colour-wipe",
+      "inset-seam-polygon-offset",
+      "area-inventory-lineup-equation",
+      "subframe-shutter-trails"
+    ],
+    "look": {
+      "palette": [
+        "#ff4a1c",
+        "#141416",
+        "#f3ede2",
+        "#2b59ff",
+        "#ffd23f",
+        "#ff8fc7",
+        "#19c58a",
+        "#7fd4ff",
+        "#8a4dff"
+      ],
+      "type": [
+        "Sora 800",
+        "Spline Sans Mono 500"
+      ],
+      "structure": "one flat plane, seven tangram pieces, no camera, no cuts / ink square on vermilion, ONE. (0 s) → five knife slashes, the square bursts into seven colours, SEVEN. (0.04–0.6 s) → pieces fly into an arrow, it pulls back and shoots out to the right, wiping the plane to ink, and wraps in from the left, GO. (1.3–2.75 s) → arrow re-sets as a play triangle, kicked apart on every beat and turned by quarter turns, PLAY. (2.75–4.4 s) → the triangle becomes a bird whose two big triangles flap from the shoulder hinges as it flies a figure eight over flat speed lines, FLY. (hero 5.6–8.6 s) → a vermilion circle wipe from the bird, the pieces line up by area under 4+4+2+2+2+1+1 = 16 and spin, hop and flip on the beat (9–11.8 s) → they gather into the square at 45°, it turns home, each piece drains to ink one by one, ONE. = frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：全体が小さく鳥が読めない・羽が胴体へ振れる・並びの回転が半周で止まる→寸法を全面に上げ、羽の回転方向を反転し、並びを1周に。2周目：ナイフの白線が破裂後も浮いて残る・並びが小さい→線を0.31秒で消し、並びを74px単位に拡大。3周目：終わりの色の抜けが濁る・2.2秒で画面が空になる→1枚ずつ墨へ切り替え、矢印の戻り位置を手前に；速度線が右下のHUDに掛かる→帯を150〜890pxに限定。許容した差：鳥が左へ飛ぶ区間は頭が下側になる（上下ほぼ対称なので反転させず連続を優先）。",
+    "condition": "no-depth"
   }
 ]
