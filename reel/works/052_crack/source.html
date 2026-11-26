@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>REEL — 052 Crack</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Martian+Mono:wght@400;600&display=block" rel="stylesheet">
+<style>
+  html,body{margin:0;background:#0d0d0d;overflow:hidden}
+  canvas{display:block}
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+window.__format = 'vertical';
+window.__duration = 15;
+window.__poster = 1.05;
+
+const W = 1080, H = 1920;
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+
+const YEL = '#ffe600', INK = '#0d0d0d', CYAN = '#19b7ff', PAPER = '#f5f2ea', GOLD = '#9c6400', GOLDHI = '#ffe9a0';
+
+// ---------- utils ----------
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,u)=>a+(b-a)*u;
+const sstep=(a,b,x)=>{const u=clamp((x-a)/(b-a));return u*u*(3-2*u)};
+const eOutC=u=>1-Math.pow(1-clamp(u),3);
+const eInOut=u=>{u=clamp(u);return u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2};
+
+// ---------- crack web (the cracks ARE the shard edges) ----------
+function makeWeb(P, seed, N, R){
+  const rnd = mulberry32(seed);
+  const base = []; let a0 = rnd()*Math.PI*2;
+  for (let k=0;k<N;k++) base.push(a0 + (k + (rnd()-.5)*.55) * Math.PI*2/N);
+  const rings = [[P]];
+  for (let j=1;j<R.length;j++){
+    const n = j<3 ? N : 2*N, ring=[];
+    for (let m=0;m<n;m++){
+      let ang;
+      if (j<3) ang = base[m];
+      else if (m%2===0) ang = base[m/2];
+      else { const k=(m-1)/2, a1=base[k], a2=base[(k+1)%N] + (k+1===N?Math.PI*2:0); ang = lerp(a1,a2,.35+rnd()*.3); }
+      ang += (rnd()-.5)*0.07;
+      const r = R[j]*(1+(rnd()-.5)*0.24);
+      ring.push([P[0]+Math.cos(ang)*r, P[1]+Math.sin(ang)*r]);
+    }
+    rings.push(ring);
+  }
+  const polys=[];
+  const add = p => polys.push(p);
+  for (let j=0;j<R.length-1;j++){
+    const A=rings[j], B=rings[j+1];
+    if (j===0){ for(let k=0;k<N;k++) add([P,B[k],B[(k+1)%N]]); continue; }
+    if (j<2){ for(let k=0;k<N;k++){ const q=[A[k],A[(k+1)%N],B[(k+1)%N],B[k]]; split(q);} continue; }
+    if (j===2){ for(let k=0;k<N;k++) add([A[k],A[(k+1)%N],B[(2*k+2)%(2*N)],B[2*k+1],B[2*k]]); continue; }
+    const n=A.length; for(let m=0;m<n;m++){ split([A[m],A[(m+1)%n],B[(m+1)%n],B[m]]); }
+  }
+  function split(q){
+    if (rnd()<0.38){ if(rnd()<.5){add([q[0],q[1],q[2]]);add([q[0],q[2],q[3]]);} else {add([q[0],q[1],q[3]]);add([q[1],q[2],q[3]]);} }
+    else add(q);
+  }
+  // shards
+  const shards = polys.map((poly,i)=>{
+    let cx=0,cy=0; for(const p of poly){cx+=p[0];cy+=p[1];} cx/=poly.length; cy/=poly.length;
+    let rad=0; for(const p of poly) rad=Math.max(rad,Math.hypot(p[0]-cx,p[1]-cy));
+    const d=Math.hypot(cx-P[0],cy-P[1]);
+    const r=mulberry32(seed*977+i*131);
+    return {poly,c:[cx,cy],rad,d,dir:d>0?[(cx-P[0])/d,(cy-P[1])/d]:[0,1],r1:r(),r2:r(),r3:r(),r4:r(),r5:r(),r6:r()};
+  }).filter(s=> s.c[0]+s.rad>-40 && s.c[0]-s.rad<W+40 && s.c[1]+s.rad>-40 && s.c[1]-s.rad<H+40);
+  // unique edges, near end first
+  const key=p=>p[0].toFixed(2)+','+p[1].toFixed(2); const seen=new Set(); const edges=[];
+  for (const s of shards){ const p=s.poly; for(let i=0;i<p.length;i++){ let a=p[i], b=p[(i+1)%p.length];
+    const k1=key(a)+'|'+key(b), k2=key(b)+'|'+key(a); if(seen.has(k1)||seen.has(k2)) continue; seen.add(k1);
+    let da=Math.hypot(a[0]-P[0],a[1]-P[1]), db=Math.hypot(b[0]-P[0],b[1]-P[1]);
+    if (db<da){ [a,b]=[b,a]; [da,db]=[db,da]; }
+    edges.push({a,b,dn:da,df:db});
+  }}
+  return {P,shards,edges};
+}
+
+const P1=[612,742], P2=[452,1046];
+const RING=[0,48,118,215,360,560,830,1200,1700,2400];
+const web1 = makeWeb(P1, 52, 13, RING);
+const web2 = makeWeb(P2, 7, 15, RING);
+
+// ---------- content layers (pre-rendered once) ----------
+function layer(){ const c=document.createElement('canvas'); c.width=W; c.height=H; return c; }
+function typeStack(g, lines, fg, opt={}){
+  const maxW = opt.w||960, cy = opt.cy||900, gap = opt.gap||34, maxH = opt.maxH||1180;
+  g.save(); g.fillStyle=fg; g.textBaseline='alphabetic'; g.textAlign='left';
+  try { g.fontStretch = opt.stretch||'condensed'; } catch(e){}
+  const items = lines.map(L=>{
+    const txt = typeof L==='string'?L:L.t;
+    g.font = `900 200px Archivo`; try { g.fontStretch = opt.stretch||'condensed'; } catch(e){}
+    const m = g.measureText(txt);
+    const s = 200*maxW/(m.actualBoundingBoxRight+m.actualBoundingBoxLeft);
+    return {txt, col:(typeof L==='string'?fg:L.c), s, asc:m.actualBoundingBoxAscent*s/200, left:m.actualBoundingBoxLeft*s/200};
+  });
+  let total = items.reduce((a,b)=>a+b.asc,0)+gap*(items.length-1);
+  const k = total>maxH ? maxH/total : 1;
+  total = items.reduce((a,b)=>a+b.asc*k,0)+gap*(items.length-1);
+  let y = cy - total/2;
+  for (const it of items){
+    g.font = `900 ${it.s*k}px Archivo`; try { g.fontStretch = opt.stretch||'condensed'; } catch(e){}
+    y += it.asc*k; g.fillStyle = it.col;
+    g.fillText(it.txt, (W-maxW*k)/2 + it.left*k, y); y += gap;
+  }
+  g.restore();
+}
+function mono(g, txt, x, y, size, col, align='left'){
+  g.save(); g.font=`600 ${size}px "Martian Mono"`; g.fillStyle=col; g.textAlign=align; g.textBaseline='alphabetic';
+  g.fillText(txt,x,y); g.restore();
+}
+let L1,L2,CARDS;
+function buildLayers(){
+  L1=layer(); let g=L1.getContext('2d');
+  g.fillStyle=YEL; g.fillRect(0,0,W,H);
+  typeStack(g,['HOLD','STILL.'],INK,{cy:860,gap:30,stretch:'condensed'});
+  g.fillStyle=INK; g.fillRect(60,1430,960,4);
+  mono(g,'FIG. 01 — ONE PANE, INTACT',60,1482,24,INK);
+  mono(g,'DO NOT TAP',1020,1482,24,INK,'right');
+
+  L2=layer(); g=L2.getContext('2d');
+  g.fillStyle=INK; g.fillRect(0,0,W,H);
+  typeStack(g,['SORRY',{t:'ABOUT',c:PAPER},{t:'YOUR',c:PAPER},{t:'SCREEN.',c:YEL}],PAPER,{cy:860,gap:26,maxH:1160,stretch:'extra-condensed'});
+  g.fillStyle=PAPER; g.fillRect(60,1500,960,3);
+  mono(g,'FIG. 02 — WHAT WAS BEHIND IT',60,1550,24,PAPER);
+
+  const defs=[
+    {bg:CYAN, fg:INK, lines:['LOOK'], st:'condensed', fig:'FIG. 03 — LOOK'},
+    {bg:INK, fg:YEL, lines:['CLOSER.'], st:'extra-condensed', fig:'FIG. 04 — CLOSER'},
+    {bg:PAPER, fg:INK, lines:["IT'S",'ONLY'], st:'condensed', fig:'FIG. 05 — IT’S ONLY'},
+    {bg:YEL, fg:INK, lines:['GLASS.'], st:'extra-condensed', fig:'FIG. 06 — GLASS'},
+  ];
+  CARDS = defs.map(d=>{ const c=layer(), g=c.getContext('2d'); g.fillStyle=d.bg; g.fillRect(0,0,W,H);
+    // concentric guide rings around the impact (they make the mirror offsets legible)
+    g.strokeStyle=d.fg; g.globalAlpha=.16; g.lineWidth=3;
+    for(let r=120;r<2400;r+=120){ g.beginPath(); g.arc(P2[0],P2[1],r,0,Math.PI*2); g.stroke(); }
+    g.globalAlpha=1;
+    typeStack(g,d.lines,d.fg,{cy:900,gap:34,stretch:d.st,maxH:1200});
+    g.fillStyle=d.fg; g.fillRect(60,1500,960,3);
+    mono(g,d.fig,60,1550,24,d.fg);
+    return c; });
+}
+
+// ---------- drawing helpers ----------
+function polyPath(g, poly){ g.beginPath(); g.moveTo(poly[0][0],poly[0][1]); for(let i=1;i<poly.length;i++) g.lineTo(poly[i][0],poly[i][1]); g.closePath(); }
+function drawEdges(g, web, F, style){
+  g.save(); g.lineCap='round';
+  const passes = style==='gold'
+    ? [{w:5,c:INK,o:[2,2.4]},{w:9,c:GOLD,o:[0,0]},{w:2.4,c:GOLDHI,o:[-1.6,-1.6]}]
+    : [{w:3.6,c:INK,o:[0,0]},{w:1.2,c:'rgba(255,255,255,.6)',o:[2.2,2.2]}];
+  for (const ps of passes){
+    g.strokeStyle=ps.c; g.lineWidth=ps.w; g.beginPath();
+    for (const e of web.edges){
+      if (F<=e.dn) continue;
+      const u = clamp((F-e.dn)/Math.max(e.df-e.dn,70));
+      g.moveTo(e.a[0]+ps.o[0],e.a[1]+ps.o[1]);
+      g.lineTo(lerp(e.a[0],e.b[0],u)+ps.o[0], lerp(e.a[1],e.b[1],u)+ps.o[1]);
+    }
+    g.stroke();
+  }
+  g.restore();
+}
+// shimmer travelling along the gold seams
+function drawShimmer(g, web, S, F){
+  g.save(); g.lineCap='round'; g.strokeStyle='rgba(255,255,255,.9)'; g.lineWidth=3; g.beginPath();
+  for (const e of web.edges){
+    if (F<=e.dn) continue;
+    const L=e.df-e.dn; if (L<1) continue;
+    const u0=clamp((S-90-e.dn)/L), u1=clamp((S-e.dn)/L), uf=clamp((F-e.dn)/Math.max(L,70));
+    const a=Math.min(u0,uf), b=Math.min(u1,uf); if (b<=a) continue;
+    g.moveTo(lerp(e.a[0],e.b[0],a),lerp(e.a[1],e.b[1],a)); g.lineTo(lerp(e.a[0],e.b[0],b),lerp(e.a[1],e.b[1],b));
+  }
+  g.stroke(); g.restore();
+}
+// one shard: M = shard transform (about its centroid), inner = content transform inside the clip
+function drawShard(g, s, img, tx, ty, rot, sc, flip, flipAng, inner, alpha){
+  const cx=s.c[0], cy=s.c[1];
+  const R = s.rad*Math.max(sc,1)+20;
+  if (cx+tx+R<0||cx+tx-R>W||cy+ty+R<0||cy+ty-R>H) return;
+  g.save();
+  if (alpha<1) g.globalAlpha=alpha;
+  g.translate(cx+tx,cy+ty); g.rotate(rot); g.scale(sc,sc);
+  if (flip<1){ g.rotate(flipAng); g.scale(Math.max(flip,.015),1); g.rotate(-flipAng); }
+  g.translate(-cx,-cy);
+  polyPath(g,s.poly);
+  g.save(); g.clip();
+  if (inner) g.transform(inner[0],inner[1],inner[2],inner[3],inner[4],inner[5]);
+  g.drawImage(img,0,0);
+  g.restore();
+  // glass: a faint sheen + the cut edge
+  g.lineJoin='round';
+  g.strokeStyle=INK; g.lineWidth=3.2/sc; g.stroke();
+  g.translate(1.6,1.6); g.strokeStyle='rgba(255,255,255,.7)'; g.lineWidth=1.3/sc; g.stroke();
+  g.restore();
+}
+function tapRing(g, P, t0, t){
+  // thumb press: ring arrives, presses in, then a shock ring
+  const u=t-t0;
+  if (u<-0.12) return;
+  g.save();
+  if (u<0){ const k=eOutC((u+0.12)/0.12); g.globalAlpha=k*.9; g.strokeStyle='#fff'; g.lineWidth=5; g.fillStyle='rgba(255,255,255,.28)';
+    g.beginPath(); g.arc(P[0],P[1],lerp(110,64,k),0,Math.PI*2); g.fill(); g.stroke(); }
+  else if (u<0.5){
+    const k=u/0.5;
+    g.globalAlpha=(1-k)*.9; g.strokeStyle='#fff'; g.lineWidth=6*(1-k)+1;
+    g.beginPath(); g.arc(P[0],P[1],64+k*520,0,Math.PI*2); g.stroke();
+    if (u<0.12){ g.globalAlpha=(1-u/0.12)*.85; const gr=g.createRadialGradient(P[0],P[1],0,P[0],P[1],420);
+      gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(1,'rgba(255,255,255,0)'); g.fillStyle=gr; g.fillRect(0,0,W,H); }
+  }
+  g.restore();
+}
+function impactDot(g,P,a){ if(a<=0) return; g.save(); g.globalAlpha=a; g.fillStyle='#fff';
+  g.beginPath(); g.arc(P[0],P[1],13,0,Math.PI*2); g.fill(); g.strokeStyle=INK; g.lineWidth=3; g.stroke(); g.restore(); }
+
+// ---------- physics of the fall (analytic, so it can be rewound) ----------
+const G=6400;
+for (const s of web1.shards){
+  s.tau = 0.70 + 0.00022*s.d + s.r1*0.05;
+  const sp = 760*Math.exp(-s.d/330) + 110 + 170*s.r2;
+  s.v=[s.dir[0]*sp + (s.r5-.5)*160, s.dir[1]*sp - 300*s.r3*Math.exp(-s.d/650)];
+  s.om=(s.r4*2-1)*(1.6+5*Math.exp(-s.d/480));
+  s.pop=0.55*Math.exp(-s.d/450)+0.07;
+  s.sag=3+7*s.r6;
+}
+function fallPose(s, tt){
+  if (tt < s.tau){ const k=sstep(0.5,s.tau,tt); return [ (s.r5-.5)*2*k, s.sag*k, 0, 1 ]; }
+  const u=tt-s.tau;
+  return [ s.v[0]*u + (s.r5-.5)*2, s.v[1]*u + .5*G*u*u + s.sag, s.om*u, 1+s.pop*u ];
+}
+function drawWeb1Shards(g, tt){
+  const list=[];
+  for (const s of web1.shards){ const p=fallPose(s,tt); list.push([p[3],s,p]); }
+  list.sort((a,b)=>a[0]-b[0]);
+  for (const [,s,p] of list) drawShard(g,s,L1,p[0],p[1],p[2],p[3],1,0,null,1);
+}
+
+// ---------- hero: broken mirror ----------
+const WAVES=[3.0,4.5,6.0,7.5];
+const BEATS=[]; for(let b=3.0;b<9.0;b+=0.5) BEATS.push(b);
+function kick(t){ let a=0; for(const b of BEATS){ if(t>=b) a+=Math.exp(-(t-b)*8.5)*(1-Math.exp(-(t-b)*60)); } return a; }
+function beatIndex(t){ let n=-1; for(const b of BEATS) if(t>=b) n++; return n; }
+function drawWeb2(g, t){
+  const A = kick(t), bi = beatIndex(t);
+  const spread = Math.sin(Math.PI*clamp((t-6.0)/1.5))*0.55;   // IT'S ONLY: the pane breathes apart
+  const push = 1 + 0.06*sstep(3,9,t);
+  const list=[];
+  for (const s of web2.shards){
+    // which content the shard shows (flip waves from the impact)
+    let idx=0, flip=1;
+    for (let w=0;w<WAVES.length;w++){
+      const ft = WAVES[w] + s.d*0.00024 + s.r1*0.04, u=(t-ft)/0.24;
+      if (u>=0.5) idx=w+1;
+      if (u>0 && u<1) flip=Math.abs(Math.cos(Math.PI*u));
+    }
+    const img = idx===0 ? L2 : CARDS[idx-1];
+    // beat kick: new random direction every beat
+    const rr = mulberry32(1000+bi*97+Math.round(s.r2*9973));
+    const ka = rr()*Math.PI*2, km = 10+34*rr(), kr=(rr()-.5)*0.16;
+    let tx = Math.cos(ka)*km*A + s.dir[0]*s.d*0.10*spread;
+    let ty = Math.sin(ka)*km*A + s.dir[1]*s.d*0.10*spread;
+    // global push about P2
+    tx += (s.c[0]-P2[0])*(push-1); ty += (s.c[1]-P2[1])*(push-1);
+    const rot = kr*A + (s.r3-.5)*0.05*spread;
+    const sc = push*(1 + (s.r4-.3)*0.05*A);
+    // mirror: content inside the shard rotated about the impact (small permanent tilt + beat swell)
+    let inner=null;
+    if (idx>0){
+      const th = (s.r5-.5)*(0.018 + 0.09*A) , k = 1+(s.r6-.5)*(0.02+0.10*A);
+      const c=Math.cos(th)*k, sn=Math.sin(th)*k;
+      inner=[c,sn,-sn,c, P2[0]-c*P2[0]+sn*P2[1], P2[1]-sn*P2[0]-c*P2[1]];
+    }
+    const flipAng = Math.atan2(s.dir[1],s.dir[0]);
+    list.push([s,img,tx,ty,rot,sc,flip,flipAng,inner]);
+  }
+  for (const it of list) drawShard(g,it[0],it[1],it[2],it[3],it[4],it[5],it[6],it[7],it[8],1);
+}
+function drawWeb2Explode(g, t){
+  const list=[];
+  for (const s of web2.shards){
+    const e = 9.0 + s.d*0.00016 + s.r1*0.05, u=t-e;
+    if (u<0){ list.push([1.06,s,0,0,0,1.06,1]); continue; }
+    const sp = 900+1400*s.r2;
+    const sc = 1.06 + 3.2*u*u + 0.6*u;
+    const tx = (s.c[0]-P2[0])*(sc-1)*0.9 + s.dir[0]*sp*u, ty=(s.c[1]-P2[1])*(sc-1)*0.9 + s.dir[1]*sp*u;
+    const a = 1 - sstep(0.25,0.62,u);
+    if (a<=0) continue;
+    list.push([sc,s,tx,ty,(s.r4-.5)*5*u,sc,a]);
+  }
+  list.sort((a,b)=>a[0]-b[0]);
+  for (const [,s,tx,ty,rot,sc,a] of list){
+    // push about P2 as in hero end-state
+    const px=(s.c[0]-P2[0])*0.06, py=(s.c[1]-P2[1])*0.06;
+    drawShard(g,s,CARDS[3],tx+px,ty+py,rot,sc,1,0,null,a);
+  }
+}
+
+// ---------- HUD ----------
+function hud(g, t){
+  const pill=(txt,x,y,align,bg,fg)=>{ g.save(); g.font='600 24px "Martian Mono"'; const w=g.measureText(txt).width+32;
+    const x0= align==='right'? x-w : x; g.fillStyle=bg; g.fillRect(x0,y-34,w,48); g.fillStyle=fg; g.textBaseline='alphabetic'; g.fillText(txt,x0+16,y); g.restore(); };
+  pill('REEL — 052  CRACK',48,96,'left',INK,YEL);
+  pill('Claude',W-48,96,'right',INK,PAPER);
+  let msg, n=web1.shards.length;
+  if (t<0.12) msg='PANE 01 · INTACT';
+  else if (t<0.70) msg='IMPACT 01 · '+String(Math.round(clamp((t-0.12)/0.38)*n)).padStart(3,'0')+' SHARDS';
+  else if (t<2.6) msg='FALLING · g = 6400 px/s²';
+  else if (t<3.0) msg='IMPACT 02 · '+web2.shards.length+' SHARDS';
+  else if (t<9.0) msg='MIRROR · BEAT '+String(beatIndex(t)+1).padStart(2,'0')+' / 12';
+  else if (t<9.55) msg='BLOWOUT';
+  else if (t<11.28) msg='◀◀ REWIND × 1.25';
+  else if (t<12.4) msg='KINTSUGI · '+web1.edges.length+' SEAMS';
+  else if (t<14.1) { const F=2600*(1-eInOut((t-12.4)/1.6)); msg='HEALING · '+String(web1.edges.filter(e=>e.dn<F).length).padStart(3,'0')+' SEAMS'; }
+  else msg='PANE 01 · INTACT';
+  pill(msg,48,H-200,'left',INK,PAPER);
+  pill(fmtT(t),W-48,H-200,'right',INK,YEL);
+}
+function fmtT(t){ const f=Math.floor(t*60+1e-6); const s=Math.floor(f/60), fr=f%60; return '00:'+String(s).padStart(2,'0')+':'+String(fr).padStart(2,'0'); }
+
+// ---------- frame ----------
+function shake(t){
+  let x=0,y=0;
+  for (const [t0,a] of [[0.12,26],[2.62,22],[11.28,6]]){ const u=t-t0; if(u<0||u>0.6) continue;
+    const e=a*Math.exp(-u*11); x+=e*Math.sin(u*95); y+=e*0.7*Math.cos(u*77); }
+  return [x,y];
+}
+const F1 = t => 2600*eOutC((t-0.12)/0.38);
+function render(t){
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.fillStyle=INK; ctx.fillRect(0,0,W,H);
+  const [sx,sy]=shake(t);
+  ctx.save(); ctx.translate(sx,sy);
+  if (t<0.5){
+    ctx.drawImage(L1,0,0);
+    if (t>=0.12) { drawEdges(ctx,web1,F1(t),'ink'); impactDot(ctx,P1,1); }
+    tapRing(ctx,P1,0.12,t);
+  } else if (t<2.62){
+    ctx.drawImage(L2,0,0);
+    drawWeb1Shards(ctx,t);
+    impactDot(ctx,P1,1-sstep(0.68,0.8,t));
+    tapRing(ctx,P2,2.62,t);
+  } else if (t<9.0){
+    ctx.drawImage(t<3.0?L2:L2,0,0);
+    if (t<2.95){ ctx.drawImage(L2,0,0); drawEdges(ctx,web2,2600*eOutC((t-2.62)/0.3),'ink'); impactDot(ctx,P2,1); tapRing(ctx,P2,2.62,t); }
+    else { drawWeb2(ctx,t); }
+  } else if (t<11.28){
+    ctx.drawImage(L2,0,0);
+    const tt = clamp(2.6 - 1.25*(t-9.6), 0.5, 2.6);
+    drawWeb1Shards(ctx,tt);
+    if (t<9.75) drawWeb2Explode(ctx,t);
+    // rewind tracking bands
+    if (t>9.5){ ctx.save(); ctx.globalAlpha=.10; ctx.fillStyle=PAPER;
+      for(let k=0;k<3;k++){ const y=((t*1900+k*700)%(H+200))-100; ctx.fillRect(0,y,W,10+k*6);} ctx.restore(); }
+  } else {
+    ctx.drawImage(L1,0,0);
+    const Fr = t<12.4 ? 2600 : 2600*(1-eInOut((t-12.4)/1.6));
+    if (Fr>0){
+      drawEdges(ctx,web1,Fr,'ink');
+      const Fg = Math.min(Fr, 2600*eOutC((t-11.3)/0.75));
+      if (Fg>0) drawEdges(ctx,web1,Fg,'gold');
+      if (t>11.8 && t<12.8) drawShimmer(ctx,web1,(t-11.8)*2400,Fg);
+    }
+    impactDot(ctx,P1,1-sstep(13.95,14.35,t));
+    // the press lifts off
+    if (t>13.8 && t<14.5){ const k=(t-13.8)/0.7; ctx.save(); ctx.globalAlpha=(1-k)*.8; ctx.strokeStyle='#fff'; ctx.lineWidth=5;
+      ctx.beginPath(); ctx.arc(P1[0],P1[1],64*(1-k)+4,0,Math.PI*2); ctx.stroke(); ctx.restore(); }
+  }
+  ctx.restore();
+  hud(ctx,t);
+}
+
+// ---------- boot ----------
+(async()=>{
+  await Promise.all([
+    document.fonts.load('900 200px Archivo'),
+    document.fonts.load('600 24px "Martian Mono"'),
+  ]);
+  await document.fonts.ready;
+  buildLayers();
+  window.__seek = t => { render(Math.max(0,Math.min(14.9999,t))); };
+  render(0);
+  if (!location.search.includes('render')){
+    const t0=performance.now();
+    const loop=()=>{ render(((performance.now()-t0)/1000)%15); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  }
+})();
+</script>
+</body>
+</html>

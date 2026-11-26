@@ -2004,5 +2004,45 @@
     "review_rounds": 3,
     "review": "1周目：全体が小さく鳥が読めない・羽が胴体へ振れる・並びの回転が半周で止まる→寸法を全面に上げ、羽の回転方向を反転し、並びを1周に。2周目：ナイフの白線が破裂後も浮いて残る・並びが小さい→線を0.31秒で消し、並びを74px単位に拡大。3周目：終わりの色の抜けが濁る・2.2秒で画面が空になる→1枚ずつ墨へ切り替え、矢印の戻り位置を手前に；速度線が右下のHUDに掛かる→帯を150〜890pxに限定。許容した差：鳥が左へ飛ぶ区間は頭が下側になる（上下ほぼ対称なので反転させず連続を優先）。",
     "condition": "no-depth"
+  },
+  {
+    "id": "052",
+    "slug": "crack",
+    "title": "Crack",
+    "date": "2026-11-26",
+    "slot": "2026-11-26",
+    "concept": "縦9:16で、見ている人の画面が割れたと思わせるところから始めた。0秒目は黄色地に HOLD STILL. だけで、0.12秒に親指のタップが入ってヒビが打点から全面へ走り、0.7秒に191枚の破片が重力で崩れ落ちて、裏の SORRY ABOUT YOUR SCREEN. が出る。ヒビの線はそのまま破片の輪郭なので、割れ方と落ち方が一致する。2.6秒の2打目で割れた鏡になり、破片ごとに中身が少しずつずれたまま、拍ごとに蹴られ・打点から裏返る波で LOOK / CLOSER. / IT'S ONLY / GLASS. と組み替わる。9秒に破片が手前へ吹き飛び、落下の物理を1.25倍で巻き戻して元の1枚に戻し、ヒビを金で継いで（金継ぎ）、継ぎ目が打点へ引き戻されて0秒目につながる。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/052_crack.mp4",
+    "techniques": [
+      "radial-concentric-crack-web-as-shard-mesh",
+      "crack-front-propagation-from-tap",
+      "thumb-tap-hook-in-first-frame",
+      "analytic-rigid-shard-fall",
+      "time-reversed-physics-rewind",
+      "broken-mirror-per-shard-content-offset",
+      "shard-flip-waves-from-impact",
+      "beat-kicked-shard-scatter",
+      "shard-blowout-toward-camera",
+      "kintsugi-gold-seam-fill-and-retract"
+    ],
+    "look": {
+      "palette": [
+        "#ffe600",
+        "#0d0d0d",
+        "#19b7ff",
+        "#f5f2ea",
+        "#9c6400"
+      ],
+      "type": [
+        "Archivo 900 (condensed / extra-condensed)",
+        "Martian Mono 600"
+      ],
+      "structure": "vertical, one pane of glass, no cuts / yellow HOLD STILL. (0 s) → thumb tap at 0.12 s, cracks race out from the point with a shake → 191 shards sag and fall under gravity from 0.7 s, SORRY ABOUT YOUR SCREEN. behind (readable ~2 s) → second tap at 2.62 s cracks that too into 208 shards → broken mirror: shards flip in waves from the impact to LOOK (cyan) / CLOSER. (ink) / IT'S ONLY (paper, the pane breathes apart) / GLASS. (yellow), each shard showing its content slightly rotated, kicked on every beat (3–9 s) → blowout toward the camera (9 s) → the first fall rewinds ×1.25, shards rise back into HOLD STILL. (9.6–11.3 s) → gold fills the cracks, a shimmer runs along them (kintsugi, 11.3–12.4 s) → the seams retract into the tap point, the press lifts = frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：骨組みは通った（0.12秒タップ→0.7秒崩落→約2秒でオチが読める）。爆散の破片が黒地のGLASS.札で黒の上に黒になり見えない→GLASS.を黄地・CLOSER.を墨地に入れ替え。ヒビ線の白ハイライトが黄地で灰色に濁る→墨を太く・白を細く。崩落が遅くオチを隠す→解放の遅れを0.30→0.22ms/px。金継ぎの金が黄地で薄茶に沈む。2周目：金を#9c6400・9pxに墨の影を敷いて読めるようにした。金継ぎ〜治癒の3秒がだらける→引き戻しを1.85→1.6秒に詰め、継ぎ目カウンタを実際に描いている本数にした。3周目：0.25/5.2/7.9/9.3/10.6/13.2秒を等倍で確認、直すことは無し。許容した差：細いヒビ線が4Mbpsの2パスでわずかに柔らかい／7.9秒は裏返りの波の途中で外周の破片がまだ墨のまま。",
+    "condition": "vertical",
+    "format": "vertical"
   }
 ]
