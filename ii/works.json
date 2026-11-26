@@ -1077,5 +1077,38 @@
       ]
     },
     "use": "サイトの FV 背景・章の区切りに。板の左右と上に余白があり、壁の影の側に見出しを置ける"
+  },
+  {
+    "id": "035",
+    "slug": "tapers",
+    "title": "TAPERS",
+    "title_ja": "テーパーキャンドル",
+    "date": "2026-11-27",
+    "track": "OBJECT",
+    "concept": "挽いた真鍮の台から11色のテーパーキャンドルが扇に開く。見どころは紺の闇から藤へ抜ける地の上で、蝋の右の縁だけが幅広く起きる柔らかな照りと、ほつれた綿の芯。",
+    "source": {
+      "url": "https://www.hay.com/globalassets/blocks/brandsite/inspiration/candlelight-collection/2026/slim-candle-family_lilla-bg_910x1100.jpg",
+      "took": "光：右手前の大きな柔光1灯・被写体の上でも右から左へ落ち、左の蝋燭は縁の照りだけで読める / 素材：艶の弱い蝋（幅の広いぼんやりした照り）・ほつれた綿の芯 / 構図：縦長・ほぼ水平の望遠で被写体を中央に高さ8割 / 色：左上の紺の闇と右・床手前の藤が二分する地7割に、12色の中彩度の蝋を寒色の中の暖色で点に"
+    },
+    "look": {
+      "track": "OBJECT",
+      "palette_family": "navy-lilac-multicolor",
+      "background": "gradient-sweep",
+      "lighting": "right-front-softbox",
+      "lens": "tele",
+      "aspect": "4:5",
+      "material": "wax"
+    },
+    "review_rounds": 17,
+    "film": {
+      "sec": 11.5,
+      "shots": [
+        "物の動き",
+        "マクロ",
+        "押し込み",
+        "決め"
+      ]
+    },
+    "use": "雑貨・インテリア・ギフトのブランドの FV や季節の特集に。左の紺の闇に白抜きの見出し、右の藤に本文を置ける"
   }
 ]
