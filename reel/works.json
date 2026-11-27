@@ -2044,5 +2044,44 @@
     "review": "1周目：骨組みは通った（0.12秒タップ→0.7秒崩落→約2秒でオチが読める）。爆散の破片が黒地のGLASS.札で黒の上に黒になり見えない→GLASS.を黄地・CLOSER.を墨地に入れ替え。ヒビ線の白ハイライトが黄地で灰色に濁る→墨を太く・白を細く。崩落が遅くオチを隠す→解放の遅れを0.30→0.22ms/px。金継ぎの金が黄地で薄茶に沈む。2周目：金を#9c6400・9pxに墨の影を敷いて読めるようにした。金継ぎ〜治癒の3秒がだらける→引き戻しを1.85→1.6秒に詰め、継ぎ目カウンタを実際に描いている本数にした。3周目：0.25/5.2/7.9/9.3/10.6/13.2秒を等倍で確認、直すことは無し。許容した差：細いヒビ線が4Mbpsの2パスでわずかに柔らかい／7.9秒は裏返りの波の途中で外周の破片がまだ墨のまま。",
     "condition": "vertical",
     "format": "vertical"
+  },
+  {
+    "id": "053",
+    "slug": "plot",
+    "title": "Plot",
+    "date": "2026-11-27",
+    "slot": "2026-11-27",
+    "concept": "monaka design. のロゴの実パス15本（三日月2つと字13個）を、ペンプロッタが描く15秒にした。ロゴの形は描き直さず、パスの輪郭をなぞり、パスで切り抜いたハッチ・クロスハッチ・点描・罫線で塗る。0.1秒目にペンが句点を打つと黒の帯が刷かれ、ライムの三日月を大写しで描き始める。字は0.185秒に1つずつ5種類のペンで描かれ、白い紙送りでロックアップが次々に刷られる。見せ場は7.3〜9.6秒：ライムの地で2層のハッチが逆向きに回ってモアレになり、拍ごとに締まり、カメラが g の中へ潜る。そのあと15本の輪郭をまっすぐにほどいて周長を測り、巻き戻して白地で元のインクを塗り切る。ペンが句点に戻って0秒目につながる。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/053_plot.mp4",
+    "techniques": [
+      "pen-plotter-simulation",
+      "path-outline-tracing-by-arc-length",
+      "clip-path-boustrophedon-hatching",
+      "seeded-stipple-inside-path",
+      "counter-rotating-double-hatch-moire",
+      "beat-pulse-hatch-density",
+      "paper-feed-fixed-head-printing",
+      "outline-unrolling-to-measured-lines",
+      "plotted-band-wipes",
+      "gantry-crosshair-hud"
+    ],
+    "look": {
+      "palette": [
+        "#0a0a0a",
+        "#ffffff",
+        "#a5e02e",
+        "#303030",
+        "#888888"
+      ],
+      "type": [
+        "monaka design. logo (original paths)",
+        "IBM Plex Mono 500/600"
+      ],
+      "structure": "one pen plotter, scene changes are plotted bands / white lockup, the pen taps the full stop (0 s) → black bands, close-up of the lime crescent: outline then hatch (0.3–1.3 s) → the dark crescent in white crosshatch, pull out to the mark (1.6–2.8 s) → tracking shot, 13 glyphs plotted one by one with 5 pens: hatch, crosshatch, stipple, rules, dense (2.85–5.3 s) → pull out to the whole hatched lockup on black (5.55 s) → white paper feed, rows of lockups printed under a fixed head (6–7 s) → lime: double hatch counter-rotating = moiré, beat pulses tighten it, dive into the g and back (hero 7.3–9.6 s) → black: 15 outlines unroll into straight measured lines and roll back (9.75–11.8 s) → white: original inks close the hatch into the solid logo, the pen glides back to the full stop = frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 3,
+    "review": "1周目：0.3〜0.5秒が黒一色で掴みが弱い→ワイプを0.1〜0.3秒に詰め、三日月のなぞりとハッチを0.3秒から重ねて始めた。全体のハッチロックアップが白のワイプと重なって見えない→字の間隔を0.185秒に詰め、5.55秒に全体を見せる間を作った。紙送りの段はハッチが潰れてベタに見えた→間隔を2.2倍。見せ場が平板→拍ごとのズームの蹴りと g への潜り込みを足し、HUDの文字に地色の箱を敷いた。2周目：全体を見せる場面でペン頭がマークの下の空き地に残る→句点に停める。三日月のハッチの出が遅い→ease-out に。3周目：紙送りの印字線がペン位置と合わない→消した。0秒目と15秒目は時刻表示以外一致。許容した差：シーンの境で HUD の色が1〜2フレームだけ地と近くなる。点描は紙送りの縮尺で粒が太い（インクのにじみとして残した）。",
+    "condition": "logo"
   }
 ]
