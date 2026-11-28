@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>REEL — 054 BELLOWS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Kaisei+Tokumin:wght@700;800&family=Libre+Franklin:wght@400;500;600;700&display=block" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#ffffff;overflow:hidden}
+  canvas{display:block;width:1920px;height:1080px}
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+window.__duration = 15;
+window.__poster = 7.25;
+const W = 1920, H = 1080;
+const C = {w:'#ffffff', g1:'#f2f2f2', g2:'#e6e6e6', g3:'#d4d4d4', ink:'#1c1e22', s1:'#5c6068', s2:'#8c9099', ai:'#1f3a6e', mizu:'#9db0d6'};
+const MIN = '"Kaisei Tokumin"', GO = '"BIZ UDPGothic"', LF = '"Libre Franklin"';
+const COPY = [...'紙のことなら、ホシノメへ。'];
+const NAME = [...'ホシノメ印刷'];
+const SUB = '印刷・製本・紙加工。1枚の試し刷りから、10万部の本刷りまで。';
+const NAV = ['事業内容', '設備紹介', '制作実績', '会社案内'];
+const D = Math.PI / 180;
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, u) => a + (b - a) * u;
+const win = (t, a, b) => clamp((t - a) / (b - a));
+const sm = x => { x = clamp(x); return x * x * (3 - 2 * x); };
+const eio = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const eo = x => { x = clamp(x); return 1 - Math.pow(1 - x, 3); };
+const bump = x => (x <= 0 || x >= 1) ? 0 : Math.sin(Math.PI * x);
+const spr = (x, z = 4.5, f = 13) => x <= 0 ? 1 : Math.exp(-z * x) * Math.cos(f * x);   // 1 → 0 with overshoot
+const isPunct = ch => ch === '、' || ch === '。';
+
+// ---------- strip (accordion) geometry ----------
+// S: {cx, cy, rot, w, h, n, th[], anchor, k, faces[4], edge, glyph(i)->{ch,font,ink}|null, vert, lift, shadow}
+function build(S) {
+  const n = S.n, X = new Float64Array(n + 1), Z = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) {
+    const th = Math.min(89 * D, S.th[i]);
+    const s = (i % 2) ? -1 : 1;
+    X[i + 1] = X[i] + S.w * Math.cos(th);
+    Z[i + 1] = Z[i] + s * S.w * Math.sin(th);
+  }
+  const a = clamp(S.anchor, 0, n), i0 = Math.min(n - 1, Math.floor(a)), f = a - i0;
+  const ax = lerp(X[i0], X[i0 + 1], f);
+  let zm = 0; for (let i = 0; i <= n; i++) zm += Z[i]; zm /= (n + 1);
+  const k = S.k ?? 0.35;
+  const cr = Math.cos(S.rot || 0), sr = Math.sin(S.rot || 0);
+  const tr = (x, y) => [S.cx + x * cr - y * sr, S.cy + x * sr + y * cr];
+  const panels = [];
+  for (let i = 0; i < n; i++) {
+    const xL = X[i] - ax, xR = X[i + 1] - ax;
+    const yL = -S.h / 2 + k * (Z[i] - zm), yR = -S.h / 2 + k * (Z[i + 1] - zm);
+    const th = Math.min(89 * D, S.th[i]);
+    const q = ((i % 2) ? -1 : 1) * Math.sin(th);
+    panels.push({ i, xL, xR, yL, yR, z: (Z[i] + Z[i + 1]) / 2, q,
+      pts: [tr(xL, yL), tr(xR, yR), tr(xR, yR + S.h), tr(xL, yL + S.h)] });
+  }
+  panels.sort((p, r) => p.z - r.z);
+  return { S, panels };
+}
+function poly(pts) { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (let j = 1; j < pts.length; j++) ctx.lineTo(pts[j][0], pts[j][1]); ctx.closePath(); }
+function drawShadow(G) {
+  const S = G.S; if (!S.lift || S.lift < 0.005 || !S.shadow) return;
+  const ox = 12 * S.lift, oy = 18 * S.lift;
+  ctx.fillStyle = S.shadow;
+  for (const p of G.panels) { poly(p.pts.map(([x, y]) => [x + ox, y + oy])); ctx.fill(); }
+}
+function faceIdx(q) { return q <= 0.14 ? 0 : q < 0.42 ? 1 : q < 0.7 ? 2 : 3; }
+function drawStrip(G) {
+  const S = G.S;
+  for (const p of G.panels) {
+    const dw = p.xR - p.xL;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = S.faces[faceIdx(p.q)];
+    poly(p.pts); ctx.fill();
+    if (S.crease > 0.01) {
+      ctx.globalAlpha = clamp(S.crease); ctx.strokeStyle = S.edge; ctx.lineWidth = 1.2; ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    const g = S.glyph && S.glyph(p.i);
+    if (g && dw > 1.5) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.translate(S.cx, S.cy); ctx.rotate(S.rot || 0);
+      ctx.transform(dw / S.w, (p.yR - p.yL) / S.w, 0, 1, p.xL, p.yL);
+      ctx.translate(S.w / 2, S.h / 2);
+      ctx.fillStyle = g.ink; ctx.font = g.font; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      if (S.vert) {
+        ctx.rotate(-Math.PI / 2);
+        const fs = S.fs || 60;
+        if (isPunct(g.ch)) ctx.translate(fs * 0.6, -fs * 0.6);
+      }
+      ctx.fillText(g.ch, 0, (S.fs || 60) * 0.04);
+    }
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
+
+// ---------- palettes for faces ----------
+const PAPER = [C.w, C.g1, C.g2, C.g3];
+const F_AI = [C.ai, C.ai, C.ai, C.ink];
+const F_MIZU = [C.mizu, C.mizu, C.s2, C.s2];
+const F_G1 = [C.g1, C.g2, C.g3, C.g3];
+const F_W = [C.w, C.g1, C.g2, C.g3];
+
+// full-screen folding screen (屏風) that unfolds from an edge
+function curtain(t, a, b, faces, side) {
+  const vert = side === 'top' || side === 'bottom';
+  const n = vert ? 5 : 8, L = vert ? H : W, w = L / n, st = 0.04;
+  const dur = (b - a) - (n - 1) * st;
+  const th = [];
+  for (let i = 0; i < n; i++) {
+    const j = (side === 'right' || side === 'bottom') ? (n - 1 - i) : i;   // order from the anchored edge
+    th.push(89.5 * D * (1 - eo((t - a - j * st) / dur)));
+  }
+  const S = { n, w, h: (vert ? W : H) + 160, th, k: 0.15, faces, edge: faces[3], crease: 0.0, lift: 0 };
+  if (side === 'left') Object.assign(S, { cx: 0, cy: H / 2, rot: 0, anchor: 0 });
+  if (side === 'right') Object.assign(S, { cx: W, cy: H / 2, rot: 0, anchor: n });
+  if (side === 'top') Object.assign(S, { cx: W / 2, cy: 0, rot: Math.PI / 2, anchor: 0 });
+  if (side === 'bottom') Object.assign(S, { cx: W / 2, cy: H, rot: Math.PI / 2, anchor: n });
+  return S;
+}
+
+// ---------- the timeline ----------
+const BW = 118, BH = 150, BF = 104;           // base panel and glyph size (FV)
+const FV = { cx: 180 + 6.5 * BW, cy: 470 };
+function copyGlyph(fontFn, inkFn) { return i => ({ ch: COPY[i], font: fontFn(i), ink: inkFn(i) }); }
+
+function baseAt(t) {
+  t = t % 15;
+  if (t < 1.45) return C.w; if (t < 4.5) return C.ai; if (t < 6.4) return C.mizu;
+  if (t < 9.8) return C.g1; if (t < 12.0) return C.ai; return C.w;
+}
+function scene(t) {
+  const out = { base: C.w, curtains: [], strips: [], header: 0, sub: 0, hud: 0, label: '' };
+  // base colours and curtains
+  out.base = baseAt(t); out.hudBase = baseAt(t + 0.3);
+  if (t >= 0.85 && t < 1.45) out.curtains.push(curtain(t, 0.85, 1.45, F_AI, 'right'));
+  if (t >= 3.9 && t < 4.5) out.curtains.push(curtain(t, 3.9, 4.5, F_MIZU, 'top'));
+  if (t >= 5.85 && t < 6.4) out.curtains.push(curtain(t, 5.85, 6.4, F_G1, 'left'));
+  if (t >= 9.2 && t < 9.8) out.curtains.push(curtain(t, 9.2, 9.8, F_AI, 'bottom'));
+  if (t >= 11.4 && t < 12.0) out.curtains.push(curtain(t, 11.4, 12.0, F_W, 'left'));
+
+  const shadowFor = out.base === C.ai ? C.ink : out.base === C.mizu ? C.s2 : out.base === C.g1 ? C.g3 : C.g2;
+  const n = 13;
+  const th = new Array(n).fill(0);
+
+  if (t < 6.25) {
+    // ---- the main copy strip, M ----
+    let cx, cy, anchor, sc, rot = 0, ink = C.ink, lift, vert = false, font = `800 ${BF}px ${MIN}`;
+    if (t < 1.5) {
+      for (let i = 0; i < n; i++) th[i] = 87 * D * eio((t - (0.2 + (12 - i) * 0.035)) / 0.28);
+      const u = eio(win(t, 0.8, 1.35));
+      anchor = lerp(0, 6.5, u); cx = lerp(180, 960, u); cy = lerp(470, 520, u); sc = lerp(1, 1.1, u);
+      lift = sm(win(t, 0.2, 0.5));
+      ink = t < 1.0 ? C.ink : C.ai;
+      out.header = 1 - eio(win(t, 0.2, 0.5)); out.sub = out.header;
+      out.label = '01  ZIGZAG';
+    } else if (t < 3.5) {
+      ink = C.ai; lift = 1; cx = 960; cy = 520;
+      const wA = 72 * D * bump(win(t, 1.95, 3.1));
+      for (let i = 0; i < n; i++) {
+        let a = 87 * D * spr(t - 1.5 - Math.abs(i - 6) * 0.02);
+        const s = 0.5 + 0.5 * Math.sin(0.9 * i - 2 * Math.PI * 1.8 * (t - 1.95));
+        a += wA * s * s;
+        const inWin = i >= 7 && i <= 10;
+        const d = inWin ? 0 : (i < 7 ? 7 - i : i - 10);
+        const u = eio(win(t, 3.0 + d * 0.018, 3.25 + d * 0.018));
+        th[i] = lerp(a, inWin ? 0 : 86 * D, u);
+      }
+      const u = eo(win(t, 3.0, 3.3));
+      anchor = lerp(6.5, 9, eio(win(t, 3.0, 3.3)));
+      sc = lerp(1.1, 1.7, u);
+      out.label = t < 3.0 ? '02  BELLOWS' : '02  BELLOWS / WINDOW';
+    } else if (t < 4.1) {
+      ink = C.ai; lift = 1;
+      for (let i = 0; i < n; i++) {
+        const inWin = i >= 7 && i <= 10;
+        th[i] = inWin ? 87 * D * eio(win(t, 3.5 + Math.abs(i - 8.5) * 0.03, 3.72 + Math.abs(i - 8.5) * 0.03)) : 86 * D + D * win(t, 3.5, 3.7);
+      }
+      const u = eio(win(t, 3.65, 4.1));
+      rot = lerp(0, Math.PI / 2, u);
+      anchor = lerp(9, 0, u); cx = lerp(960, 1040, u); cy = lerp(520, 50, u);
+      sc = lerp(1.7, 0.66, eio(win(t, 3.55, 4.0)));
+      vert = u > 0.5;
+      out.label = '03  HANGING';
+    } else {
+      // vertical, hanging from the top on mizu
+      ink = C.ai; lift = 1; rot = Math.PI / 2; anchor = 0; sc = 0.66; vert = true;
+      for (let i = 0; i < n; i++) {
+        let a = 87 * D * spr(t - 4.15 - i * 0.045, 4, 12);
+        a += 62 * D * bump((t - 5.0) * 5 - i * 0.3);
+        const u = eio(win(t, 5.55 + (12 - i) * 0.018, 5.8 + (12 - i) * 0.018));
+        th[i] = lerp(a, 87 * D, u);
+      }
+      const u = eio(win(t, 5.95, 6.25));
+      cx = lerp(1040, 960, u); cy = lerp(50, 540, u);
+      rot = lerp(Math.PI / 2, 0, u); anchor = lerp(0, 6.5, u);
+      out.label = '03  HANGING';
+      // company name column, unfolding upward from the bottom
+      const m = NAME.length, th2 = [];
+      for (let i = 0; i < m; i++) {
+        let a = 87 * D * spr(t - 4.55 - (m - 1 - i) * 0.06, 4, 12);
+        a += 50 * D * bump((t - 5.15) * 5 - (m - 1 - i) * 0.35);
+        const v = eio(win(t, 5.55 + i * 0.02, 5.8 + i * 0.02));
+        th2.push(lerp(a, 87 * D, v));
+      }
+      const v2 = eio(win(t, 5.95, 6.25));
+      const sc2 = 0.5;
+      out.strips.push({ n: m, w: BW * sc2, h: BH * sc2, fs: BF * sc2, th: th2, k: 0.35,
+        cx: lerp(880, 960, v2), cy: lerp(990, 540, v2), rot: lerp(Math.PI / 2, 0, v2), anchor: lerp(m, 3, v2), vert: v2 < 0.5,
+        faces: PAPER, edge: C.s2, crease: 0.6, lift: 1, shadow: shadowFor,
+        glyph: i => ({ ch: NAME[i], font: `700 ${Math.round(BF * sc2)}px ${GO}`, ink: C.ink }) });
+    }
+    const fs = Math.round(BF * sc);
+    font = `800 ${fs}px ${MIN}`;
+    out.strips.push({ n, w: BW * sc, h: BH * sc, fs, th, k: 0.35, cx, cy, rot, anchor, vert,
+      faces: PAPER, edge: C.s2, crease: lift * 0.7, lift, shadow: shadowFor,
+      glyph: copyGlyph(() => font, () => ink) });
+    out.hud = win(t, 0.42, 0.6);
+  } else if (t < 10.0) {
+    // ---- hero: 7 rows × 13 panels ----
+    const RW = 130, RH = 108, RF = 88, RS = 126;
+    const envIn = sm(win(t, 6.6, 6.95));
+    const env = 1 - eio(win(t, 8.45, 8.8));
+    const pulse = Math.exp(-((t - 6.6 + 10) % 0.5) * 7);
+    const m = sm(win(t, 7.45, 7.75));
+    for (let r = 0; r < 7; r++) {
+      const ths = [];
+      const spread = eo(win(t, 6.25, 6.65));
+      const slide = (r % 2 ? 1 : -1) * 34 * eo(win(t, 8.45, 9.05));
+      let cx = 960 + slide, cy = 540 + (r - 3) * RS * spread, anchor = 6.5;
+      for (let i = 0; i < n; i++) {
+        let a = 87 * D * spr(t - 6.3 - Math.abs(r - 3) * 0.05 - Math.abs(i - 6.5) * 0.012);
+        const s1 = 0.5 + 0.5 * Math.sin(0.75 * i + 1.1 * r - 2 * Math.PI * 1.5 * (t - 6.7));
+        const d = Math.hypot(i - 6, (r - 3) * RS / RW);
+        const s2 = 0.5 + 0.5 * Math.sin(1.25 * d - 2 * Math.PI * 2 * (t - 7.6));
+        a += 84 * D * envIn * env * (0.78 + 0.3 * pulse) * lerp(s1 * s1, s2 * s2, m);
+        ths.push(a);
+      }
+      if (t >= 9.0) {
+        // zipper close: even rows toward the left end, odd rows toward the right end
+        const left = r % 2 === 0;
+        const flatL = 960 + slide - 6.5 * RW, flatR = 960 + slide + 6.5 * RW;
+        for (let i = 0; i < n; i++) {
+          const j = left ? 12 - i : i;
+          ths[i] = 87 * D * eio(win(t, 9.0 + r * 0.02 + j * 0.025, 9.3 + r * 0.02 + j * 0.025));
+        }
+        const u = eio(win(t, 9.55 + Math.abs(r - 3) * 0.025, 9.97));
+        anchor = lerp(left ? 0 : n, 6.5, u);
+        cx = lerp(left ? flatL : flatR, 960, u);
+        cy = lerp(cy, 540, u);
+      }
+      const goth = r % 2 === 1;
+      out.strips.push({ n, w: RW, h: RH, fs: RF, th: ths, k: 0.26, cx, cy, rot: 0, anchor,
+        faces: PAPER, edge: C.s2, crease: 0.55, lift: 1, shadow: shadowFor,
+        glyph: copyGlyph(() => goth ? `700 ${RF}px ${GO}` : `800 ${RF}px ${MIN}`, () => goth ? C.ai : C.ink) });
+    }
+    // draw the middle row last so the merge ends on it
+    const mid = out.strips.splice(3, 1)[0]; out.strips.push(mid);
+    out.hud = 1;
+    out.label = t < 7.5 ? '04  7 × 13  DIAGONAL' : t < 8.45 ? '04  7 × 13  RADIAL' : t < 9.0 ? '04  7 × 13  FLAT' : '05  ZIP';
+  } else {
+    // ---- one strip: open, swap the type with fold waves, return to the FV ----
+    const u = eio(win(t, 11.8, 12.6));
+    const sc = lerp(1.2, 1.0, u);
+    const fs = Math.round(BF * sc);
+    const fonts = [], inks = [];
+    for (let i = 0; i < n; i++) {
+      let a = 87 * D * spr(t - 10.0 - Math.abs(i - 6) * 0.02);
+      const t1 = 10.55 + i * 0.028, t2 = 11.0 + (12 - i) * 0.028;
+      a += 88 * D * bump((t - t1) / 0.3) + 88 * D * bump((t - t2) / 0.3);
+      const b1 = 13.2 + i * 0.06;
+      a += 16 * D * bump((t - b1) / 0.55);
+      th[i] = a;
+      const toGo = t > t1 + 0.15, back = t > t2 + 0.15;
+      fonts.push(toGo && !back ? `700 ${fs}px ${GO}` : `800 ${fs}px ${MIN}`);
+      inks.push(back ? C.ink : C.ai);
+    }
+    const lift = (1 - sm(win(t, 11.9, 12.6))) + 0.4 * bump(win(t, 13.2, 14.55));
+    out.strips.push({ n, w: BW * sc, h: BH * sc, fs, th, k: 0.35, anchor: 6.5,
+      cx: lerp(960, FV.cx, u), cy: lerp(540, FV.cy, u), rot: 0,
+      faces: PAPER, edge: C.s2, crease: lift * 0.7, lift, shadow: shadowFor,
+      glyph: i => ({ ch: COPY[i], font: fonts[i], ink: inks[i] }) });
+    out.header = eio(win(t, 12.35, 12.85));
+    out.sub = eio(win(t, 12.65, 13.2));
+    out.hud = 1 - win(t, 12.4, 12.7);
+    out.label = t < 10.55 ? '06  OPEN' : t < 11.7 ? '06  SWAP  MINCHO / GOTHIC' : '07  FV';
+  }
+  return out;
+}
+
+// ---------- page chrome ----------
+function drawHeader(a) {
+  if (a <= 0.001) return;
+  const dy = (1 - a) * -26;
+  ctx.globalAlpha = a;
+  ctx.fillStyle = C.ink; ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  ctx.font = `700 26px ${GO}`; ctx.fillText('ホシノメ印刷', 80, 66 + dy);
+  ctx.fillStyle = C.s1; ctx.font = `600 12px ${LF}`;
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '2px';
+  ctx.fillText('HOSHINOME PRINTING CO.', 248, 64 + dy);
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  ctx.fillStyle = C.ink; ctx.font = `400 17px ${GO}`;
+  let x = 1150;
+  for (const s of NAV) { ctx.fillText(s, x, 64 + dy); x += 118; }
+  ctx.fillStyle = C.ai; ctx.fillRect(1640, 36 + dy, 200, 46);
+  ctx.fillStyle = C.w; ctx.font = `700 17px ${GO}`; ctx.textAlign = 'center'; ctx.fillText('お問い合わせ', 1740, 65 + dy);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = C.g2; ctx.fillRect(80, 108 + dy, W - 160, 1);
+  ctx.globalAlpha = 1;
+}
+function drawSub(a) {
+  if (a <= 0.001) return;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(150, 580, 1400 * a, 120); ctx.clip();
+  ctx.fillStyle = C.s1; ctx.font = `400 24px ${GO}`; ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  ctx.fillText(SUB, 186, 622);
+  ctx.fillStyle = C.ai; ctx.fillRect(186, 660, 56, 3);
+  ctx.restore();
+  ctx.globalAlpha = a;
+  ctx.fillStyle = C.s2; ctx.font = `500 12px ${LF}`;
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '3px';
+  ctx.fillText('SCROLL', 80, 1012);
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  ctx.fillStyle = C.g3; ctx.fillRect(170, 1007, 120, 1);
+  ctx.globalAlpha = 1;
+}
+function hudColors(base) {
+  return base === C.ai ? [C.mizu, C.w] : base === C.mizu ? [C.ai, C.ink] : [C.s1, C.ink];
+}
+function tc(t) { const s = Math.floor(t), f = Math.floor((t - s) * 30); return `00:${String(s).padStart(2, '0')}:${String(f).padStart(2, '0')}`; }
+function drawHud(sc, t, avg, panels) {
+  const [c1, c2] = hudColors(sc.hudBase);
+  ctx.textBaseline = 'alphabetic';
+  if (sc.hud > 0.001) {
+    ctx.globalAlpha = Math.min(sc.hud, 1 - sc.header);
+    ctx.font = `600 13px ${LF}`; ctx.fillStyle = c2; ctx.textAlign = 'left';
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '1.5px';
+    ctx.fillText('HOSHINOME PRINTING CO.', 80, 62);
+    ctx.globalAlpha = sc.hud;
+    ctx.font = `500 13px ${LF}`; ctx.fillStyle = c1;
+    ctx.fillText(`FOLD ${sc.label}`, 80, 1010);
+    ctx.fillText(`${panels} PANELS   AVG ${avg.toFixed(1).padStart(4, '0')}°   ${tc(t)}`, 80, 1032);
+    ctx.textAlign = 'right';
+    ctx.fillText('ACCORDION FOLD', W - 80, 62);
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+    ctx.globalAlpha = 1;
+  }
+  ctx.font = `500 12px ${LF}`; ctx.fillStyle = sc.hud > 0.5 ? c1 : C.s2; ctx.textAlign = 'right';
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '2px';
+  ctx.fillText('REEL — 054   Claude', W - 80, 1012);
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  ctx.textAlign = 'left';
+}
+
+function render(t) {
+  t = ((t % 15) + 15) % 15;
+  const sc = scene(t);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = sc.base; ctx.fillRect(0, 0, W, H);
+  for (const S of sc.curtains) drawStrip(build(S));
+  const Gs = sc.strips.map(build);
+  for (const G of Gs) drawShadow(G);
+  for (const G of Gs) drawStrip(G);
+  let sum = 0, cnt = 0;
+  for (const S of sc.strips) for (const a of S.th) { sum += Math.min(89, Math.max(0, a / D)); cnt++; }
+  drawHeader(sc.header);
+  drawSub(sc.sub);
+  drawHud(sc, t, cnt ? sum / cnt : 0, cnt);
+}
+
+(async () => {
+  const all = COPY.join('') + NAME.join('') + SUB + NAV.join('') + 'お問い合わせ';
+  const latin = 'HOSHINOME PRINTING CO. FOLD ACCORDION REEL — 054 Claude SCROLL 0123456789 .:°×/ ZIGZAGBELLOWSWINDOWHANGINGDIAGONALRADIALFLATZIPOPENSWAPMINCHOGOTHICFV';
+  const loads = [];
+  for (const wgt of [800, 700]) loads.push(document.fonts.load(`${wgt} 100px ${MIN}`, all));
+  for (const wgt of [700, 400]) loads.push(document.fonts.load(`${wgt} 100px ${GO}`, all));
+  for (const wgt of [500, 600]) loads.push(document.fonts.load(`${wgt} 13px ${LF}`, latin));
+  await Promise.all(loads);
+  await document.fonts.ready;
+  window.__seek = t => { render(t); };
+  render(0);
+  if (!location.search.includes('render')) {
+    const t0 = performance.now();
+    const loop = () => { render(((performance.now() - t0) / 1000) % 15); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  }
+})();
+</script>
+</body>
+</html>

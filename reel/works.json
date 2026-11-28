@@ -2083,5 +2083,49 @@
     "review_rounds": 3,
     "review": "1周目：0.3〜0.5秒が黒一色で掴みが弱い→ワイプを0.1〜0.3秒に詰め、三日月のなぞりとハッチを0.3秒から重ねて始めた。全体のハッチロックアップが白のワイプと重なって見えない→字の間隔を0.185秒に詰め、5.55秒に全体を見せる間を作った。紙送りの段はハッチが潰れてベタに見えた→間隔を2.2倍。見せ場が平板→拍ごとのズームの蹴りと g への潜り込みを足し、HUDの文字に地色の箱を敷いた。2周目：全体を見せる場面でペン頭がマークの下の空き地に残る→句点に停める。三日月のハッチの出が遅い→ease-out に。3周目：紙送りの印字線がペン位置と合わない→消した。0秒目と15秒目は時刻表示以外一致。許容した差：シーンの境で HUD の色が1〜2フレームだけ地と近くなる。点描は紙送りの縮尺で粒が太い（インクのにじみとして残した）。",
     "condition": "logo"
+  },
+  {
+    "id": "054",
+    "slug": "bellows",
+    "title": "Bellows",
+    "date": "2026-11-28",
+    "concept": "架空の印刷会社「ホシノメ印刷」のFVに置く15秒を、確定値の9色・3書体のまま、蛇腹折り（アコーディオン）の折り角だけで動かした。『紙のことなら、ホシノメへ。』の13字を1字1面の紙帯にして、面ごとの折り角を波・ばね・ドミノで動かすので、字は折られて潰れ、開いて読める。0.2秒目にFVのコピーが右から畳まれ、場面の切り替えも全画面の屏風が端から開いて色を塗り替える。見せ場は6.3〜8.8秒：7段×13面＝91面が斜めの波、次に中心からの同心円の波で拍ごとに折れ、平らに揃って7行のコピーが読める。最後はジッパーのように左右へ畳まれて1本に合流し、折りの波が通るたびに明朝→ゴシック→明朝と書体が替わってFVに戻る。",
+    "video": "https://ryota4100221-cmyk.github.io/middle-studies-reel/054_bellows.mp4",
+    "techniques": [
+      "accordion-fold-per-panel-angle-field",
+      "zigzag-chain-geometry-with-oblique-offset",
+      "affine-glyph-squash-on-folded-panels",
+      "domino-fold-collapse",
+      "traveling-fold-waves-diagonal-and-radial",
+      "damped-spring-unfold-with-overshoot",
+      "folding-screen-curtain-transitions",
+      "zipper-close-and-bundle-merge",
+      "fold-wave-typeface-swap",
+      "palette-stepped-face-shading"
+    ],
+    "look": {
+      "palette": [
+        "#ffffff",
+        "#f2f2f2",
+        "#e6e6e6",
+        "#d4d4d4",
+        "#1c1e22",
+        "#5c6068",
+        "#8c9099",
+        "#1f3a6e",
+        "#9db0d6"
+      ],
+      "type": [
+        "Kaisei Tokumin",
+        "BIZ UDPGothic",
+        "Libre Franklin"
+      ],
+      "structure": "one corporate FV whose copy is a 13-panel accordion strip, every scene change is a full-screen folding screen unfolding from an edge, no camera / FV (0 s) → domino fold from the right into a bundle, header lifts away, ai screen unfolds from the right (0.2–1.45 s) → bellows: spring open with overshoot, a travelling fold wave, everything closes except ホシノメ which opens huge (1.5–3.5 s) → bundle turns 90°, mizu screen from the top, the copy drops as a hanging column with a wave running down, ホシノメ印刷 rises beside it (3.6–6 s) → f2 screen from the left, the bundle splits into 7 rows × 13 panels that spring open, diagonal fold waves then radial rings pulsing on the beat, all flatten into 7 readable lines (hero 6.3–8.8 s) → zipper: rows fold toward alternate ends, ai screen from the bottom, 7 bundles merge into one (9–10 s) → one strip springs open, two fold waves swap mincho → gothic → mincho (10–11.6 s) → white screen from the left, the strip shrinks back into the FV, header and sub copy return, a light breeze of folds = frame 0",
+      "renderer": "canvas2d"
+    },
+    "review_rounds": 4,
+    "review": "1周目：0.3秒でフェード中のヘッダーとHUDの左上ラベルが重なる／縦の場面（4〜6秒）で2本の柱が右に寄って水色の面が空く→ラベルはヘッダーが消えてから出し、柱を中央へ寄せた（見せ場の7段は撮る前の試し撮りでHUDに掛かっていたので面と行間を縮めた）。2周目：0.3秒でHUDの出だしがSCROLLと重なる／社名の柱が下端に寄りすぎ→HUDの出を0.42秒からにし、柱を上げた。3周目：屏風の途中でHUDの色が背景と同化する／ジッパーで最下段の蛇腹の段差がHUDに届く→HUDの色を0.3秒先の背景色で選び、見せ場の行の斜め投影を0.35→0.26に浅くした。4周目：直すことなし。許容した差：場面の境目で紙帯がいったん小さな束になる（0.95秒・3.8秒・6.2秒）のは畳んで開く呼吸として残した。",
+    "condition": "case-values",
+    "slot": "2026-11-28"
   }
 ]
